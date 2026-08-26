@@ -5,6 +5,7 @@ from aegis.config import Settings
 from aegis.providers.anthropic_provider import AnthropicProvider
 from aegis.providers.base import BaseProvider, Completion, ProviderError
 from aegis.providers.echo import EchoProvider
+from aegis.providers.gmi_provider import GMIProvider
 from aegis.providers.openai_provider import OpenAIProvider
 
 
@@ -21,6 +22,8 @@ def build_registry(settings: Settings) -> dict[str, tuple[BaseProvider, CircuitB
             chain.append(OpenAIProvider())
         elif name == "anthropic" and AnthropicProvider().available:
             chain.append(AnthropicProvider())
+        elif name == "gmi" and GMIProvider().available:
+            chain.append(GMIProvider())
     chain.append(EchoProvider())  # deterministic fallback — keeps platform usable
 
     registry: dict[str, tuple[BaseProvider, CircuitBreaker]] = {}

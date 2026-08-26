@@ -1,7 +1,9 @@
 """Central configuration. Fail-closed: missing critical secrets abort startup in production."""
 
+import os
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV = "AEGIS_ENV"
@@ -22,6 +24,21 @@ class Settings(BaseSettings):
     providers: str = "echo"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    gmi_api_key: str = ""
+    gmi_base_url: str = "https://api.gmi-serving.com/v1"
+    gmi_model: str = "Qwen/Qwen3.8-27B"
+
+    @model_validator(mode="after")
+    def _fallback_gmi_env(self):  # type: ignore[no-untyped-def]
+        # Accept both AEGIS_GMI_API_KEY (prefixed) and plain GMI_API_KEY / GMI_BASE_URL
+        # — provider docs use the plain names.
+        if not self.gmi_api_key:
+            self.gmi_api_key = os.environ.get("GMI_API_KEY", "")
+        if self.gmi_base_url == "https://api.gmi-serving.com/v1":
+            self.gmi_base_url = os.environ.get("GMI_BASE_URL", self.gmi_base_url)
+        if self.gmi_model == "Qwen/Qwen3.8-27B":
+            self.gmi_model = os.environ.get("GMI_MODEL", self.gmi_model)
+        return self
 
     rate_limit_per_min: int = 60
     daily_token_budget: int = 200_000
