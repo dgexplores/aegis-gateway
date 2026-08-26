@@ -1,8 +1,12 @@
 """FastAPI application: /v1/chat, /v1/rag/*, admin + health endpoints."""
 
+import asyncio
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from aegis.api.middleware import RequestContextMiddleware
@@ -163,6 +167,60 @@ async def rag_query(
     }
 
 
+@app.post("/v1/chat/stream")
+async def chat_stream(
+    body: ChatRequest,
+    tenant: Tenant = Depends(get_tenant),
+    gateway: Gateway = Depends(get_gateway),
+):
+    if "chat" not in tenant.scopes:
+        raise HTTPException(status_code=403, detail="scope 'chat' required")
+
+    # Pre-checks share the same pipeline (no duplicate code path)
+    try:
+        result = await gateway.handle_chat(
+            tenant_id=tenant.id,
+            messages=[m.model_dump() for m in body.messages],
+            max_tokens=body.max_tokens,
+            use_cache=body.use_cache,
+        )
+    except RateLimitExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc),
+                            headers={"Retry-After": str(exc.retry_after)}) from exc
+    except BudgetExceeded as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+
+    async def event_gen():
+        if result["blocked"]:
+            payload = json.dumps(
+                {"blocked": True, "injection": result["injection"], "answer": result["answer"]}
+            )
+            yield f"data: {payload}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+        # stream answer word-by-word (echo is instant; this shows real SSE plumbing;
+        # GMI real streaming would proxy provider chunks here)
+        text = result["answer"]
+        words = text.split(" ")
+        for i, w in enumerate(words):
+            chunk = w + (" " if i < len(words) - 1 else "")
+            yield f"data: {json.dumps({'delta': chunk, 'index': i})}\n\n"
+            await asyncio.sleep(0.02)
+        done_payload = json.dumps(
+            {
+                "done": True,
+                "provider": (result["completion"] or {}).get("provider"),
+                "routing": result.get("routing"),
+                "audit_seq": result.get("audit_seq"),
+                "injection": result["injection"],
+            }
+        )
+        yield f"data: {done_payload}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"status": "ok"}
@@ -187,3 +245,18 @@ async def admin_status(
         "breakers": [b.snapshot() for _, b in gateway.registry.values()],
         "budget": gateway.budget.usage(tenant.id),
     }
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/dashboard")
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard():
+    html_path = Path(__file__).parent.parent / "templates" / "dashboard.html"
+    if html_path.exists():
+        return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Dashboard not found</h1><p>Expected at templates/dashboard.html</p>", status_code=500)
