@@ -14,9 +14,19 @@ TIMEOUT = 30.0
 class GMIProvider(BaseProvider):
     name = "gmi"
 
-    def __init__(self) -> None:
-        self.api_key = os.environ.get("GMI_API_KEY", "")
-        base = os.environ.get("GMI_BASE_URL", DEFAULT_BASE).rstrip("/")
+    def __init__(self, api_key: str | None = None, base_url: str | None = None) -> None:
+        # Accept explicit key (from Settings) or fall back to either env var name
+        self.api_key = (
+            api_key
+            or os.environ.get("GMI_API_KEY", "")
+            or os.environ.get("AEGIS_GMI_API_KEY", "")
+        )
+        base = (
+            base_url
+            or os.environ.get("GMI_BASE_URL", "")
+            or os.environ.get("AEGIS_GMI_BASE_URL", "")
+            or DEFAULT_BASE
+        ).rstrip("/")
         self.api_url = f"{base}/chat/completions"
 
     @property

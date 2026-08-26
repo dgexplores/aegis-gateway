@@ -51,6 +51,7 @@ ignore = [
 # intentional blind catches: Redis degradation + eval error isolation
 "src/aegis/ratelimit.py" = ["BLE001", "S110"]
 "src/aegis/evals/runner.py" = ["BLE001"]
+"src/aegis/api/routes.py" = ["BLE001", "S110"]
 # KB_PASSWORD_RESET is sample documentation text, not a credential
 "scripts/eval_gate.py" = ["S105"]
 

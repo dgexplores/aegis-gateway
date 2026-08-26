@@ -19,14 +19,19 @@ STATE: dict = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Tests may pre-populate STATE with a fixture gateway; production boots fresh.
     if "gateway" not in STATE:
         settings: Settings = get_settings()
         gateway = await build_gateway(settings)
         STATE["gateway"] = gateway
         STATE["authenticator"] = Authenticator(settings)
+    else:
+        # reuse test-injected gateway (pytest fixtures)
+        pass
     yield
-    await STATE["gateway"].aclose()
+    try:
+        await STATE["gateway"].aclose()
+    except Exception:  # noqa: BLE001,S110
+        pass
 
 
 app = FastAPI(
@@ -36,6 +41,7 @@ app = FastAPI(
         "Secure LLM gateway: prompt-injection defense, PII vault with "
         "re-identification, hash-chained audit log, hybrid RAG, eval-gated CI."
     ),
+    lifespan=lifespan,
 )
 app.add_middleware(RequestContextMiddleware)
 

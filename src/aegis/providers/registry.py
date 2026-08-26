@@ -22,8 +22,11 @@ def build_registry(settings: Settings) -> dict[str, tuple[BaseProvider, CircuitB
             chain.append(OpenAIProvider())
         elif name == "anthropic" and AnthropicProvider().available:
             chain.append(AnthropicProvider())
-        elif name == "gmi" and GMIProvider().available:
-            chain.append(GMIProvider())
+        elif name == "gmi":
+            # Pass Settings-sourced key so .env loading via pydantic works even when os.environ not exported
+            p = GMIProvider(api_key=settings.gmi_api_key, base_url=settings.gmi_base_url)
+            if p.available:
+                chain.append(p)
     chain.append(EchoProvider())  # deterministic fallback — keeps platform usable
 
     registry: dict[str, tuple[BaseProvider, CircuitBreaker]] = {}
