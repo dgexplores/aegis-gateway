@@ -26,7 +26,7 @@ Goal: replicas agree, disks don't fill, clients get precise errors.
       schema, boot rebuild, write-through best-effort, `verify_persistence.py`).
 - [x] Budgets shared via Redis (`budget:{tenant}:{day}`), memory fallback.
 - [ ] Audit encrypted payload column + S3 archive; keep JSONL format for export.
-- [ ] Router respects `allowed_providers` + per-tenant model allowlist + real $/1k.
+- [ ] Router: per-tenant model allowlist + real $/1k (tier rules only for now).
 - [ ] Embedding column + real vector index (needs embedding provider decision).
 
 ## Phase 3 — Quality moat

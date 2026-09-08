@@ -48,10 +48,3 @@ class Authenticator:
         if matched is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid api key")
         return matched
-
-    def require_scope(self, tenant: Tenant, scope: str) -> None:
-        if scope not in tenant.scopes:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"tenant '{tenant.id}' lacks scope '{scope}'",
-            )

@@ -44,14 +44,12 @@ class Settings(BaseSettings):
     daily_token_budget: int = 200_000
     injection_block_threshold: float = 0.7
     injection_soft_threshold: float = 0.35
-    max_input_tokens: int = 8000
     cache_ttl_seconds: int = 300
 
     audit_path: str = "audit.jsonl"
     audit_max_bytes: int = 10_000_000
     redis_url: str = ""
     database_url: str = ""
-    request_timeout_s: int = 30
 
     def require_production_secrets(self) -> list[str]:
         """Return fatal config problems when running with env=production."""
