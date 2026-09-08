@@ -6,6 +6,7 @@ a deterministic feature-hashing vectorizer — good enough to demonstrate hybrid
 fusion and swap-ready for real embeddings (sentence-transformers / provider API)
 via the same interface. Every result carries provenance for citation."""
 
+import hashlib
 import math
 import re
 from collections import Counter
@@ -33,9 +34,11 @@ def tokenize(text: str) -> list[str]:
 
 
 def _hash_vec(tokens: list[str], dims: int = 512) -> Counter[int]:
+    # Stable digest hash, NOT builtin hash(): str hashing is seed-randomized
+    # per process, which made vector rankings (and eval scores) vary run to run.
     v: Counter[int] = Counter()
     for tok in tokens:
-        v[hash(tok) % dims] += 1
+        v[int(hashlib.sha256(tok.encode()).hexdigest()[:16], 16) % dims] += 1
     return v
 
 
