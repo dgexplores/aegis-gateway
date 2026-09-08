@@ -14,6 +14,7 @@ from aegis.budget import BudgetExceeded
 from aegis.config import Settings, get_settings
 from aegis.gateway import Gateway, build_gateway
 from aegis.metrics import metrics
+from aegis.providers.registry import AllProvidersDown
 from aegis.rag.service import rag_service
 from aegis.ratelimit import RateLimitExceeded
 from aegis.security.auth import Authenticator, Tenant
@@ -48,6 +49,32 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(AllProvidersDown)
+async def _providers_down(request: Request, exc: AllProvidersDown):  # type: ignore[no-untyped-def]
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "all providers unavailable, retry shortly"},
+        headers={"x-request-id": request.headers.get("x-request-id", "")},
+    )
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception):  # type: ignore[no-untyped-def]
+    # Never leak internals or keys: generic shape, request-id for log lookup.
+    # HTTPExceptions (401/403/429/...) keep their own status — re-raise them.
+    if isinstance(exc, HTTPException):
+        raise exc
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "internal error"},
+        headers={"x-request-id": request.headers.get("x-request-id", "")},
+    )
 
 
 # --- schemas -----------------------------------------------------------------
@@ -224,6 +251,22 @@ async def chat_stream(
 @app.get("/healthz")
 async def healthz() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> dict:
+    """Readiness: boot chain intact + at least one provider (echo counts).
+
+    No auth so K8s probes stay simple. Returns 503 when not ready so the
+    pod is removed from service without failing liveness.
+    """
+    gateway: Gateway | None = STATE.get("gateway")
+    if gateway is None:
+        raise HTTPException(status_code=503, detail="starting")
+    ok, msg = gateway.audit.verify()
+    if not ok or not gateway.registry:
+        raise HTTPException(status_code=503, detail=msg or "no providers")
+    return {"status": "ready", "audit": msg}
 
 
 @app.get("/metrics")
