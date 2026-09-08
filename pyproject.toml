@@ -27,7 +27,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.4",
     "mypy>=1.9",
-    "pip-audit>=2.7",
+    "pip-audit>=2.10.1",
     "pre-commit>=3.0",
     "types-PyYAML>=6.0",
 ]
