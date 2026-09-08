@@ -40,10 +40,14 @@ class Authenticator:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         presented = self.hash_key(auth.removeprefix("Bearer ").strip())
-        tenant = self._by_key_hash.get(presented)
-        if tenant is None or not hmac.compare_digest(presented, presented):
+        # timing-safe: compare against every stored hash, no early exit on dict miss
+        matched: Tenant | None = None
+        for stored_hash, tenant in self._by_key_hash.items():
+            if hmac.compare_digest(presented.lower(), stored_hash.lower()):
+                matched = tenant
+        if matched is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid api key")
-        return tenant
+        return matched
 
     def require_scope(self, tenant: Tenant, scope: str) -> None:
         if scope not in tenant.scopes:

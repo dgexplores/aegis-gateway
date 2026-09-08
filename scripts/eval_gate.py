@@ -55,8 +55,9 @@ async def main() -> int:
     settings = get_settings()
     gateway = await build_gateway(settings)
     try:
+        rag_service.clear()
         for source, text in KNOWLEDGE_BASE:
-            rag_service.ingest(text, source)
+            rag_service.ingest(text, source, tenant="eval-runner")
 
         cases = load_dataset(args.dataset)
         judge = HeuristicJudge()

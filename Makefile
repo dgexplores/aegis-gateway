@@ -1,4 +1,4 @@
-.PHONY: install setup dev test lint type security evals run demo docker-build docker-up gen-tenant
+.PHONY: install setup dev test test-cov lint type security evals verify run demo smoke docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -7,9 +7,13 @@ setup:
 	bash scripts/setup.sh
 
 dev: install
+	pre-commit install || true
 
 test:
-	pytest -q
+	PYTHONPATH=src pytest -q
+
+test-cov:
+	PYTHONPATH=src pytest -q --cov=src --cov-report=term-missing --cov-fail-under=70
 
 demo:  ## one-line smoke test against running gateway
 	@echo "== demo: ingesting sample doc + querying =="
@@ -32,10 +36,19 @@ type:
 	mypy src
 
 security:
-	python scripts/redteam.py --corpus scripts/attacks.yaml
+	PYTHONPATH=src python scripts/redteam.py --corpus scripts/attacks.yaml
 
 evals:
-	python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
+	PYTHONPATH=src python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
+
+verify: lint type test security evals
+	@echo "VERIFY OK — lint+type+tests+redteam+evals green"
+
+smoke:
+	bash scripts/smoke.sh
+
+check-secrets:
+	bash scripts/check_no_secrets.sh
 
 run:
 	uvicorn aegis.main:app --host 0.0.0.0 --port 8080 --reload
