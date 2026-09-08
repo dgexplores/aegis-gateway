@@ -2,10 +2,14 @@
 cited prompts. Context blocks are formatted as [source:id] lines so both the
 model and the eval judge can verify groundedness."""
 
+import logging
 from dataclasses import dataclass
+from typing import Any
 
 from aegis.rag.ingest import chunk_document
 from aegis.rag.retriever import HybridRetriever, Retrieved
+
+log = logging.getLogger("aegis.rag")
 
 
 @dataclass
@@ -25,6 +29,27 @@ class RagService:
     def __init__(self, top_k: int = 4) -> None:
         self._stores: dict[str, HybridRetriever] = {}
         self.top_k = top_k
+        self._pg: Any = None
+
+    def configure(self, database_url: str = "") -> str:
+        """Attach Postgres source-of-truth once; reload persisted chunks.
+
+        Returns 'postgres' when the DB is reachable, else 'memory'.
+        Safe to call repeatedly; only the first successful attach wins.
+        """
+        if not database_url or self._pg is not None:
+            return "postgres" if self._pg is not None else "memory"
+        try:
+            from aegis.store.db import PgChunkStore
+
+            pg = PgChunkStore(database_url)
+            loaded = pg.bootstrap(self._stores)
+            self._pg = pg
+            log.info("rag backend=postgres chunks=%d", loaded)
+            return "postgres"
+        except Exception:  # noqa: BLE001 — DB optional, memory keeps serving
+            log.warning("rag backend=memory (postgres unreachable)")
+            return "memory"
 
     def _for(self, tenant: str) -> HybridRetriever:
         key = tenant or "default"
@@ -50,12 +75,24 @@ class RagService:
         store = self._for(tenant)
         chunks = chunk_document(text, source)
         added = store.index(chunks)
+        self._persist_best_effort(tenant, chunks)
         return {
             "source": source,
             "chunks_created": len(chunks),
             "chunks_indexed": added,
             "index_size": store.size,
         }
+
+    def _persist_best_effort(self, tenant: str, chunks: list) -> bool:
+        """Write-through to Postgres; False when absent/unreachable (memory kept)."""
+        if self._pg is None:
+            return False
+        try:
+            self._pg.save(tenant, chunks)
+            return True
+        except Exception:  # noqa: BLE001 — persistence never blocks ingest
+            log.warning("rag persist failed, memory index kept")
+            return False
 
     def prepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
         results: list[Retrieved] = self._for(tenant).retrieve(question, top_k=self.top_k)

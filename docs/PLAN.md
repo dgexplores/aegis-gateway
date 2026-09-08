@@ -21,11 +21,13 @@ Goal: replicas agree, disks don't fill, clients get precise errors.
       `AEGIS_REDIS_URL` set. Manifest render check (`kustomize build` or
       yamlload fallback). CD preflight renders manifests before staging smoke.
 
-## Phase 2 — Persistence (next)
-- Postgres pgvector for RAG (replace per-process stores, keep tenant filter).
-- Budgets + idempotency keys in Postgres/Redis (survive restarts).
-- Audit encrypted payload column + S3 archive; keep JSONL format for export.
-- Router respects `allowed_providers` + per-tenant model allowlist + real $/1k.
+## Phase 2 — Persistence (in progress)
+- [x] Postgres source-of-truth for RAG (`store/db.py`, tenant PK, idempotent
+      schema, boot rebuild, write-through best-effort, `verify_persistence.py`).
+- [x] Budgets shared via Redis (`budget:{tenant}:{day}`), memory fallback.
+- [ ] Audit encrypted payload column + S3 archive; keep JSONL format for export.
+- [ ] Router respects `allowed_providers` + per-tenant model allowlist + real $/1k.
+- [ ] Embedding column + real vector index (needs embedding provider decision).
 
 ## Phase 3 — Quality moat
 - Golden set 10 -> 100 (prod-sampled misses), LLM judge + heuristic, gate on
