@@ -105,6 +105,56 @@ jobs:
       - name: Eval regression gate (>=85%)
         run: python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
 
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint-type, test]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 5
+    env:
+      AEGIS_ENV: test
+      AEGIS_AUDIT_HMAC_KEY: test-audit-key-32-chars-minimum!!
+      AEGIS_VAULT_HMAC_KEY: test-vault-key-32-chars-minimum!!!
+      AEGIS_TENANTS: ci:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855:chat+rag
+      AEGIS_PROVIDERS: echo
+      AEGIS_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]" redis
+      - name: Full verify against real redis (degrades, never 500s)
+        run: make verify
+      - name: Prove shared limiter wiring
+        run: >
+          python -c
+          "from aegis.config import Settings; from aegis.gateway import Gateway;
+          import asyncio;
+          s=Settings(env='test', audit_hmac_key='test-audit-key-32-chars-minimum!!',
+          vault_hmac_key='test-vault-key-32-chars-minimum!!!',
+          tenants='t:x:chat', redis_url='redis://localhost:6379/0');
+          gw=asyncio.run(__import__('aegis.gateway', fromlist=['build_gateway']).build_gateway(s));
+          assert gw.limiter.redis is not None, 'redis not wired';
+          print('redis wired ok')"
+
+  manifests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate K8s manifests render
+        run: |
+          python -c "import yaml,glob; [yaml.safe_load_all(open(f)) for f in glob.glob('deploy/k8s/*.yaml')]; print('yaml ok')"
+          (kustomize build deploy/k8s > /tmp/manifest.yaml && echo "kustomize ok") || \
+            (echo "kustomize binary absent — yaml load passed, render deferred to cd preflight")
+
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -28,14 +28,38 @@ class InjectionBlocked(Exception):
         super().__init__("prompt injection blocked")
 
 
+def _optional_redis(url: str):
+    """Shared rate-limit backend when configured; None -> memory fallback.
+
+    Import is lazy so `redis` stays an optional deploy dependency.
+    Any failure returns None: the limiter degrades locally, never 500s.
+    """
+    if not url:
+        return None
+    try:
+        import redis  # type: ignore[import-not-found]
+
+        client = redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2)
+        client.ping()
+        return client
+    except Exception:  # noqa: BLE001 — any redis failure degrades to memory
+        return None
+
+
 class Gateway:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.auth = Authenticator(settings)
-        self.limiter = SlidingWindowLimiter(settings.rate_limit_per_min)
+        self.limiter = SlidingWindowLimiter(
+            settings.rate_limit_per_min, redis_client=_optional_redis(settings.redis_url)
+        )
         self.budget = TokenBudget(settings.daily_token_budget)
         self.cache = TTLCache(settings.cache_ttl_seconds)
-        self.audit = AuditChain(settings.audit_hmac_key, path=settings.audit_path)
+        self.audit = AuditChain(
+            settings.audit_hmac_key,
+            path=settings.audit_path,
+            max_bytes=settings.audit_max_bytes,
+        )
         self._vault_key = settings.vault_hmac_key
         self._vaults: dict[str, Any] = {}
         self.registry = build_registry(settings)

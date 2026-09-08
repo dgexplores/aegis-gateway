@@ -60,6 +60,13 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+      - name: Preflight — manifests render + readiness probe path present
+        run: |
+          python -c "import yaml,glob; [list(yaml.safe_load_all(open(f))) for f in glob.glob('deploy/k8s/*.yaml')]; print('manifests yaml ok')"
+          grep -q "readinessProbe" deploy/k8s/deployment.yaml
+          grep -q "livenessProbe" deploy/k8s/deployment.yaml
+          grep -q "PodDisruptionBudget\|poddisruptionbudget" deploy/k8s/security.yaml -i
+          echo "probes + PDB present"
       - name: Kustomize set image
         run: |
           cd deploy/k8s

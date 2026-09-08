@@ -34,9 +34,10 @@ class AuditRecord:
 
 
 class AuditChain:
-    def __init__(self, hmac_key: str, path: str = "audit.jsonl") -> None:
+    def __init__(self, hmac_key: str, path: str = "audit.jsonl", max_bytes: int = 10_000_000) -> None:
         self._key = hmac_key.encode()
         self.path = Path(path)
+        self.max_bytes = max_bytes
         self.seq = 0
         self.head = "GENESIS"
         self._load()
@@ -72,7 +73,24 @@ class AuditChain:
 
     # -- public ---------------------------------------------------------------
 
+    def _maybe_rotate(self) -> None:
+        """Rotate when over budget, carrying head into the new file.
+
+        New file's first record uses prev_hash=old head, so per-file verify()
+        holds and cross-file continuity is checkable by matching heads.
+        Best-effort: rotation failure never blocks the request path.
+        """
+        try:
+            if self.path.exists() and self.path.stat().st_size >= self.max_bytes:
+                backup = self.path.with_suffix(self.path.suffix + ".1")
+                if backup.exists():
+                    backup.unlink()
+                self.path.rename(backup)
+        except OSError:
+            pass
+
     def append(self, tenant: str, event: str, payload: dict) -> AuditRecord:
+        self._maybe_rotate()
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         ts = time.time()
