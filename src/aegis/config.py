@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     audit_path: str = "audit.jsonl"
     audit_max_bytes: int = 10_000_000
     redis_url: str = ""
+    database_url: str = ""
     request_timeout_s: int = 30
 
     def require_production_secrets(self) -> list[str]:

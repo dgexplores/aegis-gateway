@@ -278,7 +278,7 @@ Attack classes: instruction override, system-prompt extraction, DAN/persona hija
 
 ## Stack & roadmap
 
-**Stack:** Python 3.12 · FastAPI · Pydantic v2 · httpx · Docker/Kubernetes · GitHub Actions (no heavy ML deps to run — swap-in points for sentence-transformers / vector stores documented).
+**Stack:** Python 3.12 · FastAPI · Pydantic v2 · httpx · Redis (shared limits, optional) · Postgres (RAG source-of-truth, optional, pgvector-ready) · Docker/Kubernetes · GitHub Actions (no heavy ML deps to run — swap-in points for sentence-transformers / vector stores documented).
 
 **Roadmap:** attacker-agent fuzzing loop → bandit router (train on evals) → streaming SSE guardrails → self-growing golden set → MCP tool-call firewall.
 

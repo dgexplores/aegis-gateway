@@ -11,6 +11,8 @@ services:
       AEGIS_TENANTS: ${AEGIS_TENANTS:?set in .env}
       AEGIS_PROVIDERS: ${AEGIS_PROVIDERS:-echo}
       AEGIS_AUDIT_PATH: /data/audit.jsonl
+      AEGIS_REDIS_URL: redis://redis:6379/0
+      AEGIS_DATABASE_URL: ${AEGIS_DATABASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GMI_API_KEY: ${GMI_API_KEY:-}
@@ -39,5 +41,19 @@ services:
       retries: 3
     restart: unless-stopped
 
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   audit-log:
+  pgdata:

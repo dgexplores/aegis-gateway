@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
         gateway = await build_gateway(settings)
         STATE["gateway"] = gateway
         STATE["authenticator"] = Authenticator(settings)
+        rag_service.configure(settings.database_url)
     else:
         # reuse test-injected gateway (pytest fixtures)
         pass

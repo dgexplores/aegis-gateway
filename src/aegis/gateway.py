@@ -29,10 +29,10 @@ class InjectionBlocked(Exception):
 
 
 def _optional_redis(url: str):
-    """Shared rate-limit backend when configured; None -> memory fallback.
+    """Shared limiter+budget backend when configured; None -> memory fallback.
 
-    Import is lazy so `redis` stays an optional deploy dependency.
-    Any failure returns None: the limiter degrades locally, never 500s.
+    Import is lazy so `redis` stays out of minimal installs.
+    Any failure returns None: callers degrade locally, never 500s.
     """
     if not url:
         return None
@@ -50,10 +50,11 @@ class Gateway:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.auth = Authenticator(settings)
+        shared_redis = _optional_redis(settings.redis_url)
         self.limiter = SlidingWindowLimiter(
-            settings.rate_limit_per_min, redis_client=_optional_redis(settings.redis_url)
+            settings.rate_limit_per_min, redis_client=shared_redis
         )
-        self.budget = TokenBudget(settings.daily_token_budget)
+        self.budget = TokenBudget(settings.daily_token_budget, redis_client=shared_redis)
         self.cache = TTLCache(settings.cache_ttl_seconds)
         self.audit = AuditChain(
             settings.audit_hmac_key,

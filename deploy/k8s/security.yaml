@@ -10,6 +10,10 @@ stringData:
   AEGIS_VAULT_HMAC_KEY: change-me-vault-hmac-key-min-32-chars
   AEGIS_TENANTS: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag
   AEGIS_PROVIDERS: echo
+  # Optional backends (empty = memory mode). Prefer external managed DB in
+  # prod via external-secrets; empty value keeps pods booting dependency-free.
+  AEGIS_REDIS_URL: ""
+  AEGIS_DATABASE_URL: ""
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -32,3 +36,4 @@ spec:
         - { port: 443, protocol: TCP }
         - { port: 53, protocol: UDP }
         - { port: 6379, protocol: TCP }
+        - { port: 5432, protocol: TCP }

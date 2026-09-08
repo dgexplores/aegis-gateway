@@ -116,6 +116,14 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 3s --health-retries 5
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 5
     env:
       AEGIS_ENV: test
       AEGIS_AUDIT_HMAC_KEY: test-audit-key-32-chars-minimum!!
@@ -123,14 +131,15 @@ jobs:
       AEGIS_TENANTS: ci:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855:chat+rag
       AEGIS_PROVIDERS: echo
       AEGIS_REDIS_URL: redis://localhost:6379/0
+      AEGIS_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[dev]" redis
-      - name: Full verify against real redis (degrades, never 500s)
+      - run: pip install -e ".[dev]" redis "psycopg[binary]"
+      - name: Full verify against real backends (degrades, never 500s)
         run: make verify
       - name: Prove shared limiter wiring
         run: >
@@ -143,6 +152,8 @@ jobs:
           gw=asyncio.run(__import__('aegis.gateway', fromlist=['build_gateway']).build_gateway(s));
           assert gw.limiter.redis is not None, 'redis not wired';
           print('redis wired ok')"
+      - name: Prove postgres roundtrip (write, rebuild, isolate)
+        run: python scripts/verify_persistence.py
 
   manifests:
     runs-on: ubuntu-latest
