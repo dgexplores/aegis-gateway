@@ -139,7 +139,7 @@ jobs:
           bash scripts/smoke.sh || (docker logs aegis; exit 1)
           docker rm -f aegis
       - name: Trivy scan (report only — tighten after baseline)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.24.0
         with:
           image-ref: aegis-gateway:${{ github.sha }}
           format: sarif
