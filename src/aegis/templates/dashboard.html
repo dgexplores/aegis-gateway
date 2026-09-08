@@ -39,9 +39,6 @@
     </div>
     <div class="flex items-center gap-2">
       <span id="healthBadge" role="status" class="pill">checking…</span>
-      <label class="pill flex items-center gap-2" title="Simple hides tech details">
-        <input id="modeToggle" type="checkbox" class="w-4 h-4"/> Advanced
-      </label>
       <a href="/docs" class="pill hidden sm:inline-block">API docs</a>
     </div>
   </div>
@@ -61,9 +58,9 @@
     <h1 class="display text-2xl sm:text-[28px] leading-tight font-bold">Let staff use AI without leaking data.</h1>
     <p class="mt-2 text-[15px] text-zinc-600 max-w-2xl">Type below. AEGIS checks for tricks, hides private details before the AI sees them, and keeps proof of what happened.</p>
     <div class="mt-4 grid sm:grid-cols-3 gap-3 text-[14px]">
-      <div class="flex gap-2 items-start"><span class="step-num">1</span><span><strong>Ask safely.</strong> Normal question or paste a risky one.</span></div>
-      <div class="flex gap-2 items-start"><span class="step-num">2</span><span><strong>Teach your doc.</strong> Paste policy once, ask in plain words.</span></div>
-      <div class="flex gap-2 items-start"><span class="step-num">3</span><span><strong>See proof.</strong> Blocked / allowed + what was hidden.</span></div>
+      <button onclick="showTab('chat')" class="flex gap-2 items-start text-left rounded-xl border p-3 bg-white hover:bg-zinc-50" style="min-height:44px"><span class="step-num">1</span><span><strong>Ask safely.</strong> Normal question or paste a risky one.</span></button>
+      <button onclick="showTab('docs')" class="flex gap-2 items-start text-left rounded-xl border p-3 bg-white hover:bg-zinc-50" style="min-height:44px"><span class="step-num">2</span><span><strong>Teach your doc.</strong> Paste policy once, ask in plain words.</span></button>
+      <button onclick="showTab('proof')" class="flex gap-2 items-start text-left rounded-xl border p-3 bg-white hover:bg-zinc-50" style="min-height:44px"><span class="step-num">3</span><span><strong>See proof.</strong> Blocked / allowed + what was hidden.</span></button>
     </div>
   </section>
 
@@ -83,7 +80,16 @@
     </div>
   </section>
 
+  <!-- tabs -->
+  <nav class="mt-4 flex gap-2 overflow-x-auto" aria-label="Sections">
+    <button data-tab="chat" onclick="showTab('chat')" class="tabbtn px-4 rounded-full text-[15px] font-semibold" style="min-height:44px;background:#1A1E22;color:#fff" aria-selected="true">Chat</button>
+    <button data-tab="docs" onclick="showTab('docs')" class="tabbtn px-4 rounded-full border text-[15px] bg-white" style="min-height:44px" aria-selected="false">Your docs</button>
+    <button data-tab="proof" onclick="showTab('proof')" class="tabbtn px-4 rounded-full border text-[15px] bg-white" style="min-height:44px" aria-selected="false">Proof</button>
+    <button data-tab="backend" onclick="showTab('backend')" class="tabbtn px-4 rounded-full border text-[15px] bg-white" style="min-height:44px" aria-selected="false">Backend</button>
+  </nav>
+
   <!-- 1 ask -->
+  <div id="tab-chat" class="tabpanel">
   <section class="card mt-4 p-5" aria-labelledby="askH">
     <h2 id="askH" class="display font-bold text-lg">1 · Ask safely</h2>
     <label for="chatInput" class="text-[13px] text-zinc-600 mt-1 block">Ask anything. Try a normal question first.</label>
@@ -102,19 +108,11 @@
       <div class="rounded-xl border p-3 bg-sky-50/60"><span class="font-semibold">Private data:</span> <span id="trustPii">—</span></div>
       <div class="rounded-xl border p-3 bg-amber-50/60"><span class="font-semibold">Proof #:</span> <span id="trustAudit">—</span></div>
     </div>
-    <details class="adv mt-3 rounded-xl border p-3 bg-zinc-50/60">
-      <summary>Tech details (scores, provider, tier)</summary>
-      <div class="mt-2 grid sm:grid-cols-2 gap-2 text-[13px] mono">
-        <div>Safety score: <span id="injScore">—</span> <span id="injBand" class="pill">—</span></div>
-        <div>Signals: <span id="injLabels">—</span></div>
-        <div>AI service: <span id="mProvider">—</span> · Plan: <span id="mTier">—</span></div>
-        <div>Proof #: <span id="mAudit">—</span> · Speed: <span id="mLatency">—</span></div>
-      </div>
-      <p class="text-[12px] text-zinc-500 mt-2">Under 0.35 = ok · 0.35–0.7 = refused safely · 0.7+ = blocked before AI sees it.</p>
-    </details>
   </section>
+  </div>
 
   <!-- 2 teach -->
+  <div id="tab-docs" class="tabpanel hidden">
   <section class="card mt-4 p-5" aria-labelledby="teachH">
     <div class="flex flex-wrap items-center gap-3">
       <div>
@@ -141,8 +139,10 @@
       </div>
     </div>
   </section>
+  </div>
 
   <!-- 3 proof -->
+  <div id="tab-proof" class="tabpanel hidden">
   <section class="card mt-4 p-5" aria-labelledby="proofH">
     <h2 id="proofH" class="display font-bold text-lg">3 · See proof</h2>
     <p class="text-[13px] text-zinc-600">For audits. Nothing to configure.</p>
@@ -156,10 +156,31 @@
       <button onclick="refreshAudit()" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white">Refresh proof</button>
       <button onclick="refreshMetrics()" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white">Refresh numbers</button>
     </div>
-    <details class="adv mt-3 rounded-xl border p-3 bg-zinc-50/60">
-      <summary>Advanced: raw metrics + request flow</summary>
+  </section>
+  </div>
+
+  <!-- 4 backend : everything technical lives here -->
+  <div id="tab-backend" class="tabpanel hidden">
+  <section class="card mt-4 p-5" aria-labelledby="backH">
+    <h2 id="backH" class="display font-bold text-lg">Backend</h2>
+    <p class="text-[13px] text-zinc-600">Every technical detail in one place. Nothing here is needed to use the app.</p>
+    <div class="mt-3 rounded-xl border p-4 bg-zinc-50/60">
+      <div class="text-[13px] font-semibold">Last call</div>
+      <div class="mt-2 grid sm:grid-cols-2 gap-2 text-[13px] mono">
+        <div>Safety score: <span id="injScore">—</span> <span id="injBand" class="pill">—</span></div>
+        <div>Signals: <span id="injLabels">—</span></div>
+        <div>AI service: <span id="mProvider">—</span> · Plan: <span id="mTier">—</span></div>
+        <div>Proof #: <span id="mAudit">—</span> · Speed: <span id="mLatency">—</span></div>
+      </div>
+      <p class="text-[12px] text-zinc-500 mt-2">Under 0.35 = ok · 0.35–0.7 = refused safely · 0.7+ = blocked before AI sees it.</p>
+    </div>
+    <div class="mt-3 rounded-xl border p-4">
+      <div class="flex items-center justify-between"><div class="text-[13px] font-semibold">Raw metrics (Prometheus)</div><button onclick="refreshMetrics()" class="btn-ghost text-[13px] px-3 rounded-xl border">Refresh</button></div>
       <pre id="promRaw" class="mono text-[12px] p-3 rounded-xl bg-zinc-900 text-zinc-100 mt-2 overflow-auto max-h-[200px]">—</pre>
-      <pre class="mermaid mt-3" style="background:#fff">flowchart LR
+    </div>
+    <div class="mt-3 rounded-xl border p-4">
+      <div class="text-[13px] font-semibold">How a request flows</div>
+      <pre class="mermaid mt-2" style="background:#fff">flowchart LR
   A[App] --> B[Check tricks]
   B -- bad --> X[Blocked + logged]
   B -- ok --> E[Hide private data]
@@ -167,8 +188,13 @@
   G --> I[Log proof]
   I --> J[Answer + sources]
       </pre>
-    </details>
+    </div>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <a href="/docs" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white" style="min-height:44px;display:inline-flex;align-items:center">API docs</a>
+      <a href="/metrics" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white" style="min-height:44px;display:inline-flex;align-items:center">Metrics endpoint</a>
+    </div>
   </section>
+  </div>
 
   <p class="text-center text-[12px] text-zinc-500 mt-6">Backend stays advanced: 3-band injection scan · HMAC PII vault per tenant · hash-chained audit · hybrid RAG · budgets + breaker + eval gates. Interface stays plain.</p>
 </main>
@@ -181,10 +207,20 @@ const apiKey = () => $('#apiKey').value.trim();
 let done = {connect:false, hello:false, doc:false, attack:false};
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),4500); }
 function saveKey(){ localStorage.setItem('aegis_key', apiKey()); $('#keyMsg').textContent='saved'; done.connect=true; progress(); toast('Key saved on this device only.'); setTimeout(()=>$('#keyMsg').textContent='',1500); }
-(function(){ const k=localStorage.getItem('aegis_key'); if(k){$('#apiKey').value=k; done.connect=true;} applyMode(); progress(); })();
+(function(){ const k=localStorage.getItem('aegis_key'); if(k){$('#apiKey').value=k; done.connect=true;} progress(); })();
 function toggleKey(){ const i=$('#apiKey'); i.type = i.type==='password'?'text':'password'; }
-function applyMode(){ const adv=$('#modeToggle').checked; document.querySelectorAll('details.adv').forEach(d=>{ d.open = adv; }); }
-$('#modeToggle').addEventListener('change', applyMode);
+function showTab(name){
+  document.querySelectorAll('.tabbtn').forEach(b=>{
+    const on = b.dataset.tab===name;
+    b.setAttribute('aria-selected', on);
+    b.style.background = on ? '#1A1E22' : '#fff';
+    b.style.color = on ? '#fff' : '';
+    if(!on) b.classList.add('border'); else b.classList.remove('border');
+  });
+  document.querySelectorAll('.tabpanel').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  if(name==='proof' || name==='backend') refreshMetrics();
+}
 function progress(){
   const n = ['connect','hello','doc','attack'].filter(k=>done[k]).length;
   $('#onboardBar').style.width = (10 + n*22.5)+'%';
