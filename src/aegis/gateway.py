@@ -105,6 +105,7 @@ class Gateway:
                            "This incident has been logged."),
                 "completion": None,
                 "citations": [],
+                "pii_masked": [],
             }
         if report.score >= self.settings.injection_soft_threshold:
             report.blocked = True
@@ -119,11 +120,13 @@ class Gateway:
                            "extract system behavior. Please rephrase your request."),
                 "completion": None,
                 "citations": [],
+                "pii_masked": [],
             }
 
         # 3. PII redaction before anything leaves the trust boundary
         vault = self._vault_for(tenant)
         sanitized_user = vault.redact(user_text)
+        pii_types = list(vault.masked_types)
         safe_messages = [
             {**m, "content": sanitized_user} if m.get("role") == "user" else m for m in messages
         ]
@@ -189,6 +192,7 @@ class Gateway:
             "routing": {"tier": tier.name, "reason": reason},
             "audit_seq": record.seq,
             "citations": [],
+            "pii_masked": pii_types,
         }
 
     async def aclose(self) -> None:

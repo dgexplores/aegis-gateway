@@ -146,6 +146,7 @@ async def chat(
         "provider": (result["completion"] or {}).get("provider"),
         "routing": result.get("routing"),
         "audit_seq": result.get("audit_seq"),
+        "pii_masked": result.get("pii_masked", []),
     }
 
 
@@ -221,7 +222,8 @@ async def chat_stream(
     async def event_gen():
         if result["blocked"]:
             payload = json.dumps(
-                {"blocked": True, "injection": result["injection"], "answer": result["answer"]}
+                {"blocked": True, "injection": result["injection"], "answer": result["answer"],
+                 "pii_masked": result.get("pii_masked", [])}
             )
             yield f"data: {payload}\n\n"
             yield "data: [DONE]\n\n"
@@ -241,6 +243,7 @@ async def chat_stream(
                 "routing": result.get("routing"),
                 "audit_seq": result.get("audit_seq"),
                 "injection": result["injection"],
+                "pii_masked": result.get("pii_masked", []),
             }
         )
         yield f"data: {done_payload}\n\n"
