@@ -1,11 +1,11 @@
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
 RUN pip install --no-cache-dir --prefix=/install ".[backends]"
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 RUN groupadd -r aegis && useradd -r -g aegis aegis \
