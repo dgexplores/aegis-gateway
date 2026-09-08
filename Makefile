@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals verify run demo smoke docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval verify run demo smoke docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -41,8 +41,11 @@ security:
 evals:
 	PYTHONPATH=src python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
 
-verify: lint type test security evals
-	@echo "VERIFY OK — lint+type+tests+redteam+evals green"
+rag-eval:
+	python scripts/rag_eval.py --baseline scripts/rag_baseline.json
+
+verify: lint type test security evals rag-eval
+	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag green"
 
 smoke:
 	bash scripts/smoke.sh

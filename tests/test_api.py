@@ -169,3 +169,10 @@ def test_chat_reports_masked_pii_types(client):
                     headers=auth_headers())
     assert r.status_code == 200
     assert "EMAIL" in r.json()["pii_masked"]
+
+
+def test_chat_records_estimated_cost(client):
+    from aegis.metrics import metrics
+    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hey cost"}]},
+                headers=auth_headers())
+    assert "aegis_cost_usd_total" in metrics.render()

@@ -4,6 +4,9 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>AEGIS — Safe AI door</title>
+<meta name="description" content="AEGIS Gateway demo: try a blocked attack, ask your docs, see tamper-proof proof. One safe door for every AI call."/>
+<meta name="theme-color" content="#0E7C6B"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230E7C6B'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
@@ -11,8 +14,11 @@
   :root{ --ink:#1A1E22; --paper:#FBFAF8; --teal:#0E7C6B; --teal-d:#0A5F52; --line:#E7E2DA; }
   body{font-family:Inter,system-ui,sans-serif; font-size:16px; background:var(--paper); color:var(--ink);}
   .display{font-family:Sora,Inter,sans-serif}
-  .mono{font-family:'JetBrains Mono',monospace}
+  .mono{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums}
   button, input, textarea{font-size:16px}
+  .btn-primary, .btn-ghost, .tabbtn{transition:background-color .2s, transform .15s}
+  .btn-primary:active, .btn-ghost:active, .tabbtn:active{transform:scale(.98)}
+  button:disabled{opacity:.55; cursor:default}
   .btn-primary{min-height:44px; background:var(--teal); color:#fff}
   .btn-primary:hover{background:var(--teal-d)}
   .btn-ghost{min-height:44px}
@@ -23,7 +29,6 @@
   .pill{font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:#fff}
   .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#1A1E22; color:#fff; padding:12px 18px; border-radius:14px; font-size:14px; opacity:0; pointer-events:none; transition:opacity .3s; z-index:50; max-width:min(92vw,560px)}
   .toast.show{opacity:1}
-  details.adv summary{cursor:pointer; min-height:44px; display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600}
 </style>
 </head>
 <body>
@@ -54,9 +59,9 @@
 </header>
 
 <main id="main" class="max-w-5xl mx-auto px-5 py-6">
-  <section class="card p-5 sm:p-6">
-    <h1 class="display text-2xl sm:text-[28px] leading-tight font-bold">Let staff use AI without leaking data.</h1>
-    <p class="mt-2 text-[15px] text-zinc-600 max-w-2xl">Type below. AEGIS checks for tricks, hides private details before the AI sees them, and keeps proof of what happened.</p>
+  <section class="card p-4 sm:p-5">
+    <h1 class="display text-xl sm:text-2xl leading-tight font-bold" style="text-wrap:balance">Let staff use AI without leaking data.</h1>
+    <p class="mt-1 text-[15px] text-zinc-600 max-w-2xl">Type below. AEGIS checks for tricks, hides private details before the AI sees them, and keeps proof of what happened.</p>
     <div class="mt-4 grid sm:grid-cols-3 gap-3 text-[14px]">
       <button onclick="showTab('chat')" class="flex gap-2 items-start text-left rounded-xl border p-3 bg-white hover:bg-zinc-50" style="min-height:44px"><span class="step-num">1</span><span><strong>Ask safely.</strong> Normal question or paste a risky one.</span></button>
       <button onclick="showTab('docs')" class="flex gap-2 items-start text-left rounded-xl border p-3 bg-white hover:bg-zinc-50" style="min-height:44px"><span class="step-num">2</span><span><strong>Teach your doc.</strong> Paste policy once, ask in plain words.</span></button>
@@ -95,7 +100,7 @@
     <label for="chatInput" class="text-[13px] text-zinc-600 mt-1 block">Ask anything. Try a normal question first.</label>
     <textarea id="chatInput" rows="3" class="mt-2 w-full text-[15px] px-3 py-3 rounded-xl border bg-zinc-50" style="border-color:var(--line)" placeholder="Ask anything… (Enter sends, Shift+Enter for a new line)">Hello — what can you do?</textarea>
     <div class="mt-3 flex flex-wrap gap-2">
-      <button onclick="sendChat()" class="btn-primary px-5 rounded-xl text-[15px] font-semibold">Send</button>
+      <button id="sendBtn" onclick="sendChat()" class="btn-primary px-5 rounded-xl text-[15px] font-semibold">Send</button>
       <button onclick="fillExample('attack')" class="btn-ghost px-3 rounded-xl text-[14px] bg-white font-semibold" style="border-color:var(--teal)">See it block an attack</button>
       <button onclick="fillExample('hello')" class="btn-ghost px-3 rounded-xl border text-[14px] bg-white">Say hello</button>
       <button onclick="fillExample('private')" class="btn-ghost px-3 rounded-xl border text-[14px] bg-white">Test private data</button>
@@ -133,7 +138,7 @@
       <div>
         <label for="ragQ" class="text-[13px] font-medium">Ask about your doc</label>
         <input id="ragQ" class="mt-1 w-full text-[15px] px-3 rounded-xl border bg-zinc-50" style="min-height:44px;border-color:var(--line)" value="How many vacation days?"/>
-        <button onclick="ragQuery()" class="btn-primary mt-2 px-5 rounded-xl text-[15px] font-semibold w-full sm:w-auto">Ask</button>
+        <button id="askBtn" onclick="ragQuery()" class="btn-primary mt-2 px-5 rounded-xl text-[15px] font-semibold w-full sm:w-auto">Ask</button>
         <div id="ragAnswer" role="status" aria-live="polite" class="mt-2 text-[15px] p-3 rounded-xl bg-zinc-900 text-zinc-100 min-h-[72px] whitespace-pre-wrap">Answer with sources shows here…</div>
         <div id="ragCites" class="mt-2 text-[13px] mono text-zinc-600"></div>
       </div>
@@ -153,8 +158,7 @@
     </div>
     <div id="auditOut" role="status" class="mono text-[12px] mt-3 p-3 rounded-xl bg-zinc-900 text-zinc-100">—</div>
     <div class="mt-2 flex gap-2">
-      <button onclick="refreshAudit()" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white">Refresh proof</button>
-      <button onclick="refreshMetrics()" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white">Refresh numbers</button>
+      <button onclick="refreshAudit()" class="btn-ghost text-[14px] px-4 rounded-xl border bg-white">Refresh</button>
     </div>
   </section>
   </div>
@@ -254,6 +258,7 @@ function renderInjection(score, labels){
 }
 async function sendChat(){
   const text=$('#chatInput').value.trim(); if(!text){toast('Type a question first.'); return;}
+  const btn=$('#sendBtn'); btn.disabled=true;
   $('#chatAnswer').textContent='Checking…'; $('#chatMeta').textContent='';
   const body={messages:[{role:'user',content:text}], max_tokens:300};
   try{
@@ -287,6 +292,7 @@ async function sendChat(){
     finishChat(j.answer, {provider:j.provider, routing:j.routing, audit_seq:j.audit_seq, injection:j.injection, blocked:j.blocked, pii_masked:j.pii_masked});
   }
   }catch(e){ $('#chatAnswer').textContent='Cannot reach server. Is it running on :8080?'; }
+  finally{ btn.disabled=false; }
 }
 function finishChat(answer, meta){
   meta=meta||{};
@@ -330,13 +336,16 @@ async function sampleCompany(){
 }
 async function ragQuery(){
   const q=$('#ragQ').value.trim(); if(!q){toast('Type a question.'); return;}
+  const btn=$('#askBtn'); btn.disabled=true;
+  try{
   const r=await fetch('/v1/rag/query',{method:'POST', headers: hdr(), body: JSON.stringify({question:q})});
   const j=await r.json();
-  if(!r.ok){ $('#ragAnswer').textContent = r.status===401?'Wrong key.':'Could not answer.'; return; }
+  if(!r.ok){ $('#ragAnswer').textContent = r.status===401?'Wrong key. Click Change key above.':'Could not answer.'; return; }
   $('#ragAnswer').textContent = j.blocked ? 'Blocked for safety.' : (j.answer||'No answer found in your docs.');
   $('#ragCites').textContent = (j.citations||[]).map(c=>`From ${c.source}, part ${c.chunk+1}`).join('   ') || 'No sources — answer not from your docs.';
   done.connect=true;
   if((j.citations||[]).length){ done.doc=true; progress(); }
+  }finally{ btn.disabled=false; }
 }
 async function refreshMetrics(){
   try{

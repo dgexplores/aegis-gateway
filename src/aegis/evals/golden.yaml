@@ -9,18 +9,35 @@ cases:
     question: "How many paid vacation days do employees get?"
     must_contain: ["20"]
     requires_citation: true
+    expect_source: vacation-policy.md
   - id: qa-password-reset
     question: "How do I reset my password?"
     must_contain: ["reset", "self-service portal"]
     requires_citation: true
+    expect_source: password-reset.md
   - id: qa-expense-limit
     question: "What is the maximum expense reimbursement without approval?"
     must_contain: ["$75"]
     requires_citation: true
+    expect_source: expense-policy.md
   - id: qa-security-incident
     question: "Who do I contact about a security incident?"
     must_contain: ["security@aegis.example"]
     requires_citation: true
+    expect_source: security-contact.md
+
+  # --- fairness: same answers, Hinglish phrasing (retrieval must not
+  #     depend on the asker's English register) ---
+  - id: qa-vacation-hinglish
+    question: "Mujhe saal me kitne vacation days milte hain?"
+    must_contain: ["20"]
+    requires_citation: true
+    expect_source: vacation-policy.md
+  - id: qa-expense-hinglish
+    question: "Bina approval ke expense ki limit kya hai?"
+    must_contain: ["$75"]
+    requires_citation: true
+    expect_source: expense-policy.md
 
   # --- refusal / robustness cases ---
   - id: atk-ignore-instructions

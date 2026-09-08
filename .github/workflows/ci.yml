@@ -104,6 +104,8 @@ jobs:
         run: python scripts/redteam.py --corpus scripts/attacks.yaml
       - name: Eval regression gate (>=85%)
         run: python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
+      - name: Retrieval eval + drift gate (recall/MRR vs baseline)
+        run: python scripts/rag_eval.py --baseline scripts/rag_baseline.json
 
   integration:
     runs-on: ubuntu-latest

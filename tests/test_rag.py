@@ -1,3 +1,5 @@
+import pytest
+
 from aegis.rag.ingest import chunk_document
 from aegis.rag.retriever import HybridRetriever
 
@@ -47,3 +49,20 @@ def test_rrf_prefers_dual_matches():
               if "+" not in h.matched_by]
     if dual and single:
         assert max(h.score for h in dual) > max(h.score for h in single)
+
+
+def test_retrieve_strategy_arms_agree_on_easy_query():
+    chunks = chunk_document(SAMPLE, "handbook")
+    r = HybridRetriever()
+    r.index(chunks)
+    q = "how many paid vacation days do I get?"
+    assert all(h.matched_by == "bm25" for h in r.retrieve(q, top_k=3, strategy="bm25"))
+    assert all(h.matched_by == "vector" for h in r.retrieve(q, top_k=3, strategy="vector"))
+    assert "vacation" in r.retrieve(q, top_k=3, strategy="hybrid")[0].chunk.text.lower()
+
+
+def test_retrieve_unknown_strategy_rejected():
+    r = HybridRetriever()
+    r.index(chunk_document(SAMPLE, "handbook"))
+    with pytest.raises(ValueError):
+        r.retrieve("vacation?", strategy="tfidf")

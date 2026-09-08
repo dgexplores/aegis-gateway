@@ -6,6 +6,7 @@ a deterministic feature-hashing vectorizer — good enough to demonstrate hybrid
 fusion and swap-ready for real embeddings (sentence-transformers / provider API)
 via the same interface. Every result carries provenance for citation."""
 
+import hashlib
 import math
 import re
 from collections import Counter
@@ -33,9 +34,11 @@ def tokenize(text: str) -> list[str]:
 
 
 def _hash_vec(tokens: list[str], dims: int = 512) -> Counter[int]:
+    # Stable digest hash, NOT builtin hash(): str hashing is seed-randomized
+    # per process, which made vector rankings (and eval scores) vary run to run.
     v: Counter[int] = Counter()
     for tok in tokens:
-        v[hash(tok) % dims] += 1
+        v[int(hashlib.sha256(tok.encode()).hexdigest()[:16], 16) % dims] += 1
     return v
 
 
@@ -106,10 +109,25 @@ class HybridRetriever:
         sims = ((cid, _cosine(qv, vec)) for cid, vec in self._vecs.items())
         return {cid: sim for cid, sim in sims if sim > 0.01}
 
-    def retrieve(self, query: str, top_k: int = 5) -> list[Retrieved]:
+    def retrieve(self, query: str, top_k: int = 5, strategy: str = "hybrid") -> list[Retrieved]:
+        """Retrieve top-k chunks. Strategy selects the experiment arm:
+
+        hybrid (default, RRF fusion) | bm25 (lexical only) | vector (hash-vector only).
+        """
         qtokens = tokenize(query)
         bm25 = self._bm25_scores(qtokens)
         vec = self._vector_scores(qtokens)
+
+        if strategy == "bm25":
+            order = sorted(bm25, key=lambda c: bm25[c], reverse=True)[:top_k]
+            return [Retrieved(chunk=self._chunks[c], score=round(bm25[c], 6), matched_by="bm25")
+                    for c in order]
+        if strategy == "vector":
+            order = sorted(vec, key=lambda c: vec[c], reverse=True)[:top_k]
+            return [Retrieved(chunk=self._chunks[c], score=round(vec[c], 6), matched_by="vector")
+                    for c in order]
+        if strategy != "hybrid":
+            raise ValueError(f"unknown retrieval strategy: {strategy}")
 
         bm25_rank = {cid: r for r, cid in enumerate(
             sorted(bm25, key=lambda c: bm25[c], reverse=True), start=1)}
