@@ -38,8 +38,8 @@ def classify_complexity(messages: list[dict]) -> str:
     return "economy"
 
 
-def route(messages: list[dict], allowed_providers: list[str]) -> tuple[RouteTier, str]:
-    """Returns (tier, reason). Only routes to providers the tenant may use."""
+def route(messages: list[dict]) -> tuple[RouteTier, str]:
+    """Returns (tier, reason)."""
     tier_name = classify_complexity(messages)
     tier = TIERS[tier_name]
     reason = f"rules: complexity={tier_name}, length={sum(len(str(m.get('content',''))) for m in messages)}"

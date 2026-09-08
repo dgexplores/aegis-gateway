@@ -38,11 +38,11 @@ def test_cache_tenant_isolation():
 
 def test_router_sends_code_to_premium():
     messages = [{"role": "user", "content": "```python\ndef f(): pass\n```"}]
-    tier, _ = route(messages, ["echo"])
+    tier, _ = route(messages)
     assert tier.name == "premium"
 
 
 def test_router_sends_short_query_to_economy():
     messages = [{"role": "user", "content": "what is my vacation policy?"}]
-    tier, _ = route(messages, ["echo"])
+    tier, _ = route(messages)
     assert tier.name == "economy"

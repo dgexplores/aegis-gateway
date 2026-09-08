@@ -11,7 +11,8 @@ def test_rag_tenant_isolation():
     svc.ingest("Other doc: beta-999", "other.md", tenant="other")
     ctx_acme = svc.prepare("alpha?", tenant="acme")
     ctx_other = svc.prepare("alpha?", tenant="other")
-    assert any("alpha-123" in c.get("chunk_id", "") or True for c in ctx_acme.citations) or ctx_acme.citations
+    sources_acme = [c["source"] for c in ctx_acme.citations]
+    assert "secret.md" in sources_acme
     # other tenant must not see acme citations
     sources_other = [c["source"] for c in ctx_other.citations]
     assert "secret.md" not in sources_other

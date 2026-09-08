@@ -9,7 +9,7 @@ red-team harness all drive the same code path — one pipeline, no drift."""
 
 from typing import Any
 
-from aegis.budget import BudgetExceeded, TokenBudget
+from aegis.budget import TokenBudget
 from aegis.cache import TTLCache
 from aegis.config import Settings
 from aegis.metrics import metrics
@@ -20,12 +20,6 @@ from aegis.security.audit import AuditChain
 from aegis.security.auth import Authenticator
 from aegis.security.injection import scan
 from aegis.security.pii import build_vault
-
-
-class InjectionBlocked(Exception):
-    def __init__(self, report: Any) -> None:
-        self.report = report
-        super().__init__("prompt injection blocked")
 
 
 def _optional_redis(url: str):
@@ -139,7 +133,7 @@ class Gateway:
         self.budget.preflight(tenant, est_in + max_tokens)
 
         # 5. cache (tenant-scoped key)
-        tier, reason = route_request(safe_messages, list(self.registry.keys()))
+        tier, reason = route_request(safe_messages)
         cache_key = TTLCache.make_key(tenant, tier.model, safe_messages)
         cached = self.cache.get(cache_key) if use_cache else None
 
@@ -155,8 +149,6 @@ class Gateway:
                 )
             except AllProvidersDown:
                 metrics.inc("aegis_provider_failures_total")
-                raise
-            except BudgetExceeded:
                 raise
             self.cache.put(cache_key, completion)
 

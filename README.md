@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`45 tests` · `red-team 12/12 blocked` · `eval gate 100%` · `p95 0.6ms`
+`58 tests` · `red-team 12/12 blocked` · `eval gate 100%` · `p95 0.6ms`
 
 ---
 
@@ -261,7 +261,7 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 45 tests
+make test       # 58 tests
 make security   # red-team harness
 make evals      # eval regression gate
 ```
@@ -269,7 +269,7 @@ make evals      # eval regression gate
 ```
 RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (10/10 passed)   p95 latency=0.6 ms
-PYTEST     45 passed
+PYTEST     58 passed
 ```
 
 Attack classes: instruction override, system-prompt extraction, DAN/persona hijack, role-tag (`</system>`) smuggling, base64 smuggling, zero-width evasion, exfil channels, destructive payloads, credential probing.
