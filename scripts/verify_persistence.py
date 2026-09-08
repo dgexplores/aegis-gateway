@@ -49,7 +49,7 @@ def main() -> int:
         store.ensure_schema(conn)
         conn.close()
         chunks = chunk_document(
-            "Persistence proof: refunds within 30 days with receipt. " * 4, "policy.md"
+            "Refund window is 30 days with receipt. " * 4, "policy.md"
         )
         store.save(tenant, chunks)
         stores: dict = {}
