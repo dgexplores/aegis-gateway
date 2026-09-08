@@ -3,25 +3,40 @@ services:
     build: .
     ports:
       - "8080:8080"
+    env_file: [.env]
     environment:
       AEGIS_ENV: production
       AEGIS_AUDIT_HMAC_KEY: ${AEGIS_AUDIT_HMAC_KEY:?set in .env}
       AEGIS_VAULT_HMAC_KEY: ${AEGIS_VAULT_HMAC_KEY:?set in .env}
       AEGIS_TENANTS: ${AEGIS_TENANTS:?set in .env}
       AEGIS_PROVIDERS: ${AEGIS_PROVIDERS:-echo}
+      AEGIS_AUDIT_PATH: /data/audit.jsonl
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GMI_API_KEY: ${GMI_API_KEY:-}
+      GMI_BASE_URL: ${GMI_BASE_URL:-https://api.gmi-serving.com/v1}
+      GMI_MODEL: ${GMI_MODEL:-Qwen/Qwen3.8-27B}
     volumes:
       - audit-log:/data
-    working_dir: /data
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
     restart: unless-stopped
 
 volumes:

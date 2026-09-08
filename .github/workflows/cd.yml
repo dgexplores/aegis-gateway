@@ -1,0 +1,92 @@
+name: cd
+
+# Continuous delivery: main -> staging auto, prod via tag v* + manual approval.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: staging|prod
+        default: staging
+        required: true
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/dgexplores/aegis-gateway
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then TAG="${{ github.ref_name }}";
+          else TAG="sha-${{ github.sha }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }},${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true
+
+  deploy-staging:
+    needs: build-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kustomize set image
+        run: |
+          cd deploy/k8s
+          kustomize edit set image aegis-gateway=${{ env.IMAGE }}:${{ needs.build-push.outputs.tag }} || \
+            sed -i "s|image: .*|image: ${{ env.IMAGE }}:${{ needs.build-push.outputs.tag }}|" deployment.yaml
+          kustomize build . > /tmp/manifest.yaml || cat deployment.yaml service.yaml > /tmp/manifest.yaml
+          echo "--- manifest preview ---"; head -n 60 /tmp/manifest.yaml
+      - name: Smoke against staging URL
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          STAGING_KEY: ${{ secrets.STAGING_KEY }}
+        run: |
+          if [ -z "$STAGING_URL" ]; then echo "no STAGING_URL secret — dry-run only"; exit 0; fi
+          BASE="$STAGING_URL" API_KEY="$STAGING_KEY" bash scripts/smoke.sh
+
+  deploy-prod:
+    needs: [build-push, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prod gate — redteam + evals on release image
+        run: |
+          docker run --rm ${{ env.IMAGE }}:${{ needs.build-push.outputs.tag }} \
+            sh -c "PYTHONPATH=src pytest -q && PYTHONPATH=src python scripts/redteam.py --corpus scripts/attacks.yaml"
+      - name: Publish release notes
+        uses: softprops/action-gh-release@v2
+        with: { generate_release_notes: true }

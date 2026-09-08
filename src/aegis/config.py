@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     max_input_tokens: int = 8000
     cache_ttl_seconds: int = 300
 
+    audit_path: str = "audit.jsonl"
+    redis_url: str = ""
+
     def require_production_secrets(self) -> list[str]:
         """Return fatal config problems when running with env=production."""
         problems: list[str] = []

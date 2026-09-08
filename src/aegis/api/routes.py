@@ -129,7 +129,7 @@ async def rag_ingest(
     if "rag" not in tenant.scopes:
         raise HTTPException(status_code=403, detail="scope 'rag' required")
     metrics.inc("aegis_rag_ingests_total", tenant=tenant.id)
-    return rag_service.ingest(body.text, body.source)
+    return rag_service.ingest(body.text, body.source, tenant=tenant.id)
 
 
 @app.post("/v1/rag/query")

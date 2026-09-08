@@ -35,9 +35,22 @@ class Gateway:
         self.limiter = SlidingWindowLimiter(settings.rate_limit_per_min)
         self.budget = TokenBudget(settings.daily_token_budget)
         self.cache = TTLCache(settings.cache_ttl_seconds)
-        self.audit = AuditChain(settings.audit_hmac_key)
-        self.vault = build_vault(settings.vault_hmac_key)
+        self.audit = AuditChain(settings.audit_hmac_key, path=settings.audit_path)
+        self._vault_key = settings.vault_hmac_key
+        self._vaults: dict[str, Any] = {}
         self.registry = build_registry(settings)
+
+    def _vault_for(self, tenant: str):
+        # per-tenant vault isolation: same HMAC key, separate maps.
+        # prevents tenant A tokens restoring in tenant B responses.
+        if tenant not in self._vaults:
+            self._vaults[tenant] = build_vault(self._vault_key)
+        return self._vaults[tenant]
+
+    @property
+    def vault(self):
+        # backward-compat for tests probing gw.vault
+        return self._vault_for("default")
 
     async def handle_chat(
         self,
@@ -90,7 +103,8 @@ class Gateway:
             }
 
         # 3. PII redaction before anything leaves the trust boundary
-        sanitized_user = self.vault.redact(user_text)
+        vault = self._vault_for(tenant)
+        sanitized_user = vault.redact(user_text)
         safe_messages = [
             {**m, "content": sanitized_user} if m.get("role") == "user" else m for m in messages
         ]
@@ -122,7 +136,7 @@ class Gateway:
             self.cache.put(cache_key, completion)
 
         # 6. restore PII only for the authorized caller's view
-        answer = self.vault.restore(completion.text)
+        answer = vault.restore(completion.text)
 
         # 7. actuals + audit
         self.budget.record(tenant, completion.input_tokens + completion.output_tokens)

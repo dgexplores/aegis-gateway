@@ -16,22 +16,49 @@ class RagAnswerContext:
 
 
 class RagService:
+    """Tenant-isolated RAG: each tenant gets its own HybridRetriever.
+
+    No cross-tenant leakage — tenant A docs never surface in tenant B queries.
+    Backward-compat: default tenant="default" preserves old single-tenant tests.
+    """
+
     def __init__(self, top_k: int = 4) -> None:
-        self.retriever = HybridRetriever()
+        self._stores: dict[str, HybridRetriever] = {}
         self.top_k = top_k
 
-    def ingest(self, text: str, source: str) -> dict:
+    def _for(self, tenant: str) -> HybridRetriever:
+        key = tenant or "default"
+        if key not in self._stores:
+            self._stores[key] = HybridRetriever()
+        return self._stores[key]
+
+    @property
+    def retriever(self) -> HybridRetriever:
+        return self._for("default")
+
+    @property
+    def size(self) -> int:
+        return sum(r.size for r in self._stores.values())
+
+    def clear(self, tenant: str | None = None) -> None:
+        if tenant is None:
+            self._stores.clear()
+        else:
+            self._stores.pop(tenant, None)
+
+    def ingest(self, text: str, source: str, tenant: str = "default") -> dict:
+        store = self._for(tenant)
         chunks = chunk_document(text, source)
-        added = self.retriever.index(chunks)
+        added = store.index(chunks)
         return {
             "source": source,
             "chunks_created": len(chunks),
             "chunks_indexed": added,
-            "index_size": self.retriever.size,
+            "index_size": store.size,
         }
 
-    def prepare(self, question: str, tenant: str) -> RagAnswerContext:
-        results: list[Retrieved] = self.retriever.retrieve(question, top_k=self.top_k)
+    def prepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
+        results: list[Retrieved] = self._for(tenant).retrieve(question, top_k=self.top_k)
         context_lines = [
             f"[{r.chunk.source}#chunk{r.chunk.seq}] {r.chunk.text}" for r in results
         ]
