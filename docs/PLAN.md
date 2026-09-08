@@ -30,9 +30,11 @@ Goal: replicas agree, disks don't fill, clients get precise errors.
 - [ ] Embedding column + real vector index (needs embedding provider decision).
 
 ## Phase 3 — Quality moat
-- Golden set 10 -> 100 (prod-sampled misses), LLM judge + heuristic, gate on
-  delta not absolute.
-- Attacker-agent fuzz -> auto-grow `attacks.yaml` (multilingual, paraphrase).
+- [x] Retrieval eval (`rag_eval.py`): recall@k + MRR per arm (hybrid/bm25/vector),
+      committed baseline = drift gate in CI.
+- [x] Fairness seed: Hinglish paraphrase cases in golden set (same bar as English).
+- [ ] Golden set 10 -> 100 (prod-sampled misses); gate on delta, not absolute.
+- [ ] Attacker-agent fuzz -> auto-grow `attacks.yaml` (multilingual, paraphrase).
 - India PII pack (Aadhaar/PAN/passport/UPI) + precision/recall harness.
 - True SSE proxy with per-chunk scan + TTFT metric.
 

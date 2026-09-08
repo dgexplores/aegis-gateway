@@ -44,3 +44,8 @@ def route(messages: list[dict]) -> tuple[RouteTier, str]:
     tier = TIERS[tier_name]
     reason = f"rules: complexity={tier_name}, length={sum(len(str(m.get('content',''))) for m in messages)}"
     return tier, reason
+
+
+def estimate_cost_usd(tier: RouteTier, input_tokens: int, output_tokens: int) -> float:
+    """Cost-per-prediction estimate from tier rates (cache hits cost 0)."""
+    return round((input_tokens + output_tokens) / 1000 * tier.cost_per_1k_tokens, 6)

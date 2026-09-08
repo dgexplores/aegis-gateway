@@ -15,6 +15,7 @@ from aegis.config import Settings
 from aegis.metrics import metrics
 from aegis.providers.registry import AllProvidersDown, build_registry, complete_with_failover
 from aegis.ratelimit import RateLimitExceeded, SlidingWindowLimiter
+from aegis.router import estimate_cost_usd
 from aegis.router import route as route_request
 from aegis.security.audit import AuditChain
 from aegis.security.auth import Authenticator
@@ -176,6 +177,12 @@ class Gateway:
                     tenant=tenant,
                     direction="output",
                     value=float(completion.output_tokens))
+        metrics.inc("aegis_cost_usd_total",
+                    tenant=tenant,
+                    provider=provider_name,
+                    tier=tier.name,
+                    value=estimate_cost_usd(tier, completion.input_tokens,
+                                            completion.output_tokens))
 
         return {
             "blocked": False,

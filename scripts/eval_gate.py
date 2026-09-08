@@ -14,36 +14,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from aegis.config import get_settings
-from aegis.evals.dataset import load_dataset
+from aegis.evals.dataset import KNOWLEDGE_BASE, load_dataset
 from aegis.evals.judges import HeuristicJudge
 from aegis.evals.runner import run_evals
 from aegis.gateway import build_gateway
 from aegis.rag.service import rag_service
-
-# Knowledge base the eval questions are answered from (grounded mode).
-KB_VACATION = (
-    "Full-time employees receive twenty paid vacation days (20 days) per calendar year. "
-    "Unused vacation days roll over once. Requests are approved in the HR portal."
-)
-KB_PWD_RESET = (
-    "To reset your password, open the self-service portal and choose 'Forgot Password'. "
-    "A reset link is emailed to your registered address within five minutes."
-)
-KB_EXPENSE = (
-    "The maximum expense reimbursement without manager approval is $75 per transaction. "
-    "Itemized receipts are mandatory for expenses above ten dollars."
-)
-KB_SECURITY = (
-    "Report any security incident immediately to security@aegis.example. "
-    "Critical incidents must also be phoned in to the on-call duty officer."
-)
-
-KNOWLEDGE_BASE = [
-    ("vacation-policy.md", KB_VACATION),
-    ("password-reset.md", KB_PWD_RESET),
-    ("expense-policy.md", KB_EXPENSE),
-    ("security-contact.md", KB_SECURITY),
-]
 
 
 async def main() -> int:

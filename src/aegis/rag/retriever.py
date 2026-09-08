@@ -106,10 +106,25 @@ class HybridRetriever:
         sims = ((cid, _cosine(qv, vec)) for cid, vec in self._vecs.items())
         return {cid: sim for cid, sim in sims if sim > 0.01}
 
-    def retrieve(self, query: str, top_k: int = 5) -> list[Retrieved]:
+    def retrieve(self, query: str, top_k: int = 5, strategy: str = "hybrid") -> list[Retrieved]:
+        """Retrieve top-k chunks. Strategy selects the experiment arm:
+
+        hybrid (default, RRF fusion) | bm25 (lexical only) | vector (hash-vector only).
+        """
         qtokens = tokenize(query)
         bm25 = self._bm25_scores(qtokens)
         vec = self._vector_scores(qtokens)
+
+        if strategy == "bm25":
+            order = sorted(bm25, key=lambda c: bm25[c], reverse=True)[:top_k]
+            return [Retrieved(chunk=self._chunks[c], score=round(bm25[c], 6), matched_by="bm25")
+                    for c in order]
+        if strategy == "vector":
+            order = sorted(vec, key=lambda c: vec[c], reverse=True)[:top_k]
+            return [Retrieved(chunk=self._chunks[c], score=round(vec[c], 6), matched_by="vector")
+                    for c in order]
+        if strategy != "hybrid":
+            raise ValueError(f"unknown retrieval strategy: {strategy}")
 
         bm25_rank = {cid: r for r, cid in enumerate(
             sorted(bm25, key=lambda c: bm25[c], reverse=True), start=1)}

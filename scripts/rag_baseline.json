@@ -1,0 +1,20 @@
+{
+  "hybrid": {
+    "cases": 6,
+    "recall@4": 1.0,
+    "mrr": 1.0,
+    "misses": []
+  },
+  "bm25": {
+    "cases": 6,
+    "recall@4": 1.0,
+    "mrr": 1.0,
+    "misses": []
+  },
+  "vector": {
+    "cases": 6,
+    "recall@4": 1.0,
+    "mrr": 1.0,
+    "misses": []
+  }
+}
