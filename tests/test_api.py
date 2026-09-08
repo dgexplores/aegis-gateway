@@ -160,3 +160,12 @@ def test_metrics_endpoint_renders_counters(client):
     r = client.get("/metrics")
     assert r.status_code == 200
     assert "aegis_requests_total" in r.text
+
+
+def test_chat_reports_masked_pii_types(client):
+    r = client.post("/v1/chat",
+                    json={"messages": [{"role": "user",
+                                        "content": "reach me at bob@corp.example"}]},
+                    headers=auth_headers())
+    assert r.status_code == 200
+    assert "EMAIL" in r.json()["pii_masked"]
