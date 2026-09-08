@@ -43,7 +43,7 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then TAG="${{ github.ref_name }}";
           else TAG="sha-${{ github.sha }}"; fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
