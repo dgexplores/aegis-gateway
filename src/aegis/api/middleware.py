@@ -7,10 +7,14 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from aegis.context import request_id_ctx
+
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        request_id_ctx.set(request_id)
+        request.state.request_id = request_id
         start = time.perf_counter()
         response = await call_next(request)
         latency_ms = (time.perf_counter() - start) * 1000

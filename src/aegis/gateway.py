@@ -7,11 +7,13 @@
 `handle_chat` is transport-independent: FastAPI routes, eval runner and the
 red-team harness all drive the same code path — one pipeline, no drift."""
 
+import logging
 from typing import Any
 
 from aegis.budget import TokenBudget
 from aegis.cache import TTLCache
 from aegis.config import Settings
+from aegis.context import request_id_ctx
 from aegis.metrics import metrics
 from aegis.providers.registry import AllProvidersDown, build_registry, complete_with_failover
 from aegis.ratelimit import RateLimitExceeded, SlidingWindowLimiter
@@ -21,6 +23,14 @@ from aegis.security.audit import AuditChain
 from aegis.security.auth import Authenticator
 from aegis.security.injection import scan
 from aegis.security.pii import build_vault
+
+log = logging.getLogger("aegis.gateway")
+
+
+def _log_event(event: str, tenant: str, **fields: object) -> None:
+    """Structured operational log: ids and counters only, never content or keys."""
+    detail = " ".join(f"{k}={v}" for k, v in fields.items())
+    log.info("event=%s tenant=%s rid=%s %s", event, tenant, request_id_ctx.get(), detail)
 
 
 def _optional_redis(url: str):
@@ -88,6 +98,7 @@ class Gateway:
         if not rl.allowed:
             metrics.inc("aegis_rate_limited_total", tenant=tenant)
             raise RateLimitExceeded(rl.retry_after)
+        quota = {"limit": self.settings.rate_limit_per_min, "remaining": rl.remaining}
 
         # 2. injection scan — three-band policy (fail closed at the top band):
         #    score >= block_threshold -> hard block, provider never called
@@ -99,6 +110,8 @@ class Gateway:
             self.audit.append(tenant, "injection_blocked",
                               {"score": report.score, "labels": report.labels, "band": "hard"})
             metrics.inc("aegis_injection_blocked_total", tenant=tenant)
+            _log_event("injection_blocked", tenant, score=report.score,
+                       band="hard", labels=",".join(report.labels))
             return {
                 "blocked": True,
                 "injection": report.__dict__,
@@ -107,6 +120,7 @@ class Gateway:
                 "completion": None,
                 "citations": [],
                 "pii_masked": [],
+                "rate_limit": quota,
             }
         if report.score >= self.settings.injection_soft_threshold:
             report.blocked = True
@@ -114,6 +128,8 @@ class Gateway:
             self.audit.append(tenant, "injection_flagged",
                               {"score": report.score, "labels": report.labels, "band": "soft"})
             metrics.inc("aegis_injection_softblocked_total", tenant=tenant)
+            _log_event("injection_flagged", tenant, score=report.score,
+                       band="soft", labels=",".join(report.labels))
             return {
                 "blocked": True,
                 "injection": report.__dict__,
@@ -122,6 +138,7 @@ class Gateway:
                 "completion": None,
                 "citations": [],
                 "pii_masked": [],
+                "rate_limit": quota,
             }
 
         # 3. PII redaction before anything leaves the trust boundary
@@ -153,6 +170,7 @@ class Gateway:
                 )
             except AllProvidersDown:
                 metrics.inc("aegis_provider_failures_total")
+                _log_event("providers_down", tenant, providers=len(self.registry))
                 raise
             self.cache.put(cache_key, completion)
 
@@ -200,6 +218,7 @@ class Gateway:
             "audit_seq": record.seq,
             "citations": [],
             "pii_masked": pii_types,
+            "rate_limit": quota,
         }
 
     async def aclose(self) -> None:

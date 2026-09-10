@@ -65,7 +65,23 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
 ## 7. Observability
 - `GET /healthz` liveness (no auth), `GET /readyz` readiness (audit verify +
   registry non-empty, no auth so K8s probes stay simple).
-- `GET /metrics` Prometheus text (requests/tokens/blocks/cache/budget).
+- `GET /metrics` Prometheus text (requests/tokens/cost/blocks/cache/budget).
 - `GET /admin/status` (auth): chain intact + length, cache stats, breaker
   snapshots, budget usage for caller tenant.
-- `x-request-id` + `x-latency-ms` on every response via middleware.
+- `x-request-id` + `x-latency-ms` on every response via middleware; the id is
+  also a `contextvars` value, so gateway logs (`event= tenant= rid=`) correlate
+  with access logs without touching PII or keys.
+- Retry policy = failover chain (try next provider, breaker tracks); timeout
+  budget = 30s per provider call; idempotency = exact-match tenant cache
+  (safe client retries); TLS terminates at ingress, DB role is CRUD-only on
+  `rag_chunks`, audit evidence survives via rotation-carry + opt-in PVC
+  (`deploy/k8s/pvc.yaml`) until the S3 archive lands.
+
+## 8. SLOs (single-region, 3 replicas)
+- Availability 99.9%/mo excluding upstream provider outages (echo fallback
+  keeps valid-input serving up; `/readyz` sheds not-ready pods).
+- p95 `/v1/chat` < 500ms on echo/cache path, provider-bound otherwise
+  (upstream latency excluded, tracked per provider in audit payloads).
+- Correctness budget: eval gate >= 85%, red-team 0 leaks, retrieval drift 0 —
+  any breach blocks the merge (error budget enforced in CI, not meetings).
+- Alert on: breaker open > 5m, budget > 80% for any tenant, audit verify fail.
