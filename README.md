@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`58 tests` · `red-team 12/12 blocked` · `eval gate 100%` · `p95 0.6ms`
+`69 tests` · `red-team 12/12 blocked` · `eval gate 12/12` · `retrieval recall 100%` · `p95 0.6ms`
 
 ---
 
@@ -13,7 +13,7 @@
 Your apps call one URL instead of calling OpenAI/GMI directly. AEGIS sits in the middle and:
 
 1. **Blocks attacks** (hidden instructions in pasted text) before the model sees them
-2. **Hides private data** (emails, cards) so it never leaves your network
+2. **Hides private data** (emails, cards) so it never leaves your network — and tells you what it hid
 3. **Writes a tamper-proof log** so you can prove what the AI said later
 4. **Answers from your docs** (RAG) with citations, not hallucination
 5. **Fails safe** — rate limits, budgets, failover; bad updates can't merge if quality drops
@@ -118,11 +118,12 @@ flowchart LR
 | Benefit | How you get it |
 |---|---|
 | **Security** | Prompt-injection blocked before model, credential/PII probes flagged |
-| **Privacy** | Email/SSN/card → HMAC token before leaving; Luhn-checked cards, IP/SSN regex |
-| **Compliance** | Tamper-evident HMAC log (`audit.jsonl` — SHA-256 payloads, not raw text) |
-| **Cost control** | Per-tenant token budgets, rate limits, tenant-scoped cache, cheap/premium routing |
-| **Reliability** | Circuit breakers, ordered failover, health + Prometheus `/metrics` |
+| **Privacy** | Email/SSN/card → HMAC token before leaving; Luhn-checked cards, IP/SSN regex; response lists what was hidden |
+| **Compliance** | Tamper-evident HMAC log (`audit.jsonl` — SHA-256 payloads, not raw text) with rotation |
+| **Cost control** | Per-tenant token budgets, rate limits, tenant-scoped cache, cheap/premium routing, per-call $ metric |
+| **Reliability** | Circuit breakers, ordered failover, liveness + readiness probes, Prometheus `/metrics` |
 | **Quality** | Citations force groundedness, eval harness prevents regressions |
+| **Operability** | Request-id log correlation, quota headers, security headers, plain-language dashboard |
 
 OWASP mapping: `LLM01` injection, `LLM02` disclosure, `LLM06` excessive agency (scoped auth), `LLM07` prompt leakage, `LLM08` vector weakness, `LLM09` misinformation, `LLM10` unbounded consumption — all covered.
 
@@ -201,7 +202,7 @@ curl -s http://localhost:8080/v1/rag/query \
 # helpers
 python scripts/gen_tenant.py --id acme --scopes chat+rag   # make your own key
 make demo        # smoke-tests ingest+query
-make test && make security && make evals   # full verification
+make verify      # full gates: lint + type + tests + redteam + evals + rag-eval
 ```
 
 Own tenant? `python scripts/gen_tenant.py --id acme` → paste the `AEGIS_TENANTS=` line into `.env` → restart.
@@ -209,7 +210,7 @@ Own tenant? `python scripts/gen_tenant.py --id acme` → paste the `AEGIS_TENANT
 Docker / K8s:
 
 ```bash
-docker compose up -d                # gateway + redis, reads .env
+docker compose up -d                # gateway + redis + postgres, reads .env
 kubectl apply -f deploy/k8s/        # 3 replicas + HPA, non-root, read-only fs
 ```
 
@@ -217,11 +218,14 @@ Endpoints:
 
 | Method | Path | Scope | What it does |
 |---|---|---|---|
-| `POST` | `/v1/chat` | `chat` | Guarded chat (try GMI, fallback echo) |
-| `POST` | `/v1/rag/ingest` | `rag` | Chunk + index a document |
+| `POST` | `/v1/chat` | `chat` | Guarded chat (try GMI, fallback echo) — reports hidden PII types + quota |
+| `POST` | `/v1/chat/stream` | `chat` | Same pipeline over SSE |
+| `POST` | `/v1/rag/ingest` | `rag` | Chunk + index a document (Postgres-backed when configured) |
 | `POST` | `/v1/rag/query` | `rag` | Retrieve + grounded answer + citations |
+| `GET` | `/dashboard` | — | Plain-language UI: Chat / Docs / Proof / Backend tabs |
 | `GET` | `/healthz` | — | Liveness |
-| `GET` | `/metrics` | — | Prometheus text |
+| `GET` | `/readyz` | — | Readiness (audit verified + providers up) |
+| `GET` | `/metrics` | — | Prometheus text (incl. per-call cost) |
 | `GET` | `/admin/status` | any | Chain verify, cache stats, breakers, budget |
 
 ---
@@ -261,15 +265,17 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 58 tests
+make test       # 69 tests
 make security   # red-team harness
-make evals      # eval regression gate
+make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
+make rag-eval   # retrieval recall/MRR + drift vs baseline
 ```
 
 ```
 RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
-EVAL GATE  score=100%  (10/10 passed)   p95 latency=0.6 ms
-PYTEST     58 passed
+EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
+RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
+PYTEST     69 passed
 ```
 
 Attack classes: instruction override, system-prompt extraction, DAN/persona hijack, role-tag (`</system>`) smuggling, base64 smuggling, zero-width evasion, exfil channels, destructive payloads, credential probing.
@@ -278,9 +284,9 @@ Attack classes: instruction override, system-prompt extraction, DAN/persona hija
 
 ## Stack & roadmap
 
-**Stack:** Python 3.12 · FastAPI · Pydantic v2 · httpx · Redis (shared limits, optional) · Postgres (RAG source-of-truth, optional, pgvector-ready) · Docker/Kubernetes · GitHub Actions (no heavy ML deps to run — swap-in points for sentence-transformers / vector stores documented).
+**Stack:** Python 3.11–3.14 · FastAPI · Pydantic v2 · httpx · Redis (shared limits, optional) · Postgres (RAG source-of-truth, optional, pgvector-ready) · Docker/Kubernetes · GitHub Actions (tests on 3.11/3.12/3.14, red-team + eval + retrieval-drift gates, live Postgres roundtrip proof; no heavy ML deps to run).
 
-**Roadmap:** attacker-agent fuzzing loop → bandit router (train on evals) → streaming SSE guardrails → self-growing golden set → MCP tool-call firewall.
+**Roadmap:** attacker-agent fuzzing loop → bandit router trained on evals → true streaming proxy with per-chunk scan → golden set 10→100 from prod misses → audit encrypted-payload + S3 archive → MCP tool-call firewall.
 
 ---
 
