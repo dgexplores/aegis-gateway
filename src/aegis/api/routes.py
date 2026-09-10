@@ -5,7 +5,7 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -114,12 +114,21 @@ def get_gateway() -> Gateway:
     return STATE["gateway"]
 
 
+def _apply_quota_headers(response: Response, result: dict) -> None:
+    quota = result.get("rate_limit") or {}
+    if "remaining" in quota:
+        response.headers["X-RateLimit-Remaining"] = str(quota["remaining"])
+    if "limit" in quota:
+        response.headers["X-RateLimit-Limit"] = str(quota["limit"])
+
+
 # --- routes ---------------------------------------------------------------------
 
 
 @app.post("/v1/chat")
 async def chat(
     body: ChatRequest,
+    response: Response,
     tenant: Tenant = Depends(get_tenant),
     gateway: Gateway = Depends(get_gateway),
 ) -> dict:
@@ -134,11 +143,13 @@ async def chat(
         )
     except RateLimitExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc),
-                            headers={"Retry-After": str(exc.retry_after)}) from exc
+                            headers={"Retry-After": str(exc.retry_after),
+                                     "X-RateLimit-Remaining": "0"}) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
     # scope check happens after auth; blocked injections are still audited responses
+    _apply_quota_headers(response, result)
     return {
         "answer": result["answer"],
         "blocked": result["blocked"],
@@ -165,6 +176,7 @@ async def rag_ingest(
 @app.post("/v1/rag/query")
 async def rag_query(
     body: RagQueryRequest,
+    response: Response,
     tenant: Tenant = Depends(get_tenant),
     gateway: Gateway = Depends(get_gateway),
 ) -> dict:
@@ -183,11 +195,13 @@ async def rag_query(
         )
     except RateLimitExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc),
-                            headers={"Retry-After": str(exc.retry_after)}) from exc
+                            headers={"Retry-After": str(exc.retry_after),
+                                     "X-RateLimit-Remaining": "0"}) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
     citations = ctx.citations if not result["injection"]["blocked"] else []
+    _apply_quota_headers(response, result)
     return {
         "answer": result["answer"],
         "blocked": result["blocked"],
@@ -216,7 +230,8 @@ async def chat_stream(
         )
     except RateLimitExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc),
-                            headers={"Retry-After": str(exc.retry_after)}) from exc
+                            headers={"Retry-After": str(exc.retry_after),
+                                     "X-RateLimit-Remaining": "0"}) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
@@ -250,7 +265,11 @@ async def chat_stream(
         yield f"data: {done_payload}\n\n"
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(event_gen(), media_type="text/event-stream")
+    quota = result.get("rate_limit") or {}
+    headers = {"X-RateLimit-Remaining": str(quota["remaining"])} if "remaining" in quota else {}
+    if "limit" in quota:
+        headers["X-RateLimit-Limit"] = str(quota["limit"])
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
 
 
 @app.get("/healthz")
