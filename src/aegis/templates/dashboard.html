@@ -73,7 +73,7 @@
   <section class="card mt-4 p-4">
     <div class="flex flex-wrap items-center gap-3">
       <span class="pill" style="background:#ECFDF5;border-color:#A7F3D0">Demo key ready ✓</span>
-      <span class="text-[13px] text-zinc-600">No signup. Key stays in this browser only.</span>
+      <span class="text-[13px] text-zinc-600">No signup. Key lives in this page only — closing the tab forgets it.</span>
       <button onclick="document.getElementById('keyEditor').classList.toggle('hidden')" class="btn-ghost text-[13px] px-3 rounded-xl border ml-auto">Change key</button>
     </div>
     <div id="keyEditor" class="hidden flex flex-wrap items-center gap-3 mt-3">
@@ -210,8 +210,8 @@ const $ = s => document.querySelector(s);
 const apiKey = () => $('#apiKey').value.trim();
 let done = {connect:false, hello:false, doc:false, attack:false};
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),4500); }
-function saveKey(){ localStorage.setItem('aegis_key', apiKey()); $('#keyMsg').textContent='saved'; done.connect=true; progress(); toast('Key saved on this device only.'); setTimeout(()=>$('#keyMsg').textContent='',1500); }
-(function(){ const k=localStorage.getItem('aegis_key'); if(k){$('#apiKey').value=k; done.connect=true;} progress(); })();
+function saveKey(){ $('#keyMsg').textContent='active for this visit'; done.connect=true; progress(); toast('Key active for this visit only — never stored.'); setTimeout(()=>$('#keyMsg').textContent='',2000); }
+(function(){ progress(); })();
 function toggleKey(){ const i=$('#apiKey'); i.type = i.type==='password'?'text':'password'; }
 function showTab(name){
   document.querySelectorAll('.tabbtn').forEach(b=>{

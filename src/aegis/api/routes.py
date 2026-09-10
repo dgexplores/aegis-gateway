@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from aegis.api.middleware import RequestContextMiddleware
+from aegis.api.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from aegis.budget import BudgetExceeded
 from aegis.config import Settings, get_settings
 from aegis.gateway import Gateway, build_gateway
@@ -50,6 +50,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(RequestContextMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.exception_handler(AllProvidersDown)
