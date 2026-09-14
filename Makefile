@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval verify run demo smoke docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval fuzz verify run demo smoke docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -44,8 +44,14 @@ evals:
 rag-eval:
 	python scripts/rag_eval.py --baseline scripts/rag_baseline.json
 
-verify: lint type test security evals rag-eval
-	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag green"
+pii-eval:
+	python scripts/pii_eval.py
+
+fuzz:
+	PYTHONPATH=src python scripts/fuzz_attacks.py --count 200
+
+verify: lint type test security evals rag-eval pii-eval
+	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii green"
 
 smoke:
 	bash scripts/smoke.sh

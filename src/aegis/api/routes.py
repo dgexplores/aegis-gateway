@@ -1,6 +1,5 @@
 """FastAPI application: /v1/chat, /v1/rag/*, admin + health endpoints."""
 
-import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,6 +29,10 @@ async def lifespan(app: FastAPI):
         STATE["gateway"] = gateway
         STATE["authenticator"] = Authenticator(settings)
         rag_service.configure(settings.database_url)
+        try:
+            rag_service.configure_embeddings(settings.embed_provider, settings.embed_model)
+        except ValueError:
+            pass
     else:
         # reuse test-injected gateway (pytest fixtures)
         pass
@@ -214,20 +217,66 @@ async def rag_query(
 @app.post("/v1/chat/stream")
 async def chat_stream(
     body: ChatRequest,
+    response: Response,
     tenant: Tenant = Depends(get_tenant),
     gateway: Gateway = Depends(get_gateway),
 ):
     if "chat" not in tenant.scopes:
         raise HTTPException(status_code=403, detail="scope 'chat' required")
 
-    # Pre-checks share the same pipeline (no duplicate code path)
     try:
-        result = await gateway.handle_chat(
+        stream = gateway.stream_chat(
             tenant_id=tenant.id,
             messages=[m.model_dump() for m in body.messages],
             max_tokens=body.max_tokens,
             use_cache=body.use_cache,
         )
+        # Buffer first event to surface 429/402 before SSE headers commit.
+        first: dict | None = None
+        async for ev in stream:  # type: ignore[union-attr]
+            first = ev
+            break
+
+        async def event_gen():
+            def sse(obj: dict) -> str:
+                return f"data: {json.dumps(obj)}\n\n"
+
+            nonlocal first
+            if first is None:
+                yield "data: [DONE]\n\n"
+                return
+            if first.get("type") == "blocked":
+                yield sse({"blocked": True, "injection": first["injection"],
+                           "answer": first["answer"],
+                           "pii_masked": first.get("pii_masked", [])})
+                yield "data: [DONE]\n\n"
+                return
+            if first.get("type") == "delta":
+                evt: dict = {"delta": first["delta"], "index": first.get("index", 0)}
+                if "ttft_ms" in first:
+                    evt["ttft_ms"] = first["ttft_ms"]
+                yield sse(evt)
+            elif first.get("type") == "done":
+                yield sse({"done": True,
+                           **{k: v for k, v in first.items() if k != "type"}})
+                yield "data: [DONE]\n\n"
+                return
+            async for ev2 in stream:  # type: ignore[union-attr]
+                if ev2.get("type") == "delta":
+                    evt2: dict = {"delta": ev2["delta"], "index": ev2.get("index", 0)}
+                    if "ttft_ms" in ev2:
+                        evt2["ttft_ms"] = ev2["ttft_ms"]
+                    yield sse(evt2)
+                elif ev2.get("type") == "done":
+                    yield sse({"done": True,
+                               **{k: v for k, v in ev2.items() if k != "type"}})
+                    yield "data: [DONE]\n\n"
+                    return
+                elif ev2.get("type") == "blocked":
+                    yield sse({"blocked": True, "injection": ev2["injection"],
+                               "answer": ev2["answer"]})
+                    yield "data: [DONE]\n\n"
+                    return
     except RateLimitExceeded as exc:
         raise HTTPException(status_code=429, detail=str(exc),
                             headers={"Retry-After": str(exc.retry_after),
@@ -235,41 +284,13 @@ async def chat_stream(
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
-    async def event_gen():
-        if result["blocked"]:
-            payload = json.dumps(
-                {"blocked": True, "injection": result["injection"], "answer": result["answer"],
-                 "pii_masked": result.get("pii_masked", [])}
-            )
-            yield f"data: {payload}\n\n"
-            yield "data: [DONE]\n\n"
-            return
-        # stream answer word-by-word (echo is instant; this shows real SSE plumbing;
-        # GMI real streaming would proxy provider chunks here)
-        text = result["answer"]
-        words = text.split(" ")
-        for i, w in enumerate(words):
-            chunk = w + (" " if i < len(words) - 1 else "")
-            yield f"data: {json.dumps({'delta': chunk, 'index': i})}\n\n"
-            await asyncio.sleep(0.02)
-        done_payload = json.dumps(
-            {
-                "done": True,
-                "provider": (result["completion"] or {}).get("provider"),
-                "routing": result.get("routing"),
-                "audit_seq": result.get("audit_seq"),
-                "injection": result["injection"],
-                "pii_masked": result.get("pii_masked", []),
-            }
-        )
-        yield f"data: {done_payload}\n\n"
-        yield "data: [DONE]\n\n"
-
-    quota = result.get("rate_limit") or {}
-    headers = {"X-RateLimit-Remaining": str(quota["remaining"])} if "remaining" in quota else {}
+    quota = (first or {}).get("rate_limit") or {}
+    quota_headers = {}
+    if "remaining" in quota:
+        quota_headers["X-RateLimit-Remaining"] = str(quota["remaining"])
     if "limit" in quota:
-        headers["X-RateLimit-Limit"] = str(quota["limit"])
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
+        quota_headers["X-RateLimit-Limit"] = str(quota["limit"])
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=quota_headers)
 
 
 @app.get("/healthz")

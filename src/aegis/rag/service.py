@@ -26,10 +26,11 @@ class RagService:
     Backward-compat: default tenant="default" preserves old single-tenant tests.
     """
 
-    def __init__(self, top_k: int = 4) -> None:
+    def __init__(self, top_k: int = 4, embed_provider=None) -> None:  # type: ignore[no-untyped-def]
         self._stores: dict[str, HybridRetriever] = {}
         self.top_k = top_k
         self._pg: Any = None
+        self._embed = embed_provider
 
     def configure(self, database_url: str = "") -> str:
         """Attach Postgres source-of-truth once; reload persisted chunks.
@@ -51,10 +52,17 @@ class RagService:
             log.warning("rag backend=memory (postgres unreachable)")
             return "memory"
 
+    def configure_embeddings(self, name: str = "", model: str = "") -> str:
+        """Select embedding backend (legacy default). Returns active name."""
+        from aegis.rag.embeddings import get_embed_provider
+
+        self._embed = get_embed_provider(name, model)
+        return getattr(self._embed, "name", "legacy")
+
     def _for(self, tenant: str) -> HybridRetriever:
         key = tenant or "default"
         if key not in self._stores:
-            self._stores[key] = HybridRetriever()
+            self._stores[key] = HybridRetriever(embed_provider=self._embed)
         return self._stores[key]
 
     @property
@@ -75,7 +83,8 @@ class RagService:
         store = self._for(tenant)
         chunks = chunk_document(text, source)
         added = store.index(chunks)
-        self._persist_best_effort(tenant, chunks)
+        embs = {c.id: store._embs[c.id] for c in chunks if c.id in store._embs}
+        self._persist_best_effort(tenant, chunks, embs or None)
         return {
             "source": source,
             "chunks_created": len(chunks),
@@ -83,12 +92,13 @@ class RagService:
             "index_size": store.size,
         }
 
-    def _persist_best_effort(self, tenant: str, chunks: list) -> bool:
+    def _persist_best_effort(self, tenant: str, chunks: list,  # type: ignore[no-untyped-def]
+                             embeddings: dict | None = None) -> bool:
         """Write-through to Postgres; False when absent/unreachable (memory kept)."""
         if self._pg is None:
             return False
         try:
-            self._pg.save(tenant, chunks)
+            self._pg.save(tenant, chunks, embeddings=embeddings)
             return True
         except Exception:  # noqa: BLE001 — persistence never blocks ingest
             log.warning("rag persist failed, memory index kept")

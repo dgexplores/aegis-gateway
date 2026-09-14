@@ -85,3 +85,19 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
 - Correctness budget: eval gate >= 85%, red-team 0 leaks, retrieval drift 0 —
   any breach blocks the merge (error budget enforced in CI, not meetings).
 - Alert on: breaker open > 5m, budget > 80% for any tenant, audit verify fail.
+
+## 9. Phase-2/3 tracks
+- Streaming: providers expose `astream` (GMI/OpenAI true SSE, echo word deltas);
+  `Gateway.stream_chat` redacts once, scans each trailing 2k window per chunk,
+  restores PII per word-chunk (vault tokens contain no spaces, never split),
+  records TTFT (`aegis_ttft_ms_total`, done-event `ttft_ms`).
+- Router: `AEGIS_TENANT_MODELS` allowlist enforced at route time (reason notes
+  enforcement); `MODEL_PRICES_USD_PER_1K` gives per-call $ real rates.
+- Audit: `payload_enc/payload_alg` copies (Fernet if installed, else base64
+  envelope); rotation best-effort uploads to `AEGIS_AUDIT_S3_BUCKET`.
+- RAG: `rag/embeddings.py` (`legacy|hash|gmi|openai`); legacy default keeps
+  evals deterministic; `rag_chunks.embedding TEXT` persists vectors.
+- Evals: `grow_golden.py` (dedup+validate prod misses) and eval-gate
+  `--baseline/--max-drop/--write-baseline` delta gating.
+- Fuzz: `fuzz_attacks.py` seeded mutations (multilingual, homoglyph,
+  zero-width, b64, role-tag); evasions to `attacks_fuzz.yaml` for review.

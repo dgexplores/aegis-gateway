@@ -12,10 +12,13 @@ entry_hash = HMAC(key, seq|ts|tenant|event|payload_sha256|prev_hash)
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+log = logging.getLogger("aegis.audit")
 
 
 class AuditError(Exception):
@@ -31,13 +34,75 @@ class AuditRecord:
     payload_sha256: str
     prev_hash: str
     entry_hash: str
+    payload_enc: str | None = None
+    payload_alg: str = "none"
+
+
+def encrypt_payload(payload_bytes: bytes, key: str) -> tuple[str | None, str]:
+    """Encrypt audit payload for at-rest evidence. Returns (cipher, alg).
+
+    Fernet when `cryptography` is installed (alg=fernet, key derived via
+    SHA-256 so any string works); else base64 envelope (alg=base64) so the
+    JSONL export still carries the payload without blocking on new deps.
+    Empty key disables encryption (None, none).
+    """
+    if not key:
+        return None, "none"
+    try:
+        import base64 as _b64
+
+        from cryptography.fernet import Fernet
+
+        raw = hashlib.sha256(key.encode()).digest()
+        fkey = _b64.urlsafe_b64encode(raw)
+        token = Fernet(fkey).encrypt(payload_bytes).decode()
+        return token, "fernet"
+    except ImportError:
+        import base64 as _b64
+
+        return _b64.b64encode(payload_bytes).decode(), "base64"
+
+
+def decrypt_payload(cipher: str, alg: str, key: str) -> bytes:
+    import base64 as _b64
+
+    if alg == "fernet":
+        from cryptography.fernet import Fernet
+
+        raw = hashlib.sha256(key.encode()).digest()
+        return Fernet(_b64.urlsafe_b64encode(raw)).decrypt(cipher.encode())
+    if alg == "base64":
+        return _b64.b64decode(cipher.encode())
+    raise AuditError(f"unknown payload_alg={alg}")
+
+
+def archive_to_s3(path: Path, bucket: str, prefix: str = "aegis-audit/") -> str | None:
+    """Best-effort upload of a rotated audit file. Returns s3:// URI or None."""
+    if not bucket:
+        return None
+    try:
+        import boto3  # type: ignore[import-not-found]
+    except ImportError:
+        log.warning("audit s3 archive skipped: boto3 not installed")
+        return None
+    try:
+        key = f"{prefix.rstrip('/')}/{path.name}"
+        boto3.client("s3").upload_file(str(path), bucket, key)
+        return f"s3://{bucket}/{key}"
+    except Exception as exc:  # noqa: BLE001 — archive never blocks serving
+        log.warning("audit s3 archive failed: %s", exc)
+        return None
 
 
 class AuditChain:
-    def __init__(self, hmac_key: str, path: str = "audit.jsonl", max_bytes: int = 10_000_000) -> None:
+    def __init__(self, hmac_key: str, path: str = "audit.jsonl", max_bytes: int = 10_000_000,
+                 encrypt_key: str = "", s3_bucket: str = "", s3_prefix: str = "aegis-audit/") -> None:
         self._key = hmac_key.encode()
         self.path = Path(path)
         self.max_bytes = max_bytes
+        self.encrypt_key = encrypt_key
+        self.s3_bucket = s3_bucket
+        self.s3_prefix = s3_prefix
         self.seq = 0
         self.head = "GENESIS"
         self._load()
@@ -59,7 +124,10 @@ class AuditChain:
                 if not line:
                     continue
                 raw = json.loads(line)
-                rec = AuditRecord(**raw)
+                # backward-compat: old lines lack payload_enc/payload_alg
+                raw.setdefault("payload_enc", None)
+                raw.setdefault("payload_alg", "none")
+                rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
                 expected = self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
                                             rec.payload_sha256, rec.prev_hash)
                 if not hmac.compare_digest(expected, rec.entry_hash):
@@ -86,6 +154,9 @@ class AuditChain:
                 if backup.exists():
                     backup.unlink()
                 self.path.rename(backup)
+                uri = archive_to_s3(backup, self.s3_bucket, self.s3_prefix)
+                if uri:
+                    log.info("audit rotated, archived %s", uri)
         except OSError:
             pass
 
@@ -93,6 +164,7 @@ class AuditChain:
         self._maybe_rotate()
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+        payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
         ts = time.time()
         self.seq += 1
         entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head)
@@ -104,6 +176,8 @@ class AuditChain:
             payload_sha256=payload_sha256,
             prev_hash=self.head,
             entry_hash=entry_hash,
+            payload_enc=payload_enc,
+            payload_alg=payload_alg,
         )
         line = json.dumps(record.__dict__, separators=(",", ":"))
         with self.path.open("a", encoding="utf-8") as fh:

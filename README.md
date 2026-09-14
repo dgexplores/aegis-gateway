@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`69 tests` · `red-team 12/12 blocked` · `eval gate 12/12` · `retrieval recall 100%` · `p95 0.6ms`
+`110 tests` · `red-team 12/12 blocked` · `eval gate 12/12` · `retrieval recall 100%` · `p95 0.6ms`
 
 ---
 
@@ -117,13 +117,13 @@ flowchart LR
 
 | Benefit | How you get it |
 |---|---|
-| **Security** | Prompt-injection blocked before model, credential/PII probes flagged |
-| **Privacy** | Email/SSN/card → HMAC token before leaving; Luhn-checked cards, IP/SSN regex; response lists what was hidden |
-| **Compliance** | Tamper-evident HMAC log (`audit.jsonl` — SHA-256 payloads, not raw text) with rotation |
-| **Cost control** | Per-tenant token budgets, rate limits, tenant-scoped cache, cheap/premium routing, per-call $ metric |
-| **Reliability** | Circuit breakers, ordered failover, liveness + readiness probes, Prometheus `/metrics` |
-| **Quality** | Citations force groundedness, eval harness prevents regressions |
-| **Operability** | Request-id log correlation, quota headers, security headers, plain-language dashboard |
+| **Security** | Prompt-injection blocked before model, credential/PII probes flagged, fuzz loop hunts homoglyph/paraphrase evasions |
+| **Privacy** | Email/SSN/card + Aadhaar/PAN/passport/UPI → HMAC token before leaving; Luhn + Verhoeff checks; response lists what was hidden |
+| **Compliance** | Tamper-evident HMAC log (`audit.jsonl` — SHA-256 payloads, not raw text) with rotation, encrypted payload copies + S3 archive option |
+| **Cost control** | Per-tenant token budgets, rate limits, tenant-scoped cache, cheap/premium routing with real $/1k table + per-tenant allowlist, per-call $ metric |
+| **Reliability** | Circuit breakers, ordered failover, liveness + readiness probes, Prometheus `/metrics` incl. TTFT |
+| **Quality** | Citations force groundedness, eval harness prevents regressions, golden set grows from prod misses with delta gating |
+| **Operability** | Request-id log correlation, quota headers, security headers, plain-language dashboard, true SSE `/v1/chat/stream` with per-chunk scan |
 
 OWASP mapping: `LLM01` injection, `LLM02` disclosure, `LLM06` excessive agency (scoped auth), `LLM07` prompt leakage, `LLM08` vector weakness, `LLM09` misinformation, `LLM10` unbounded consumption — all covered.
 
@@ -265,17 +265,20 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 69 tests
+make test       # 110 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
+make pii-eval   # PII precision/recall incl. India pack
+make fuzz       # attacker-agent fuzz -> attacks_fuzz.yaml for review
 ```
 
 ```
 RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
 RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
-PYTEST     69 passed
+PII-EVAL   all must-recall masked (EMAIL/SSN/CARD/IP/PHONE + AADHAAR/PAN/PASSPORT/UPI)
+PYTEST     110 passed
 ```
 
 Attack classes: instruction override, system-prompt extraction, DAN/persona hijack, role-tag (`</system>`) smuggling, base64 smuggling, zero-width evasion, exfil channels, destructive payloads, credential probing.
@@ -286,7 +289,7 @@ Attack classes: instruction override, system-prompt extraction, DAN/persona hija
 
 **Stack:** Python 3.11–3.14 · FastAPI · Pydantic v2 · httpx · Redis (shared limits, optional) · Postgres (RAG source-of-truth, optional, pgvector-ready) · Docker/Kubernetes · GitHub Actions (tests on 3.11/3.12/3.14, red-team + eval + retrieval-drift gates, live Postgres roundtrip proof; no heavy ML deps to run).
 
-**Roadmap:** attacker-agent fuzzing loop → bandit router trained on evals → true streaming proxy with per-chunk scan → golden set 10→100 from prod misses → audit encrypted-payload + S3 archive → MCP tool-call firewall.
+**Roadmap:** bandit router trained on evals → golden set to 100 from prod misses → audit S3 archive by default → MCP tool-call firewall.
 
 ---
 

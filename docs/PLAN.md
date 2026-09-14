@@ -21,22 +21,34 @@ Goal: replicas agree, disks don't fill, clients get precise errors.
       `AEGIS_REDIS_URL` set. Manifest render check (`kustomize build` or
       yamlload fallback). CD preflight renders manifests before staging smoke.
 
-## Phase 2 — Persistence (in progress)
+## Phase 2 — Persistence (done)
 - [x] Postgres source-of-truth for RAG (`store/db.py`, tenant PK, idempotent
       schema, boot rebuild, write-through best-effort, `verify_persistence.py`).
 - [x] Budgets shared via Redis (`budget:{tenant}:{day}`), memory fallback.
-- [ ] Audit encrypted payload column + S3 archive; keep JSONL format for export.
-- [ ] Router: per-tenant model allowlist + real $/1k (tier rules only for now).
-- [ ] Embedding column + real vector index (needs embedding provider decision).
+- [x] Audit encrypted payload copy + S3 archive on rotation (`encrypt_key`,
+      `audit_s3_bucket/prefix`, Fernet-when-installed else base64 envelope;
+      JSONL format kept for export, old lines still verify).
+- [x] Router: per-tenant model allowlist (`AEGIS_TENANT_MODELS`) + real $/1k
+      table (`MODEL_PRICES_USD_PER_1K`); tier rules still pick the tier.
+- [x] Embedding column + pluggable vectors (`rag/embeddings.py`: legacy default
+      so evals stay deterministic; `hash|gmi|openai` opt-in, JSON column,
+      retriever prefers real cosine with lexical fallback).
 
 ## Phase 3 — Quality moat
 - [x] Retrieval eval (`rag_eval.py`): recall@k + MRR per arm (hybrid/bm25/vector),
       committed baseline = drift gate in CI.
 - [x] Fairness seed: Hinglish paraphrase cases in golden set (same bar as English).
-- [ ] Golden set 10 -> 100 (prod-sampled misses); gate on delta, not absolute.
-- [ ] Attacker-agent fuzz -> auto-grow `attacks.yaml` (multilingual, paraphrase).
-- India PII pack (Aadhaar/PAN/passport/UPI) + precision/recall harness.
-- True SSE proxy with per-chunk scan + TTFT metric.
+- [x] Golden set growth: `grow_golden.py` promotes prod misses (dedup +
+      validate, `--dry-run`); eval gate supports `--baseline/--max-drop` delta
+      gating plus `--write-baseline` (gate on delta, not absolute).
+- [x] Attacker-agent fuzz (`fuzz_attacks.py`): seeded multilingual/paraphrase/
+      homoglyph/base64/role-tag mutations over `attacks.yaml`; evasions go to
+      `attacks_fuzz.yaml` for human review before promotion.
+- [x] India PII pack (Aadhaar w/ Verhoeff, PAN, passport, UPI) + `pii_eval.py`
+      precision/recall harness (in `make verify`).
+- [x] True streaming: provider `astream` SSE (GMI/OpenAI real proxy, echo words),
+      `Gateway.stream_chat` per-chunk output scan + TTFT metric, `/v1/chat/stream`
+      serves it with quota headers.
 
 ## CI/CD design (how gates work)
 ```

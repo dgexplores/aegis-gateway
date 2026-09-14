@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     audit_max_bytes: int = 10_000_000
     redis_url: str = ""
     database_url: str = ""
+    # Per-tenant model allowlist: "acme:echo-economy+echo-premium;other:gpt-4o-mini".
+    # Empty = allow all tiers. Enforced in Gateway route step, noted in reason.
+    tenant_models: str = ""
+    # Audit evidence: encrypted payload copies + S3 archive on rotation.
+    # Empty encrypt key disables payload copies (hash-only, current behavior).
+    audit_encrypt_key: str = ""
+    audit_s3_bucket: str = ""
+    audit_s3_prefix: str = "aegis-audit/"
+    # Embeddings: legacy (default, zero-dep hash_vec path) | hash | gmi | openai.
+    embed_provider: str = "legacy"
+    embed_model: str = ""
 
     def require_production_secrets(self) -> list[str]:
         """Return fatal config problems when running with env=production."""
@@ -76,6 +87,17 @@ class Settings(BaseSettings):
             if len(parts) == 3:
                 tid, key_hash, scopes = parts
                 out[tid] = (key_hash, {s for s in scopes.split("+") if s})
+        return out
+
+    def model_allowlist(self) -> dict[str, set[str]]:
+        """Parse tenant_models 'tid:m1+m2;tid2:m3' into {tenant: {models}}."""
+        out: dict[str, set[str]] = {}
+        for entry in self.tenant_models.split(";"):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            tid, models = entry.split(":", 1)
+            out[tid.strip()] = {m.strip() for m in models.split("+") if m.strip()}
         return out
 
 

@@ -8,6 +8,7 @@ Wire into GitHub Actions after tests: a PR that degrades answer quality cannot m
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -21,10 +22,23 @@ from aegis.gateway import build_gateway
 from aegis.rag.service import rag_service
 
 
+def check_delta(score: float, baseline: float, max_drop: float) -> str | None:
+    """Return failure message when score regressed vs baseline beyond max_drop."""
+    if score < baseline - max_drop:
+        return f"DELTA FAILED: {score:.2%} < baseline {baseline:.2%} - {max_drop:.0%} drop budget"
+    return None
+
+
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="src/aegis/evals/golden.yaml")
     parser.add_argument("--threshold", type=float, default=0.85)
+    parser.add_argument("--baseline", default="",
+                        help="JSON file with {'score': float} to gate on delta, not absolute")
+    parser.add_argument("--max-drop", type=float, default=0.02,
+                        help="max allowed score drop vs baseline")
+    parser.add_argument("--write-baseline", default="",
+                        help="write {'score','passed','total'} JSON after run")
     args = parser.parse_args()
 
     settings = get_settings()
@@ -78,6 +92,22 @@ async def main() -> int:
     if summary["score"] < args.threshold:
         print(f"\nGATE FAILED: {summary['score']:.2%} < {args.threshold:.0%}")
         return 1
+    if args.write_baseline:
+        Path(args.write_baseline).write_text(json.dumps({
+            "score": summary["score"], "passed": summary["passed"],
+            "total": summary["total"]}), encoding="utf-8")
+        print(f"baseline written to {args.write_baseline}")
+    if args.baseline:
+        try:
+            base = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+            msg = check_delta(summary["score"], float(base["score"]), args.max_drop)
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"\nDELTA FAILED: cannot read baseline ({exc})")
+            return 1
+        if msg:
+            print(f"\n{msg}")
+            return 1
+        print(f"delta ok vs baseline {float(base['score']):.2%}")
     print("\nGATE PASSED")
     return 0
 

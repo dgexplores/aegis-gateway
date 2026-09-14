@@ -26,3 +26,10 @@ class BaseProvider(ABC):
     @abstractmethod
     async def complete(self, messages: list[dict], model: str, max_tokens: int) -> Completion:
         ...
+
+    async def astream(self, messages: list[dict], model: str, max_tokens: int):  # type: ignore[no-untyped-def]
+        """Yield text deltas word-by-word. Providers override with true SSE."""
+        completion = await self.complete(messages, model, max_tokens)
+        words = completion.text.split(" ")
+        for i, w in enumerate(words):
+            yield w + (" " if i < len(words) - 1 else "")

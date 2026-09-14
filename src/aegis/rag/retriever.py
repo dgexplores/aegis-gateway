@@ -50,17 +50,20 @@ def _cosine(a: Counter[int], b: Counter[int]) -> float:
 
 
 class HybridRetriever:
-    def __init__(self) -> None:
+    def __init__(self, embed_provider=None) -> None:  # type: ignore[no-untyped-def]
         self._chunks: dict[str, Chunk] = {}
         self._doc_freq: Counter[str] = Counter()
         self._tf: dict[str, Counter[str]] = {}
         self._vecs: dict[str, Counter[int]] = {}
+        self._embs: dict[str, list[float]] = {}
+        self._embed = embed_provider
         self._total_docs = 0
 
     # -- indexing -----------------------------------------------------------
 
     def index(self, chunks: list[Chunk]) -> int:
         added = 0
+        fresh: list[Chunk] = []
         for ch in chunks:
             if ch.id in self._chunks:
                 continue
@@ -73,6 +76,14 @@ class HybridRetriever:
                 self._doc_freq[term] += 1
             self._total_docs += 1
             added += 1
+            fresh.append(ch)
+        if fresh and self._embed is not None:
+            try:
+                vecs = self._embed.embed([c.text for c in fresh])
+                for ch, vec in zip(fresh, vecs, strict=False):
+                    self._embs[ch.id] = vec
+            except Exception:  # noqa: BLE001,S110 — embeddings optional, lexical path keeps serving
+                pass
         return added
 
     @property
@@ -103,6 +114,18 @@ class HybridRetriever:
         return scores
 
     def _vector_scores(self, query_tokens: list[str]) -> dict[str, float]:
+        # Real-embedding path wins when vectors exist for this index.
+        if self._embed is not None and self._embs:
+            try:
+                from aegis.rag.embeddings import cosine
+
+                qv = self._embed.embed([" ".join(query_tokens)])[0]
+                escores = {cid: cosine(qv, vec) for cid, vec in self._embs.items()}
+                real = {cid: sim for cid, sim in escores.items() if sim > 0.01}
+                if real:
+                    return real
+            except Exception:  # noqa: BLE001,S110 — fall back to hashed vectors
+                pass
         qv = _hash_vec(query_tokens)
         if not qv:
             return {}

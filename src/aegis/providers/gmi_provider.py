@@ -77,6 +77,51 @@ class GMIProvider(BaseProvider):
             raw={"finish_reason": choice.get("finish_reason")},
         )
 
+    async def astream(self, messages: list[dict], model: str, max_tokens: int):  # type: ignore[no-untyped-def]
+        """True SSE proxy; falls back to word chunks when streaming unavailable."""
+        if not self.available:
+            raise ProviderError("GMI_API_KEY not set")
+        if model.startswith("echo-"):
+            model = os.environ.get("GMI_MODEL", "Qwen/Qwen3.8-27B")
+        payload = {"model": model, "messages": messages, "max_tokens": max_tokens,
+                   "user": "aegis-gateway", "stream": True}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+                async with client.stream("POST", self.api_url, json=payload,
+                                         headers=headers) as resp:
+                    if resp.status_code == 402:
+                        raise ProviderError("gmi insufficient balance")
+                    if resp.status_code != 200:
+                        raise ProviderError(f"gmi http {resp.status_code}")
+                    ctype = resp.headers.get("content-type", "")
+                    if "text/event-stream" not in ctype:
+                        break_out = True
+                    else:
+                        break_out = False
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                return
+                            try:
+                                import json as _json
+                                obj = _json.loads(data)
+                                delta = obj["choices"][0].get("delta", {}).get("content", "")
+                                if delta:
+                                    yield delta
+                            except (ValueError, KeyError):  # noqa: S112 — skip malformed SSE line
+                                continue
+                    if break_out:
+                        raise ProviderError("gmi non-stream response")
+        except ProviderError:
+            # Fall back to non-streaming complete() split into word deltas.
+            completion = await self.complete(messages, model, max_tokens)
+            words = completion.text.split(" ")
+            for i, w in enumerate(words):
+                yield w + (" " if i < len(words) - 1 else "")
+
     async def list_models(self) -> list[dict]:
         """Helper for debugging: GET /v1/models on the GMI endpoint."""
         base = os.environ.get("GMI_BASE_URL", DEFAULT_BASE).rstrip("/")
