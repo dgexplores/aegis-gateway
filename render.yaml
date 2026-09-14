@@ -1,0 +1,49 @@
+# Render Blueprint: `render blueprint launch` or New > Blueprint with this repo.
+# Web (Dockerfile) + Redis + Postgres. Set secret env vars in dashboard after launch.
+services:
+  - type: web
+    name: aegis-gateway
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    disk:
+      name: audit-log
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: AEGIS_ENV
+        value: production
+      - key: AEGIS_AUDIT_HMAC_KEY
+        generateValue: true
+      - key: AEGIS_VAULT_HMAC_KEY
+        generateValue: true
+      # Demo tenant (Bearer demo-sk-aegis-2024). Rotate via scripts/gen_tenant.py.
+      - key: AEGIS_TENANTS
+        value: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag
+      - key: AEGIS_PROVIDERS
+        value: echo
+      - key: AEGIS_REDIS_URL
+        fromService:
+          type: redis
+          name: aegis-redis
+          property: connectionString
+      - key: AEGIS_DATABASE_URL
+        fromDatabase:
+          name: aegis-pg
+          property: connectionString
+      - key: GMI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+  - type: redis
+    name: aegis-redis
+    ipAllowList: [] # internal only, no public access
+
+databases:
+  - name: aegis-pg
+    databaseName: aegis
+    user: aegis
