@@ -11,3 +11,5 @@ dist/
 build/
 *.log
 audit.jsonl
+audit.jsonl.lock
+audit.jsonl.1

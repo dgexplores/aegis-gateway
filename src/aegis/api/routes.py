@@ -315,7 +315,10 @@ async def readyz() -> dict:
 
 
 @app.get("/metrics")
-async def prometheus_metrics():
+async def prometheus_metrics(tenant: Tenant = Depends(get_tenant)):
+    # Authenticated: series carry per-tenant labels (usage by tenant id),
+    # which must not be world-readable. Scrape with a bearer token
+    # (Prometheus `authorization: credentials:`) holding any valid tenant.
     from fastapi import Response
 
     return Response(content=metrics.render(), media_type="text/plain; version=0.0.4")
@@ -325,6 +328,9 @@ async def prometheus_metrics():
 async def admin_status(
     tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
 ) -> dict:
+    # Global ops view (all breakers, cache totals, chain length) — admin only.
+    if "admin" not in tenant.scopes:
+        raise HTTPException(status_code=403, detail="scope 'admin' required")
     ok, chain_msg = gateway.audit.verify()
     return {
         "tenant": tenant.id,

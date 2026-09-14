@@ -14,9 +14,16 @@ import hmac
 import json
 import logging
 import os
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    import fcntl  # POSIX: cross-process file locks (multi-worker uvicorn)
+except ImportError:  # Windows dev: in-process lock only
+    fcntl = None  # type: ignore[no-redef,assignment]
 
 log = logging.getLogger("aegis.audit")
 
@@ -105,7 +112,60 @@ class AuditChain:
         self.s3_prefix = s3_prefix
         self.seq = 0
         self.head = "GENESIS"
+        self._thread_lock = threading.Lock()
         self._load()
+
+    @contextmanager
+    def _locked(self, exclusive: bool):
+        """In-process mutex + POSIX flock so N uvicorn workers sharing one
+        file never mint duplicate seq or fork prev_hash. Best-effort on
+        platforms without fcntl (lock degrades to in-process)."""
+        with self._thread_lock:
+            if fcntl is None:  # non-POSIX: in-process mutex only
+                yield
+                return
+            lock_path = self.path.with_suffix(self.path.suffix + ".lock")
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            with lock_path.open("w", encoding="utf-8") as fh:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+    def _read_tail(self) -> AuditRecord | None:
+        """Last record in the file without loading it all (O(tail))."""
+        try:
+            size = self.path.stat().st_size
+        except OSError:
+            return None
+        if size == 0:
+            return None
+        with self.path.open("rb") as fh:
+            # walk back until we hold at least two newlines (one full line)
+            step, buf = 4096, b""
+            pos = size
+            while pos > 0 and buf.count(b"\n") < 2:
+                pos = max(0, pos - step)
+                fh.seek(pos)
+                buf = fh.read(size - pos)
+                if pos == 0:
+                    break
+        lines = [ln for ln in buf.decode("utf-8", "replace").splitlines() if ln.strip()]
+        if not lines:
+            return None
+        raw = json.loads(lines[-1])
+        raw.setdefault("payload_enc", None)
+        raw.setdefault("payload_alg", "none")
+        return AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
+
+    def _refresh_from_tail(self) -> None:
+        """Adopt newer seq/head written by a sibling worker. Only advances —
+        never rewinds past a rotation this process performed itself."""
+        tail = self._read_tail()
+        if tail is not None and tail.seq > self.seq:
+            self.seq = tail.seq
+            self.head = tail.entry_hash
 
     # -- internals ----------------------------------------------------------
 
@@ -147,6 +207,7 @@ class AuditChain:
         New file's first record uses prev_hash=old head, so per-file verify()
         holds and cross-file continuity is checkable by matching heads.
         Best-effort: rotation failure never blocks the request path.
+        Must run under the exclusive lock (append holds it).
         """
         try:
             if self.path.exists() and self.path.stat().st_size >= self.max_bytes:
@@ -161,35 +222,41 @@ class AuditChain:
             pass
 
     def append(self, tenant: str, event: str, payload: dict) -> AuditRecord:
-        self._maybe_rotate()
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
-        ts = time.time()
-        self.seq += 1
-        entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head)
-        record = AuditRecord(
-            seq=self.seq,
-            ts=ts,
-            tenant=tenant,
-            event=event,
-            payload_sha256=payload_sha256,
-            prev_hash=self.head,
-            entry_hash=entry_hash,
-            payload_enc=payload_enc,
-            payload_alg=payload_alg,
-        )
-        line = json.dumps(record.__dict__, separators=(",", ":"))
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-            fh.flush()
-            os.fsync(fh.fileno())
-        self.head = entry_hash
-        return record
+        with self._locked(exclusive=True):
+            # adopt seq/head minted by sibling workers, then rotate, then write —
+            # all atomically, so multi-worker uvicorn can't fork the chain.
+            self._refresh_from_tail()
+            self._maybe_rotate()
+            ts = time.time()
+            self.seq += 1
+            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head)
+            record = AuditRecord(
+                seq=self.seq,
+                ts=ts,
+                tenant=tenant,
+                event=event,
+                payload_sha256=payload_sha256,
+                prev_hash=self.head,
+                entry_hash=entry_hash,
+                payload_enc=payload_enc,
+                payload_alg=payload_alg,
+            )
+            line = json.dumps(record.__dict__, separators=(",", ":"))
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            self.head = entry_hash
+            return record
 
     def verify(self) -> tuple[bool, str]:
         try:
-            self._load()
+            with self._locked(exclusive=False):
+                self._load()
             return True, f"chain intact, head={self.head[:12]}…, length={self.seq}"
         except AuditError as exc:
             return False, str(exc)

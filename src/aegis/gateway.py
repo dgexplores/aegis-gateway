@@ -23,10 +23,45 @@ from aegis.router import estimate_cost_usd
 from aegis.router import route as route_request
 from aegis.security.audit import AuditChain
 from aegis.security.auth import Authenticator
-from aegis.security.injection import scan
-from aegis.security.pii import build_vault
+from aegis.security.injection import InjectionReport, scan
+from aegis.security.pii import Vault, build_vault
 
 log = logging.getLogger("aegis.gateway")
+
+
+def _scan_conversation(messages: list[dict]) -> InjectionReport:
+    """Score every user turn; the verdict follows the worst one.
+
+    Single-turn callers behave exactly as before (max of one). Scanning only
+    the last turn let an attack staged across turns bypass the gate."""
+    reports = [scan(str(m.get("content", ""))) for m in messages if m.get("role") == "user"]
+    if not reports:
+        return scan("")
+    top = max(reports, key=lambda r: r.score)
+    return InjectionReport(
+        score=top.score,
+        blocked=False,  # decided by caller against threshold
+        labels=sorted({label for r in reports for label in r.labels}),
+        notes=[n for r in reports for n in r.notes],
+    )
+
+
+def _redact_conversation(vault: Vault, messages: list[dict]) -> tuple[list[dict], list[str]]:
+    """Redact PII in each user turn individually (history preserved).
+
+    Returns (sanitized_messages, sorted masked types). Previously every user
+    turn was overwritten with the redacted LAST turn — clobbering multi-turn
+    history and misreporting masked types."""
+    pii_types: set[str] = set()
+    safe: list[dict] = []
+    for m in messages:
+        if m.get("role") == "user":
+            redacted = vault.redact(str(m.get("content", "")))
+            pii_types.update(vault.masked_types)
+            safe.append({**m, "content": redacted})
+        else:
+            safe.append(m)
+    return safe, sorted(pii_types)
 
 
 def _log_event(event: str, tenant: str, **fields: object) -> None:
@@ -35,13 +70,21 @@ def _log_event(event: str, tenant: str, **fields: object) -> None:
     log.info("event=%s tenant=%s rid=%s %s", event, tenant, request_id_ctx.get(), detail)
 
 
-def _optional_redis(url: str):
+def _connect_redis(url: str, *, strict: bool):
     """Shared limiter+budget backend when configured; None -> memory fallback.
 
     Import is lazy so `redis` stays out of minimal installs.
-    Any failure returns None: callers degrade locally, never 500s.
+    Non-prod: any failure returns None and callers degrade locally, never 500.
+    Production (strict): missing/unreachable Redis refuses to boot — a silent
+    per-process fallback would multiply rate limits and token budgets by the
+    worker/replica count, defeating cost control.
     """
     if not url:
+        if strict:
+            raise RuntimeError(
+                "refusing to start in production: AEGIS_REDIS_URL is required "
+                "(per-process fallback would multiply limits × workers)"
+            )
         return None
     try:
         import redis  # type: ignore[import-not-found]
@@ -49,7 +92,9 @@ def _optional_redis(url: str):
         client = redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2)
         client.ping()
         return client
-    except Exception:  # noqa: BLE001 — any redis failure degrades to memory
+    except Exception as exc:  # noqa: BLE001 — any redis failure degrades (or refuses boot in prod)
+        if strict:
+            raise RuntimeError(f"refusing to start in production: redis unreachable at {url} ({exc})") from exc
         return None
 
 
@@ -57,7 +102,7 @@ class Gateway:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.auth = Authenticator(settings)
-        shared_redis = _optional_redis(settings.redis_url)
+        shared_redis = _connect_redis(settings.redis_url, strict=settings.env == "production")
         self.limiter = SlidingWindowLimiter(
             settings.rate_limit_per_min, redis_client=shared_redis
         )
@@ -99,8 +144,6 @@ class Gateway:
         use_cache: bool = True,
     ) -> dict:
         tenant = tenant_id
-        user_text = next((str(m["content"]) for m in reversed(messages)
-                          if m.get("role") == "user"), "")
 
         # 1. rate limit
         rl = self.limiter.check(f"{tenant}:chat")
@@ -113,7 +156,8 @@ class Gateway:
         #    score >= block_threshold -> hard block, provider never called
         #    score >= soft_threshold  -> soft refusal, provider shielded from input
         #    below                    -> allow, logged for monitoring
-        report = scan(user_text)
+        #    Every user turn is scored; the worst one decides.
+        report = _scan_conversation(messages)
         if report.score >= self.settings.injection_block_threshold:
             report.blocked = True
             self.audit.append(tenant, "injection_blocked",
@@ -152,11 +196,7 @@ class Gateway:
 
         # 3. PII redaction before anything leaves the trust boundary
         vault = self._vault_for(tenant)
-        sanitized_user = vault.redact(user_text)
-        pii_types = list(vault.masked_types)
-        safe_messages = [
-            {**m, "content": sanitized_user} if m.get("role") == "user" else m for m in messages
-        ]
+        safe_messages, pii_types = _redact_conversation(vault, messages)
 
         # 4. budget preflight
         est_in = sum(self.budget.estimate_tokens(str(m.get("content", ""))) for m in messages)
@@ -247,8 +287,6 @@ class Gateway:
 
         tenant = tenant_id
         t0 = time.perf_counter()
-        user_text = next((str(m["content"]) for m in reversed(messages)
-                          if m.get("role") == "user"), "")
 
         rl = self.limiter.check(f"{tenant}:chat")
         if not rl.allowed:
@@ -256,7 +294,7 @@ class Gateway:
             raise RateLimitExceeded(rl.retry_after)
         quota = {"limit": self.settings.rate_limit_per_min, "remaining": rl.remaining}
 
-        report = scan(user_text)
+        report = _scan_conversation(messages)
         if report.score >= self.settings.injection_block_threshold:
             report.blocked = True
             self.audit.append(tenant, "injection_blocked",
@@ -280,11 +318,7 @@ class Gateway:
             return
 
         vault = self._vault_for(tenant)
-        sanitized_user = vault.redact(user_text)
-        pii_types = list(vault.masked_types)
-        safe_messages = [
-            {**m, "content": sanitized_user} if m.get("role") == "user" else m for m in messages
-        ]
+        safe_messages, pii_types = _redact_conversation(vault, messages)
 
         est_in = sum(self.budget.estimate_tokens(str(m.get("content", ""))) for m in messages)
         self.budget.preflight(tenant, est_in + max_tokens)
@@ -368,8 +402,9 @@ class Gateway:
                 # stream finished for this provider
                 breaker.record_success()
                 from aegis.providers.base import Completion as _Completion
-                in_tok = sum(len(str(m.get("content", ""))) // 4 + 1 for m in safe_messages)
-                out_tok = len(sanitized_accum) // 4 + 1
+                # same estimator as the non-stream path + budget preflight
+                in_tok = sum(self.budget.estimate_tokens(str(m.get("content", ""))) for m in safe_messages)
+                out_tok = self.budget.estimate_tokens(sanitized_accum)
                 self.cache.put(cache_key, _Completion(
                     text=sanitized_accum, model=provider_model, provider=name,
                     input_tokens=in_tok, output_tokens=out_tok,

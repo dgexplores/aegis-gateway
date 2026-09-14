@@ -147,17 +147,34 @@ def test_rag_scope_enforced(client):
 
 
 def test_admin_status_shows_intact_chain(client):
-    r = client.get("/admin/status", headers=auth_headers())
+    import hashlib
+
+    admin_hash = hashlib.sha256(b"sk-admin-key").hexdigest()
+    settings = make_settings(None)
+    settings.tenants = f"ops:{admin_hash}:chat+rag+admin"
+    from aegis.security.auth import Authenticator
+
+    STATE["authenticator"] = Authenticator(settings)
+    r = client.get("/admin/status", headers={"Authorization": "Bearer sk-admin-key"})
     assert r.status_code == 200
     body = r.json()
     assert body["audit_chain"]["intact"] is True
     assert body["cache"]["entries"] >= 0
 
 
+def test_admin_status_forbidden_without_admin_scope(client):
+    r = client.get("/admin/status", headers=auth_headers())
+    assert r.status_code == 403
+
+
+def test_metrics_requires_auth(client):
+    assert client.get("/metrics").status_code == 401
+
+
 def test_metrics_endpoint_renders_counters(client):
     client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hey"}]},
                 headers=auth_headers())
-    r = client.get("/metrics")
+    r = client.get("/metrics", headers=auth_headers())
     assert r.status_code == 200
     assert "aegis_requests_total" in r.text
 

@@ -225,8 +225,8 @@ Endpoints:
 | `GET` | `/dashboard` | — | Plain-language UI: Chat / Docs / Proof / Backend tabs |
 | `GET` | `/healthz` | — | Liveness |
 | `GET` | `/readyz` | — | Readiness (audit verified + providers up) |
-| `GET` | `/metrics` | — | Prometheus text (incl. per-call cost) |
-| `GET` | `/admin/status` | any | Chain verify, cache stats, breakers, budget |
+| `GET` | `/metrics` | any tenant | Prometheus text (incl. per-call cost) — auth required, series carry tenant labels |
+| `GET` | `/admin/status` | `admin` | Chain verify, cache stats, breakers, budget (mint via `gen_tenant.py --scopes chat+rag+admin`) |
 
 ---
 

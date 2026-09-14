@@ -44,13 +44,21 @@ def client(tmp_path, monkeypatch):
 
 
 def test_security_headers_on_all_responses(client):
-    for path in ("/healthz", "/metrics", "/dashboard"):
+    for path in ("/healthz", "/dashboard"):
         r = client.get(path)
         assert r.status_code == 200
         assert r.headers["X-Content-Type-Options"] == "nosniff"
         assert r.headers["X-Frame-Options"] == "DENY"
         assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
         assert "max-age=31536000" in r.headers["Strict-Transport-Security"]
+
+
+def test_metrics_locked_down_but_still_hardened(client):
+    # /metrics carries per-tenant labels: 401 without a key, headers intact.
+    r = client.get("/metrics")
+    assert r.status_code == 401
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert r.headers["X-Frame-Options"] == "DENY"
 
 
 def test_error_responses_carry_headers_and_no_stack(client):

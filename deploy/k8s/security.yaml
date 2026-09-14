@@ -10,8 +10,9 @@ stringData:
   AEGIS_VAULT_HMAC_KEY: change-me-vault-hmac-key-min-32-chars
   AEGIS_TENANTS: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag
   AEGIS_PROVIDERS: echo
-  # Optional backends (empty = memory mode). Prefer external managed DB in
-  # prod via external-secrets; empty value keeps pods booting dependency-free.
+  # Backends: Redis is REQUIRED in production (gateway refuses to boot without
+  # it — per-process fallback would multiply rate limits/budgets × replicas).
+  # Point at managed Redis via external-secrets / vault before first deploy.
   AEGIS_REDIS_URL: ""
   AEGIS_DATABASE_URL: ""
 ---

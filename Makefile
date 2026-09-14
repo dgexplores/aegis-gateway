@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval fuzz verify run demo smoke docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval fuzz prod-guard verify run demo smoke docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -50,8 +50,11 @@ pii-eval:
 fuzz:
 	PYTHONPATH=src python scripts/fuzz_attacks.py --count 200
 
-verify: lint type test security evals rag-eval pii-eval
-	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii green"
+verify: lint type test security evals rag-eval pii-eval prod-guard
+	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green"
+
+prod-guard:  ## deploy artifacts shippable? (durable audit, probes, hardening, compose)
+	python scripts/prod_guard.py
 
 smoke:
 	bash scripts/smoke.sh

@@ -1,13 +1,27 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: aegis-gateway
   labels: { app: aegis-gateway }
 spec:
+  # StatefulSet (not Deployment): each pod gets its OWN durable audit volume
+  # via volumeClaimTemplates. The audit chain is a per-pod file — a shared
+  # RWO PVC across Deployment replicas would leave all but one pod Pending,
+  # and emptyDir evaporates evidence on reschedule. Per-pod chains stay
+  # verifiable; cross-pod continuity comes from the S3 archive on rotation.
+  serviceName: aegis-gateway
   replicas: 3
-  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 1, maxSurge: 1 } }
+  updateStrategy: { type: RollingUpdate }
   selector:
     matchLabels: { app: aegis-gateway }
+  # Per-pod durable audit volumes (audit-log-aegis-gateway-<ordinal>).
+  # No static `volumes:` entry: StatefulSet provisions one claim per pod.
+  volumeClaimTemplates:
+    - metadata: { name: audit-log }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 10Gi }
   template:
     metadata:
       labels: { app: aegis-gateway }
@@ -55,9 +69,6 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
-      volumes:
-        - name: audit-log
-          emptyDir: {}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

@@ -41,12 +41,15 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
   boundaries are modules (security/rag/providers), reversible to services later.
 - ADR-2 memory-first with Redis upgrade path: limiter accepts `redis_client`;
   `AEGIS_REDIS_URL` set -> shared sliding windows across replicas, unset ->
-  in-process fallback so dev/tests run dependency-free. Same pattern planned
-  for cache/budget (keys already tenant-scoped, swap backend without API change).
+  in-process fallback so dev/tests run dependency-free (production refuses to
+  boot without Redis — silent per-process limits would multiply × workers).
+  Same pattern planned for cache/budget (keys already tenant-scoped, swap backend without API change).
 - ADR-3 file audit with rotation-carry: JSONL `audit.jsonl`, each record HMACs
   `seq|ts|tenant|event|payload_sha256|prev_hash`. Rotation keeps head as first
-  `prev_hash` of the new file; per-file `verify()` holds, cross-file continuity
-  by matching head. Postgres/S3 sink later without changing record format.
+   `prev_hash` of the new file; per-file `verify()` holds, cross-file continuity
+   by matching head. Postgres/S3 sink later without changing record format.
+   Multi-process safe: every append takes an `flock` + refreshes seq/head from
+   the file tail, so `uvicorn --workers N` can't fork the chain.
 - ADR-4 echo fallback always last: guarantees liveness (never 503 on valid
   input when fallback exists), keeps evals/red-team deterministic.
 
@@ -54,10 +57,11 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
 | Failure | Behavior |
 |---|---|
 | Bad secrets in prod | refuse boot (`require_production_secrets`) |
+| Redis missing/unreachable at boot (prod) | refuse boot (per-process fallback would multiply limits × workers) |
+| Redis flap at runtime | degrade to local view for that call, metric gap, no 500 |
 | Corrupt audit at boot | refuse boot (`verify()` in `build_gateway`) |
 | Provider 402/5xx/timeout | breaker counts, failover to next, echo last |
 | All providers down | 503 `AllProvidersDown`, no fake answer |
-| Redis down | degrade to local limiter view, metric gap, no 500 |
 | Budget exceeded | 402 preflight (estimate) + post-call actuals |
 | Rate exceeded | 429 + `Retry-After` |
 | Unknown key / scope | 401 / 403, timing-safe compare over all hashes |
@@ -65,8 +69,9 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
 ## 7. Observability
 - `GET /healthz` liveness (no auth), `GET /readyz` readiness (audit verify +
   registry non-empty, no auth so K8s probes stay simple).
-- `GET /metrics` Prometheus text (requests/tokens/cost/blocks/cache/budget).
-- `GET /admin/status` (auth): chain intact + length, cache stats, breaker
+- `GET /metrics` Prometheus text (requests/tokens/cost/blocks/cache/budget),
+  auth required (any tenant) — series carry per-tenant labels.
+- `GET /admin/status` (`admin` scope): chain intact + length, cache stats, breaker
   snapshots, budget usage for caller tenant.
 - `x-request-id` + `x-latency-ms` on every response via middleware; the id is
   also a `contextvars` value, so gateway logs (`event= tenant= rid=`) correlate

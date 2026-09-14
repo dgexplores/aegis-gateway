@@ -32,9 +32,11 @@ QUERY=$(curl -sf "$BASE/v1/rag/query" -H "Authorization: Bearer $API_KEY" \
 echo "$QUERY" | grep -q citations || fail "citations missing"
 echo "ok rag"
 
-curl -sf "$BASE/metrics" | grep -q aegis_ || fail "metrics"
+curl -sf "$BASE/metrics" -H "Authorization: Bearer $API_KEY" | grep -q aegis_ || fail "metrics"
 echo "ok metrics"
 
+# NOTE: the smoke key needs the `admin` scope for this probe
+# (mint with: python scripts/gen_tenant.py --id ops --scopes chat+rag+admin).
 curl -sf "$BASE/admin/status" -H "Authorization: Bearer $API_KEY" | grep -q audit_chain || fail "admin"
 echo "ok admin"
 

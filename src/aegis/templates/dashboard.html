@@ -354,14 +354,16 @@ async function ragQuery(){
 async function refreshMetrics(){
   try{
     const r=await fetch('/admin/status',{headers:{'Authorization':'Bearer '+apiKey()}});
-    if(!r.ok) return;
+    if(r.status===403){ $('#auditOut').textContent='Proof log: needs admin scope on this key.'; }
+    else if(r.ok){
     const j=await r.json();
     $('#metCache').textContent = `${j.cache.entries} saved · ${Math.round((j.cache.hit_rate||0)*100)}% reuse`;
     $('#metBudget').textContent = `${j.budget.used}/${j.budget.limit} used today`;
     $('#metBreakers').textContent = (j.breakers||[]).map(b=>`${b.provider}: ${b.state}`).join(' · ') || '—';
     $('#auditOut').textContent = `Proof log ${j.audit_chain.intact?'intact ✓':'BROKEN'} · ${j.audit_chain.detail}`;
+    }
   }catch{}
-  try{ const r=await fetch('/metrics'); const t=await r.text(); $('#promRaw').textContent=t.slice(0,3000); }catch{}
+  try{ const r=await fetch('/metrics',{headers:{'Authorization':'Bearer '+apiKey()}}); const t=await r.text(); $('#promRaw').textContent=t.slice(0,3000); }catch{}
 }
 async function refreshAudit(){ await refreshMetrics(); toast('Proof refreshed.'); }
 $('#chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); } });

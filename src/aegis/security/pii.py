@@ -101,12 +101,18 @@ def _luhn_ok(number: str) -> bool:
 
 @dataclass
 class Vault:
-    """Bidirectional map between real PII and HMAC pseudonyms (in-memory only)."""
+    """Bidirectional map between real PII and HMAC pseudonyms (in-memory only).
+
+    Bounded (default 5k entries, FIFO eviction): without a cap a long-lived
+    gateway leaks memory per unique PII value. Evicted tokens simply stop
+    restoring — redact-then-restore within a request is unaffected, and
+    pseudonyms stay deterministic so a later redact re-creates them."""
 
     hmac_key: bytes
     _real_to_token: dict[str, str] = field(default_factory=dict)
     _token_to_real: dict[str, str] = field(default_factory=dict)
     masked_types: list[str] = field(default_factory=list)
+    max_entries: int = 5000
 
     def _pseudonym(self, value: str) -> str:
         digest = hmac.new(self.hmac_key, value.encode(), hashlib.sha256).hexdigest()[:16]
@@ -129,8 +135,13 @@ class Vault:
                     if any(int(o) > 255 for o in octets):
                         return value
                 token = self._pseudonym(value)
-                self._real_to_token[value] = token
-                self._token_to_real[token] = value
+                if value not in self._real_to_token:
+                    while len(self._token_to_real) >= self.max_entries:
+                        # FIFO: dicts preserve insertion order; drop oldest.
+                        oldest = next(iter(self._token_to_real))
+                        self._real_to_token.pop(self._token_to_real.pop(oldest), None)
+                    self._real_to_token[value] = token
+                    self._token_to_real[token] = value
                 if _label not in self.masked_types:
                     self.masked_types.append(_label)
                 return token

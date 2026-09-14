@@ -167,6 +167,8 @@ jobs:
           python -c "import yaml,glob; [yaml.safe_load_all(open(f)) for f in glob.glob('deploy/k8s/*.yaml')]; print('yaml ok')"
           (kustomize build deploy/k8s > /tmp/manifest.yaml && echo "kustomize ok") || \
             (echo "kustomize binary absent — yaml load passed, render deferred to cd preflight")
+      - name: Production-readiness guard (durable audit, probes, hardening, compose)
+        run: python scripts/prod_guard.py
 
   docker:
     runs-on: ubuntu-latest
@@ -193,12 +195,18 @@ jobs:
             -e AEGIS_ENV=test \
             -e AEGIS_AUDIT_HMAC_KEY=test-audit-key-32-chars-minimum!! \
             -e AEGIS_VAULT_HMAC_KEY=test-vault-key-32-chars-minimum!!! \
-            -e AEGIS_TENANTS=demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag \
+            -e AEGIS_TENANTS=demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag+admin \
             -e AEGIS_PROVIDERS=echo \
             aegis-gateway:${{ github.sha }}
           for i in $(seq 1 20); do curl -sf http://localhost:8080/healthz && break || sleep 2; done
           curl -sf http://localhost:8080/healthz
           bash scripts/smoke.sh || (docker logs aegis; exit 1)
           docker rm -f aegis
-      # image scan moved to nightly (trivy-action tags flaky in GH resolve);
-      # re-enable with pinned SHA after baseline green.
+      - name: Trivy image scan (CRITICAL, fixed only)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: aegis-gateway:${{ github.sha }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

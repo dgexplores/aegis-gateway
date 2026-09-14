@@ -67,6 +67,10 @@ jobs:
           grep -q "livenessProbe" deploy/k8s/deployment.yaml
           grep -q "PodDisruptionBudget\|poddisruptionbudget" deploy/k8s/security.yaml -i
           echo "probes + PDB present"
+      - name: Preflight — production-readiness guard
+        run: |
+          pip install -q pyyaml
+          python scripts/prod_guard.py
       - name: Kustomize set image
         run: |
           cd deploy/k8s

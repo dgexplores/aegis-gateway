@@ -14,7 +14,9 @@ TIMEOUT = 30.0
 class GMIProvider(BaseProvider):
     name = "gmi"
 
-    def __init__(self, api_key: str | None = None, base_url: str | None = None) -> None:
+    def __init__(
+        self, api_key: str | None = None, base_url: str | None = None, default_model: str | None = None
+    ) -> None:
         # Accept explicit key (from Settings) or fall back to either env var name
         self.api_key = (
             api_key
@@ -28,6 +30,10 @@ class GMIProvider(BaseProvider):
             or DEFAULT_BASE
         ).rstrip("/")
         self.api_url = f"{base}/chat/completions"
+        # Model precedence: explicit Settings value > env > built-in default.
+        # Previously only GMI_MODEL env was honored, silently ignoring
+        # AEGIS_GMI_MODEL / Settings.gmi_model.
+        self.default_model = default_model or os.environ.get("GMI_MODEL", "") or "Qwen/Qwen3.8-27B"
 
     @property
     def available(self) -> bool:
@@ -38,9 +44,9 @@ class GMIProvider(BaseProvider):
             raise ProviderError("GMI_API_KEY not set")
         start = time.perf_counter()
         # GMI expects model ids like Qwen/Qwen3.8-27B, deepseek-ai/DeepSeek-V4-Pro etc.
-        # If caller passes echo-* tier names, map to a sensible default.
+        # If caller passes echo-* tier names, map to the configured default.
         if model.startswith("echo-"):
-            model = os.environ.get("GMI_MODEL", "Qwen/Qwen3.8-27B")
+            model = self.default_model
         payload = {
             "model": model,
             "messages": messages,
@@ -82,7 +88,7 @@ class GMIProvider(BaseProvider):
         if not self.available:
             raise ProviderError("GMI_API_KEY not set")
         if model.startswith("echo-"):
-            model = os.environ.get("GMI_MODEL", "Qwen/Qwen3.8-27B")
+            model = self.default_model
         payload = {"model": model, "messages": messages, "max_tokens": max_tokens,
                    "user": "aegis-gateway", "stream": True}
         headers = {"Authorization": f"Bearer {self.api_key}"}

@@ -1,13 +1,8 @@
-# Opt-in durable audit storage. Default deploy uses emptyDir (evidence is
-# best-effort across reschedules); apply this + point the Deployment volume at
-# it when audit survival matters more than zero-setup:
-#
-#   kubectl apply -f deploy/k8s/pvc.yaml
-#   # in deployment.yaml, replace the audit-log emptyDir with:
-#   #   volumes:
-#   #     - name: audit-log
-#   #       persistentVolumeClaim: { claimName: aegis-audit-log }
-# Long-term, archive to S3 (PLAN Phase 2) and keep the PVC as a buffer.
+# Reference template for the per-pod audit volumes. The StatefulSet in
+# deployment.yaml provisions these automatically via volumeClaimTemplates
+# (audit-log-aegis-gateway-<ordinal>); this file is kept for manual
+# provisioning / storage-class customization only and is NOT in kustomization.
+# Long-term, archive to S3 (PLAN Phase 2) and keep per-pod PVCs as a buffer.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
