@@ -346,5 +346,12 @@ async def root():
 async def dashboard():
     html_path = Path(__file__).parent.parent / "templates" / "dashboard.html"
     if html_path.exists():
-        return HTMLResponse(html_path.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>Dashboard not found</h1><p>Expected at templates/dashboard.html</p>", status_code=500)
+        return HTMLResponse(
+            html_path.read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-store"},
+        )
+    return HTMLResponse(
+        "<h1>Dashboard not found</h1><p>Expected at templates/dashboard.html</p>",
+        status_code=500,
+        headers={"Cache-Control": "no-store"},
+    )
