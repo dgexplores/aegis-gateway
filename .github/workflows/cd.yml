@@ -99,5 +99,5 @@ jobs:
           docker run --rm ${{ env.IMAGE }}:${{ needs.build-push.outputs.tag }} \
             sh -c "PYTHONPATH=src pytest -q && PYTHONPATH=src python scripts/redteam.py --corpus scripts/attacks.yaml"
       - name: Publish release notes
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with: { generate_release_notes: true }
