@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Secure LLM gateway: prompt-injection defense, PII vault, hash-chained audit, hybrid RAG, eval-gated CI"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.110",
+    "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.4",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
