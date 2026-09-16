@@ -20,8 +20,12 @@ class Metrics:
             "# TYPE aegis_uptime_seconds gauge",
             f"aegis_uptime_seconds {time.time() - self._start:.0f}",
         ]
-        for key in sorted(self._counters):
-            lines.append(f"# TYPE {key.split('{')[0]} counter")
+        # One `# TYPE` line per metric NAME, not per labelled series. Emitting it
+        # once per series produced duplicate TYPE lines for the same metric, which
+        # the Prometheus text parser rejects — scrapes (and promtool) would fail.
+        names = sorted({key.split("{", 1)[0] for key in self._counters})
+        for name in names:
+            lines.append(f"# TYPE {name} counter")
         for key, val in sorted(self._counters.items()):
             lines.append(f"{key} {val}")
         return "\n".join(lines) + "\n"

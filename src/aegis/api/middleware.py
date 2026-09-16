@@ -27,9 +27,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Defense-in-depth response headers (Standard §7).
 
     HSTS is honored by browsers only over HTTPS; harmless on local HTTP.
-    CSP allows exactly what the dashboard ships with (pinned Tailwind/jsDelivr
-    CDNs, Google Fonts, same-origin API calls, inline scripts) and closes
-    object/frame endpoints entirely.
+
+    The CSP is strict: no `unsafe-inline` for script or style, and no remote
+    origins at all. That is only possible because the dashboard ships its own
+    CSS and JS from /static instead of pulling Tailwind, a font host and a
+    diagramming library off the public internet — which is also what makes the
+    console usable on an air-gapped network, the environment this product is
+    actually sold into.
     """
 
     HEADERS = {
@@ -39,10 +43,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Content-Security-Policy": (
             "default-src 'self'; "
-            "script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net/npm 'unsafe-inline'; "
-            "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "connect-src 'self'; img-src 'self' data:; "
+            "script-src 'self'; "
+            "style-src 'self'; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "img-src 'self' data:; "
+            "form-action 'none'; "
             "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
         ),
     }

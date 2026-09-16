@@ -94,10 +94,14 @@ jobs:
     environment: prod
     steps:
       - uses: actions/checkout@v7
-      - name: Prod gate — redteam + evals on release image
+      - name: Prod gate — full verify on the release source
+        # Runs the `gate` Dockerfile stage: dev deps + tests/ + scripts/ +
+        # deploy/ are present there. The previous version ran `pytest` inside the
+        # runtime image, which ships none of those, so the step exited 127 and
+        # every tagged release was blocked.
         run: |
-          docker run --rm ${{ env.IMAGE }}:${{ needs.build-push.outputs.tag }} \
-            sh -c "PYTHONPATH=src pytest -q && PYTHONPATH=src python scripts/redteam.py --corpus scripts/attacks.yaml"
+          docker build --target gate -t aegis-gate:${{ github.sha }} .
+          docker run --rm aegis-gate:${{ github.sha }}
       - name: Publish release notes
         uses: softprops/action-gh-release@v2
         with: { generate_release_notes: true }

@@ -14,8 +14,11 @@ metadata:
   name: aegis-gateway
 spec:
   scaleTargetRef:
+    # Must match the workload kind in deployment.yaml. This read `Deployment`
+    # while the workload is a StatefulSet, so the HPA never found its target and
+    # autoscaling was silently dead.
     apiVersion: apps/v1
-    kind: Deployment
+    kind: StatefulSet
     name: aegis-gateway
   minReplicas: 3
   maxReplicas: 12

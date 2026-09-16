@@ -4,6 +4,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - security.yaml
+  - redis.yaml
 commonLabels: { app: aegis-gateway }
 images:
   - name: aegis-gateway

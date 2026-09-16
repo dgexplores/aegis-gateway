@@ -90,6 +90,55 @@ class HybridRetriever:
     def size(self) -> int:
         return len(self._chunks)
 
+    def documents(self) -> list[dict]:
+        """Per-source inventory, so a tenant can see what its AI answers from.
+
+        Sources are re-derived from the chunks rather than kept in a side table,
+        which means the inventory can never drift out of sync with the index.
+        """
+        agg: dict[str, dict] = {}
+        for ch in self._chunks.values():
+            entry = agg.setdefault(ch.source, {
+                "source": ch.source,
+                "doc_id": ch.doc_id,
+                "chunks": 0,
+                "tokens": 0,
+                "embedded_chunks": 0,
+                "preview": ch.text[:160],
+            })
+            entry["chunks"] += 1
+            entry["tokens"] += ch.token_estimate
+            if ch.id in self._embs:
+                entry["embedded_chunks"] += 1
+        return sorted(agg.values(), key=lambda d: d["source"])
+
+    def remove_source(self, source: str) -> int:
+        """Drop every chunk of `source`. Returns chunks removed.
+
+        Statistics are rebuilt rather than decremented in place. BM25's
+        `_doc_freq` and `_total_docs` have to stay exactly consistent with `_tf`;
+        patching counters by hand is how an index ends up still weighting terms
+        by documents it claims to have deleted — a deleted document would keep
+        influencing the ranking of every later query.
+        """
+        doomed = [cid for cid, ch in self._chunks.items() if ch.source == source]
+        if not doomed:
+            return 0
+        for cid in doomed:
+            self._chunks.pop(cid, None)
+            self._tf.pop(cid, None)
+            self._vecs.pop(cid, None)
+            self._embs.pop(cid, None)
+        self._rebuild_stats()
+        return len(doomed)
+
+    def _rebuild_stats(self) -> None:
+        self._doc_freq = Counter()
+        for tf in self._tf.values():
+            for term in tf:
+                self._doc_freq[term] += 1
+        self._total_docs = len(self._tf)
+
     # -- retrieval ------------------------------------------------------------
 
     def _bm25_scores(self, query_tokens: list[str]) -> dict[str, float]:

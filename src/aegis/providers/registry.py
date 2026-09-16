@@ -68,4 +68,12 @@ async def complete_with_failover(
         except ProviderError as exc:
             breaker.record_failure()
             errors.append(f"{name}: {exc}")
+        except Exception as exc:  # noqa: BLE001 — a broken provider must never 500 the gateway while a fallback exists
+            # Catching only ProviderError meant an unexpected response shape
+            # (KeyError on a missing "choices" key, a non-JSON 200, an httpx edge
+            # case) escaped the loop and became a 500 even though `echo` was
+            # sitting right there in the chain. stream_chat already caught bare
+            # Exception; the non-streaming path was the less robust one.
+            breaker.record_failure()
+            errors.append(f"{name}: {type(exc).__name__}: {exc}")
     raise AllProvidersDown("; ".join(errors) or "no providers configured")

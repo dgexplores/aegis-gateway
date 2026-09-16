@@ -39,7 +39,18 @@ class Authenticator:
                 detail="missing bearer token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        presented = self.hash_key(auth.removeprefix("Bearer ").strip())
+        presented_raw = auth.removeprefix("Bearer ").strip()
+        if not presented_raw:
+            # sha256("") is a well-known constant. If it ever appears in a tenant
+            # list (it was the built-in default), an empty bearer token would
+            # authenticate — so an empty credential is refused outright, before
+            # the comparison loop, regardless of configuration.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="empty api key",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        presented = self.hash_key(presented_raw)
         # timing-safe: compare against every stored hash, no early exit on dict miss
         matched: Tenant | None = None
         for stored_hash, tenant in self._by_key_hash.items():

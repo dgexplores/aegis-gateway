@@ -1,0 +1,57 @@
+# Redis for the shared rate limiter + daily token budget.
+#
+# The gateway REFUSES TO BOOT with AEGIS_ENV=production and no Redis: a silent
+# per-process fallback would multiply rate limits and token budgets by the
+# replica count, defeating cost control. Without this Service the StatefulSet
+# in deployment.yaml crash-loops on purpose.
+#
+# Single replica, no persistence: adequate for a staging/demo cluster. In
+# production point AEGIS_REDIS_URL at managed Redis (ElastiCache / Memorystore /
+# Upstash) via external-secrets instead of using this manifest.
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-redis
+  labels: { app: aegis-redis }
+spec:
+  selector: { app: aegis-redis }
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-redis
+  labels: { app: aegis-redis }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: aegis-redis }
+  template:
+    metadata:
+      labels: { app: aegis-redis }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["redis-server", "--appendonly", "no", "--save", ""]
+          ports: [{ containerPort: 6379 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 192Mi }
+          livenessProbe:
+            tcpSocket: { port: 6379 }
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }

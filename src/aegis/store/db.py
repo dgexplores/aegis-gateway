@@ -44,6 +44,7 @@ ON CONFLICT (tenant, chunk_id) DO UPDATE SET
   text = EXCLUDED.text, embedding = EXCLUDED.embedding, updated_at = now()"""
 LOAD_SQL = "SELECT tenant, source, seq, chunk_id, text FROM rag_chunks"
 LOAD_EMB_SQL = "SELECT tenant, source, seq, chunk_id, text, embedding FROM rag_chunks"
+DELETE_SOURCE_SQL = "DELETE FROM rag_chunks WHERE tenant = %s AND source = %s"
 
 
 class PgChunkStore:
@@ -88,6 +89,25 @@ class PgChunkStore:
                         except Exception:  # noqa: BLE001 — old schema without column
                             cur.execute(SAVE_SQL, (tenant, c.source, c.seq, c.id, c.text))
             return len(chunks)
+        finally:
+            if own:
+                conn.close()
+
+    def delete_source(self, tenant: str, source: str, conn=None) -> int:  # type: ignore[no-untyped-def]
+        """Durably remove a source's chunks. Returns rows deleted.
+
+        Unlike `save`, this one *raises* on failure. A best-effort delete would
+        let the gateway report "document removed" while the row survives — and
+        `bootstrap()` would reload it on the next restart, silently resurrecting
+        content someone believed they had deleted.
+        """
+        own = conn is None
+        if own:
+            conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(DELETE_SOURCE_SQL, (tenant, source))
+                return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
         finally:
             if own:
                 conn.close()

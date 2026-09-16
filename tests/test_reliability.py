@@ -22,7 +22,7 @@ def test_budget_records_and_rolls():
 
 def test_cache_roundtrip_and_ttl():
     c = TTLCache(ttl_seconds=1)
-    k = c.make_key("t1", "m", [{"role": "user", "content": "hi"}])
+    k = c.make_key("t1", "m", [{"role": "user", "content": "hi"}], 400)
     assert c.get(k) is None
     c.put(k, {"answer": 42})
     assert c.get(k) == {"answer": 42}
@@ -31,8 +31,8 @@ def test_cache_roundtrip_and_ttl():
 def test_cache_tenant_isolation():
     c = TTLCache(ttl_seconds=10)
     msgs = [{"role": "user", "content": "same question"}]
-    k1 = c.make_key("tenant-a", "m", msgs)
-    k2 = c.make_key("tenant-b", "m", msgs)
+    k1 = c.make_key("tenant-a", "m", msgs, 400)
+    k2 = c.make_key("tenant-b", "m", msgs, 400)
     assert k1 != k2  # cross-tenant cache leakage impossible
 
 

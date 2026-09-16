@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval fuzz prod-guard verify run demo smoke docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval fuzz prod-guard verify run demo smoke evidence docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -58,6 +58,32 @@ prod-guard:  ## deploy artifacts shippable? (durable audit, probes, hardening, c
 
 smoke:
 	bash scripts/smoke.sh
+
+# Capture a real evidence bundle from a live gateway and render it as a
+# self-contained page (docs/capability-evidence.html). Boots its own server on a
+# scratch port + audit file, so it never touches your dev instance or its chain.
+#
+# The server is started, exercised and torn down inside ONE shell: a background
+# process does not survive the shell that launched it, so splitting these into
+# separate invocations leaves the capture talking to a dead port.
+evidence:
+	@bash -c 'set -e; \
+	  DIR=$$(mktemp -d); PORT=8098; \
+	  AEGIS_ENV=development \
+	  AEGIS_AUDIT_HMAC_KEY=evidence-audit-hmac-key-min-32-chars \
+	  AEGIS_VAULT_HMAC_KEY=evidence-vault-hmac-key-min-32-chars \
+	  AEGIS_AUDIT_ENCRYPT_KEY=evidence-payload-key \
+	  AEGIS_AUDIT_PATH=$$DIR/audit.jsonl \
+	  AEGIS_TENANTS="demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag+admin" \
+	  AEGIS_PROVIDERS=echo PYTHONPATH=src \
+	  python -m uvicorn aegis.main:app --host 127.0.0.1 --port $$PORT > $$DIR/server.log 2>&1 & \
+	  SRV=$$!; \
+	  trap "kill $$SRV 2>/dev/null || true; rm -rf $$DIR" EXIT; \
+	  for i in $$(seq 1 40); do \
+	    curl -sf http://127.0.0.1:$$PORT/healthz >/dev/null 2>&1 && break; sleep 0.5; \
+	  done; \
+	  BASE=http://127.0.0.1:$$PORT KEY=demo-sk-aegis-2024 python scripts/capture_evidence.py; \
+	  python scripts/build_evidence_report.py'
 
 check-secrets:
 	bash scripts/check_no_secrets.sh

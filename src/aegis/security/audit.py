@@ -5,8 +5,17 @@ Any tampering (edit, delete, reorder) breaks verification — tamper-evidence
 required for regulated-industry AI deployments.
 
 Format: JSONL, one record per line:
-  {seq, ts, tenant, event, payload_sha256, prev_hash, entry_hash}
-entry_hash = HMAC(key, seq|ts|tenant|event|payload_sha256|prev_hash)
+  {seq, ts, tenant, event, payload_sha256, prev_hash, entry_hash, request_id}
+entry_hash = HMAC(key, seq|ts|tenant|event|payload_sha256|prev_hash[|request_id])
+
+`request_id` is signed too, but only when present, so chains written before the
+field existed still verify byte-for-byte (their recomputed material is
+unchanged). Without that, adding a correlation column would have invalidated
+every historical chain.
+
+`tail_records()` is the read side: it hands back the newest N records with each
+signature and link re-checked and the encrypted payload decrypted, so the log is
+not merely tamper-*evident* but actually *inspectable*.
 """
 
 import hashlib
@@ -27,6 +36,11 @@ except ImportError:  # Windows dev: in-process lock only
 
 log = logging.getLogger("aegis.audit")
 
+# Upper bound on how many records a single read may return or scan. Evidence
+# review needs a window, not the whole log — an unbounded read endpoint would
+# turn "let me look at the audit trail" into an OOM on a busy tenant.
+MAX_READ_RECORDS = 500
+
 
 class AuditError(Exception):
     pass
@@ -43,6 +57,7 @@ class AuditRecord:
     entry_hash: str
     payload_enc: str | None = None
     payload_alg: str = "none"
+    request_id: str = ""
 
 
 def encrypt_payload(payload_bytes: bytes, key: str) -> tuple[str | None, str]:
@@ -157,6 +172,7 @@ class AuditChain:
         raw = json.loads(lines[-1])
         raw.setdefault("payload_enc", None)
         raw.setdefault("payload_alg", "none")
+        raw.setdefault("request_id", "")
         return AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
 
     def _refresh_from_tail(self) -> None:
@@ -170,8 +186,12 @@ class AuditChain:
     # -- internals ----------------------------------------------------------
 
     def _entry_hash(self, seq: int, ts: float, tenant: str, event: str,
-                    payload_sha256: str, prev_hash: str) -> str:
+                    payload_sha256: str, prev_hash: str, request_id: str = "") -> str:
+        """Signed material. `request_id` is appended only when non-empty so
+        pre-existing records (which lack the field) still verify."""
         material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
+        if request_id:
+            material = f"{material}|{request_id}"
         return hmac.new(self._key, material.encode(), hashlib.sha256).hexdigest()
 
     def _load(self) -> None:
@@ -184,12 +204,13 @@ class AuditChain:
                 if not line:
                     continue
                 raw = json.loads(line)
-                # backward-compat: old lines lack payload_enc/payload_alg
+                # backward-compat: old lines lack payload_enc/payload_alg/request_id
                 raw.setdefault("payload_enc", None)
                 raw.setdefault("payload_alg", "none")
+                raw.setdefault("request_id", "")
                 rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
                 expected = self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                            rec.payload_sha256, rec.prev_hash)
+                                            rec.payload_sha256, rec.prev_hash, rec.request_id)
                 if not hmac.compare_digest(expected, rec.entry_hash):
                     raise AuditError(f"audit chain corrupt at seq={rec.seq}")
                 if last is not None and rec.prev_hash != last.entry_hash:
@@ -221,7 +242,8 @@ class AuditChain:
         except OSError:
             pass
 
-    def append(self, tenant: str, event: str, payload: dict) -> AuditRecord:
+    def append(self, tenant: str, event: str, payload: dict,
+               request_id: str = "") -> AuditRecord:
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
@@ -232,7 +254,8 @@ class AuditChain:
             self._maybe_rotate()
             ts = time.time()
             self.seq += 1
-            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head)
+            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256,
+                                         self.head, request_id)
             record = AuditRecord(
                 seq=self.seq,
                 ts=ts,
@@ -243,6 +266,7 @@ class AuditChain:
                 entry_hash=entry_hash,
                 payload_enc=payload_enc,
                 payload_alg=payload_alg,
+                request_id=request_id,
             )
             line = json.dumps(record.__dict__, separators=(",", ":"))
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,3 +284,141 @@ class AuditChain:
             return True, f"chain intact, head={self.head[:12]}…, length={self.seq}"
         except AuditError as exc:
             return False, str(exc)
+
+    # -- read side (evidence inspection) -------------------------------------
+
+    def _tail_lines(self, want: int, block: int = 65536) -> tuple[list[str], bool]:
+        """Return (up to `want` trailing non-empty lines oldest→newest, reached_start).
+
+        Reads backwards in fixed-size blocks. A whole-file read is what makes
+        `/readyz` expensive on a full log; the read API must not repeat that, so
+        cost here is O(want) regardless of how large the log has grown.
+        """
+        try:
+            size = self.path.stat().st_size
+        except OSError:
+            return [], True
+        if size == 0:
+            return [], True
+
+        lines: list[str] = []
+        buf = b""
+        pos = size
+        with self.path.open("rb") as fh:
+            while pos > 0 and len(lines) < want:
+                step = min(block, pos)
+                pos -= step
+                fh.seek(pos)
+                buf = fh.read(step) + buf
+                parts = buf.split(b"\n")
+                # The first part continues into earlier file content unless we
+                # just reached offset 0; the last part is always a whole line.
+                buf = parts.pop(0) if pos > 0 else b""
+                for raw in reversed(parts):
+                    text = raw.decode("utf-8", "replace").strip()
+                    if text:
+                        lines.append(text)
+                        if len(lines) >= want:
+                            break
+        lines.reverse()
+        return lines, pos == 0
+
+    def tail_records(self, limit: int = 50, tenant: str = "", event: str = "",
+                     with_payload: bool = True) -> dict:
+        """Newest-first-selected evidence, with every signature re-verified.
+
+        Each returned record carries:
+          sig_ok   — entry_hash recomputed under the chain key matches
+          link_ok  — prev_hash matches the preceding record's entry_hash
+                     (None for the oldest row when the window doesn't reach the
+                     file start: its predecessor was never read, and claiming
+                     otherwise would be a fabricated assurance)
+          payload  — decrypted payload dict, or None when payload copies are off
+          payload_ok — sha256(decrypted bytes) == the signed payload_sha256
+
+        `payload_ok` is the property that makes the visible evidence trustworthy:
+        it ties what you are reading back to the digest that is inside the HMAC.
+        """
+        limit = max(1, min(int(limit), MAX_READ_RECORDS))
+        filtered = bool(tenant or event)
+        # One extra line gives the oldest returned record its linkage anchor.
+        window = MAX_READ_RECORDS if filtered else min(limit + 1, MAX_READ_RECORDS)
+
+        with self._locked(exclusive=False):
+            lines, reached_start = self._tail_lines(window)
+
+        parsed: list[AuditRecord] = []
+        malformed: list[dict] = []
+        for line in lines:
+            try:
+                raw = json.loads(line)
+                raw.setdefault("payload_enc", None)
+                raw.setdefault("payload_alg", "none")
+                raw.setdefault("request_id", "")
+                parsed.append(
+                    AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
+                )
+            except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                # A corrupt line is evidence too — surface it rather than skip.
+                malformed.append({"error": f"{type(exc).__name__}: {exc}",
+                                  "line": line[:200]})
+
+        rows: list[dict] = []
+        prev: AuditRecord | None = None
+        for rec in parsed:
+            sig_ok = hmac.compare_digest(
+                rec.entry_hash,
+                self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
+                                 rec.payload_sha256, rec.prev_hash, rec.request_id),
+            )
+            if prev is None:
+                link_ok: bool | None = rec.prev_hash == "GENESIS" if reached_start else None
+            else:
+                link_ok = rec.prev_hash == prev.entry_hash
+
+            payload: dict | None = None
+            payload_ok: bool | None = None
+            if with_payload and rec.payload_enc and rec.payload_alg != "none":
+                try:
+                    blob = decrypt_payload(rec.payload_enc, rec.payload_alg, self.encrypt_key)
+                    payload_ok = hashlib.sha256(blob).hexdigest() == rec.payload_sha256
+                    payload = json.loads(blob)
+                except Exception as exc:  # noqa: BLE001 — bad cipher is reported, not raised
+                    payload = {"error": f"undecryptable: {type(exc).__name__}"}
+                    payload_ok = False
+
+            rows.append({
+                "seq": rec.seq,
+                "ts": rec.ts,
+                "tenant": rec.tenant,
+                "event": rec.event,
+                "request_id": rec.request_id,
+                "payload_sha256": rec.payload_sha256,
+                "entry_hash": rec.entry_hash,
+                "prev_hash": rec.prev_hash,
+                "sig_ok": sig_ok,
+                "link_ok": link_ok,
+                "payload": payload,
+                "payload_ok": payload_ok,
+            })
+            prev = rec
+
+        if tenant:
+            rows = [r for r in rows if r["tenant"] == tenant]
+        if event:
+            rows = [r for r in rows if r["event"] == event]
+        selected = rows[-limit:]
+
+        return {
+            "records": selected,
+            "count": len(selected),
+            "scanned": len(lines),
+            "malformed": malformed,
+            "window_reached_start": reached_start,
+            "truncated": (not reached_start) and len(rows) > len(selected),
+            "all_signatures_valid": all(r["sig_ok"] for r in selected),
+            "all_links_valid": all(r["link_ok"] is not False for r in selected),
+            "payload_available": bool(self.encrypt_key),
+            "payload_alg": "fernet" if self.encrypt_key else "none",
+            "chain": {"head": self.head, "length": self.seq},
+        }

@@ -17,6 +17,11 @@ dependencies = [
     "redis>=5.0",
 ]
 
+[project.scripts]
+# PORT-aware entrypoint (see src/aegis/serve.py). Used as the container CMD so
+# the same image works locally and on any platform that injects $PORT.
+aegis-gateway = "aegis.serve:main"
+
 [project.optional-dependencies]
 backends = [
     "psycopg[binary]>=3.1",

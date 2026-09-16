@@ -12,6 +12,16 @@ from aegis.rag.retriever import HybridRetriever, Retrieved
 log = logging.getLogger("aegis.rag")
 
 
+class RagPersistError(RuntimeError):
+    """The durable copy of a document could not be changed.
+
+    Raised only for deletions, never for writes: a failed write leaves the
+    in-memory index (which is what answers queries) correct, while a failed
+    delete would leave the two disagreeing in the direction that resurrects
+    deleted content on restart.
+    """
+
+
 @dataclass
 class RagAnswerContext:
     question: str
@@ -103,6 +113,63 @@ class RagService:
         except Exception:  # noqa: BLE001 — persistence never blocks ingest
             log.warning("rag persist failed, memory index kept")
             return False
+
+    def list_documents(self, tenant: str = "default") -> dict:
+        """Inventory for the tenant's document manager."""
+        store = self._for(tenant)
+        docs = store.documents()
+        return {
+            "tenant": tenant,
+            "backend": "postgres" if self._pg is not None else "memory",
+            "documents": docs,
+            "documents_total": len(docs),
+            "chunks_total": store.size,
+        }
+
+    def delete_document(self, tenant: str, source: str) -> dict:
+        """Remove a source from the durable store *and* the live index.
+
+        Order matters. The durable delete runs first and is allowed to raise; if
+        it fails the in-memory index is left untouched, so the gateway stays
+        consistent and the caller gets an honest error instead of a success that
+        the next restart would quietly undo. (The reverse order — memory first,
+        DB best-effort — is the tempting one and it is wrong.)
+        """
+        store = self._for(tenant)
+        persisted: int | None = None
+        if self._pg is not None:
+            try:
+                persisted = self._pg.delete_source(tenant, source)
+            except Exception as exc:  # noqa: BLE001 — translated to an honest 503
+                raise RagPersistError(
+                    f"could not remove '{source}' from durable storage; "
+                    f"nothing was deleted ({type(exc).__name__})"
+                ) from exc
+        removed = store.remove_source(source)
+        log.info("rag delete tenant=%s source=%s chunks=%d persisted=%s",
+                 tenant, source, removed, persisted)
+        return {
+            "source": source,
+            "chunks_removed": removed,
+            "persisted_removed": persisted,
+            "index_size": store.size,
+        }
+
+    def clear_tenant(self, tenant: str) -> dict:
+        """Drop an entire tenant's index (memory + durable)."""
+        store = self._for(tenant)
+        persisted: int | None = None
+        if self._pg is not None:
+            for doc in store.documents():
+                try:
+                    persisted = (persisted or 0) + self._pg.delete_source(tenant, doc["source"])
+                except Exception as exc:  # noqa: BLE001 — surfaced, not swallowed
+                    raise RagPersistError(
+                        f"could not clear durable storage ({type(exc).__name__})"
+                    ) from exc
+        count = store.size
+        self._stores.pop(tenant, None)
+        return {"tenant": tenant, "chunks_removed": count, "persisted_removed": persisted}
 
     def prepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
         results: list[Retrieved] = self._for(tenant).retrieve(question, top_k=self.top_k)

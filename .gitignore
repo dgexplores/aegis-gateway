@@ -13,3 +13,7 @@ build/
 audit.jsonl
 audit.jsonl.lock
 audit.jsonl.1
+
+# scratch from local verification runs
+.pytest_tmp/
+.livetest/

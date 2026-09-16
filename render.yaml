@@ -1,5 +1,27 @@
-# Render Blueprint: `render blueprint launch` or New > Blueprint with this repo.
-# Web (Dockerfile) + Redis + Postgres. Set secret env vars in dashboard after launch.
+# Render Blueprint — one-click *evaluation* deployment.
+#
+#   New > Blueprint, point it at this repo, apply. You get a running gateway
+#   with a working demo key, plus Redis and Postgres wired up.
+#
+# WHY THIS RUNS IN DEVELOPMENT MODE
+# ---------------------------------
+# AEGIS refuses to boot in production with the public demo key hash (see
+# Settings._tenant_problems). That is deliberate: a production manifest must not
+# ship a working credential, because anyone who can read this repo would then
+# hold the keys to your gateway. This blueprint is a *public evaluation* target —
+# the demo key is already public in .env.example and the README, so there is
+# nothing left to protect here, and running production would only make the
+# one-click deploy crash-loop.
+#
+# Going to production (do all three, in this order):
+#   1. python scripts/gen_tenant.py --id acme --scopes chat+rag+admin
+#      -> paste the printed line into AEGIS_TENANTS below
+#   2. set AEGIS_ENV=production and delete the AEGIS_DEMO_API_KEY entry
+#   3. redeploy — the gateway then enforces every production invariant,
+#      including refusing the demo hash, weak HMAC keys and a missing Redis URL
+#
+# `make prod-guard` (part of `make verify`) checks these invariants on this file,
+# so step 2 cannot be half-done without CI noticing.
 services:
   - type: web
     name: aegis-gateway
@@ -7,20 +29,27 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
-    disk:
-      name: audit-log
-      mountPath: /data
-      sizeGB: 1
     envVars:
+      # Not "production" — see the header. Flip it only together with a real
+      # tenant, or the container crash-loops by design.
       - key: AEGIS_ENV
-        value: production
+        value: development
       - key: AEGIS_AUDIT_HMAC_KEY
         generateValue: true
       - key: AEGIS_VAULT_HMAC_KEY
         generateValue: true
-      # Demo tenant (Bearer demo-sk-aegis-2024). Rotate via scripts/gen_tenant.py.
+      - key: AEGIS_AUDIT_ENCRYPT_KEY
+        generateValue: true
+      # Demo tenant (Bearer demo-sk-aegis-2024) — already public in the README.
+      # Replace before any real use: python scripts/gen_tenant.py
       - key: AEGIS_TENANTS
-        value: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag
+        value: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag+admin
+      # Pre-fills the /dashboard key field so the console works on first load.
+      # The route ignores it when AEGIS_ENV=production, so it is safe to keep.
+      - key: AEGIS_DEMO_API_KEY
+        value: demo-sk-aegis-2024
+      # Deterministic offline provider: no API key, no spend, no upstream outage.
+      # Swap in gmi/openai/anthropic (and set the matching key) for real inference.
       - key: AEGIS_PROVIDERS
         value: echo
       - key: AEGIS_REDIS_URL
@@ -38,6 +67,10 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+    disk:
+      name: audit-log
+      mountPath: /data
+      sizeGB: 1
 
   - type: redis
     name: aegis-redis

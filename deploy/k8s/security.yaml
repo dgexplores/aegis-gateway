@@ -8,12 +8,24 @@ stringData:
   # Fill via external-secrets / vault in prod. Never commit real values.
   AEGIS_AUDIT_HMAC_KEY: change-me-audit-hmac-key-min-32-chars
   AEGIS_VAULT_HMAC_KEY: change-me-vault-hmac-key-min-32-chars
-  AEGIS_TENANTS: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag
+
+  # REQUIRED — the gateway refuses to boot in production with no usable tenant,
+  # and it refuses the public demo key hash. Mint one first:
+  #   python scripts/gen_tenant.py --id acme --scopes chat+rag+admin
+  # then paste the "AEGIS_TENANTS entry:" line from its output here.
+  AEGIS_TENANTS: REPLACE_ME_run_scripts_gen_tenant.py
+
+  # Change to "gmi,echo" (or "openai,echo") once a provider key is set below.
+  # `echo` returns a deterministic non-answer; it keeps the platform live but
+  # it is not a model, so leaving this as-is in production means silent quality
+  # degradation rather than an error.
   AEGIS_PROVIDERS: echo
+
   # Backends: Redis is REQUIRED in production (gateway refuses to boot without
   # it — per-process fallback would multiply rate limits/budgets × replicas).
-  # Point at managed Redis via external-secrets / vault before first deploy.
-  AEGIS_REDIS_URL: ""
+  # The bundled deploy/k8s/redis.yaml provides this Service; point at managed
+  # Redis via external-secrets / vault before a real deploy.
+  AEGIS_REDIS_URL: redis://aegis-redis:6379/0
   AEGIS_DATABASE_URL: ""
 ---
 apiVersion: policy/v1

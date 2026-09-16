@@ -1,5 +1,6 @@
 """Central configuration. Fail-closed: missing critical secrets abort startup in production."""
 
+import hashlib
 import os
 from functools import lru_cache
 
@@ -7,6 +8,14 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV = "AEGIS_ENV"
+
+# sha256("") — the hash of an empty API key. It used to be the built-in demo
+# tenant hash, which meant `Authorization: Bearer ` (nothing after the space)
+# authenticated. Never accept it, and never ship it as a tenant key.
+EMPTY_KEY_HASH = hashlib.sha256(b"").hexdigest()
+# The key in .env.example / the dashboard placeholder. Fine for a local demo,
+# never acceptable in a production tenant list.
+DEMO_KEY_HASH = "e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef"
 
 
 class Settings(BaseSettings):
@@ -19,7 +28,18 @@ class Settings(BaseSettings):
     audit_hmac_key: str = "dev-audit-key-not-for-production-usage!"
     vault_hmac_key: str = "dev-vault-key-not-for-production-usage!"
 
-    tenants: str = "demo:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855:chat,rag"
+    # No built-in tenant. A gateway with no configured tenant authenticates
+    # nobody (fail-closed); `bash scripts/setup.sh` writes a real demo tenant
+    # into .env, and `python scripts/gen_tenant.py --id acme --scopes chat+rag`
+    # mints your own. A shipped default key would be a public credential.
+    tenants: str = ""
+
+    # Opt-in hardening: when False, a client-supplied `system` turn is rejected
+    # with 400. Default True because OpenAI-compatible clients legitimately send
+    # a system prompt — but note that every turn is scanned and PII-redacted
+    # either way (see Gateway._scan_conversation / _redact_conversation), so a
+    # system prompt is never a way past the gate.
+    allow_client_system_prompt: bool = True
 
     providers: str = "echo"
     openai_api_key: str = ""
@@ -53,6 +73,11 @@ class Settings(BaseSettings):
     # Per-tenant model allowlist: "acme:echo-economy+echo-premium;other:gpt-4o-mini".
     # Empty = allow all tiers. Enforced in Gateway route step, noted in reason.
     tenant_models: str = ""
+    # Demo key pre-filled into the /dashboard key field. Development only — the
+    # route substitutes it into the template solely when env != "production",
+    # because /dashboard is unauthenticated and would otherwise serve a working
+    # credential to anyone who can reach the port.
+    demo_api_key: str = ""
     # Audit evidence: encrypted payload copies + S3 archive on rotation.
     # Empty encrypt key disables payload copies (hash-only, current behavior).
     audit_encrypt_key: str = ""
@@ -75,6 +100,34 @@ class Settings(BaseSettings):
                 problems.append("AEGIS_AUDIT_HMAC_KEY must be >=32 chars")
             if len(self.vault_hmac_key) < 32:
                 problems.append("AEGIS_VAULT_HMAC_KEY must be >=32 chars")
+            problems.extend(self._tenant_problems(self.tenant_map()))
+        return problems
+
+    @staticmethod
+    def _tenant_problems(tenants: dict[str, tuple[str, set[str]]]) -> list[str]:
+        """A production gateway with no usable tenant is a misconfiguration.
+
+        Failing loudly at boot beats serving 401s to every caller, and beats the
+        old behaviour of quietly accepting an empty bearer token because the
+        built-in default tenant hash happened to be sha256("")."""
+        problems: list[str] = []
+        if not tenants:
+            problems.append(
+                "AEGIS_TENANTS defines no usable tenant "
+                "(mint one with: python scripts/gen_tenant.py --id acme --scopes chat+rag)"
+            )
+            return problems
+        for tid, (key_hash, _scopes) in tenants.items():
+            if key_hash.lower() == EMPTY_KEY_HASH:
+                problems.append(
+                    f"AEGIS_TENANTS tenant '{tid}' uses sha256('') — an empty bearer token "
+                    "would authenticate; mint a real key with scripts/gen_tenant.py"
+                )
+            elif key_hash.lower() == DEMO_KEY_HASH:
+                problems.append(
+                    f"AEGIS_TENANTS tenant '{tid}' uses the public demo key hash — "
+                    "mint a real key with scripts/gen_tenant.py before deploying"
+                )
         return problems
 
     def tenant_map(self) -> dict[str, tuple[str, set[str]]]:
