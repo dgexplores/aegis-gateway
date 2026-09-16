@@ -103,5 +103,5 @@ jobs:
           docker build --target gate -t aegis-gate:${{ github.sha }} .
           docker run --rm aegis-gate:${{ github.sha }}
       - name: Publish release notes
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with: { generate_release_notes: true }
