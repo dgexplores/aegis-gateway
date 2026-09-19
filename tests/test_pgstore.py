@@ -82,7 +82,6 @@ def test_bootstrap_idempotent_on_rebuild():
 def test_rag_configure_defaults_to_memory():
     assert RagService().configure("") == "memory"
 
-
 def test_rag_write_through_failure_never_blocks_ingest():
     class BoomStore:
         def save(self, *args, **kwargs):
@@ -92,3 +91,42 @@ def test_rag_write_through_failure_never_blocks_ingest():
     svc._pg = BoomStore()
     out = svc.ingest("Refunds within 30 days with receipt. " * 4, "t.md", tenant="acme")
     assert out["chunks_indexed"] >= 1
+
+
+def test_list_source_ids_groups_by_source_for_one_tenant():
+    rows = [
+        ("policy.md", "c1"),
+        ("policy.md", "c2"),
+        ("notes.md", "c9"),
+    ]
+    conn = FakeConn(rows)
+    grouped = PgChunkStore("postgresql://x").list_source_ids("acme", conn=conn)
+    assert grouped == {"policy.md": ["c1", "c2"], "notes.md": ["c9"]}
+    assert any("SELECT source, chunk_id" in s for s, _ in conn.cur.executed)
+    assert any(p == ("acme",) for _, p in conn.cur.executed)
+
+
+def test_load_source_rebuilds_chunks_without_leak():
+    rows = [
+        ("policy.md", 0, "c1", "Refund window is 30 days with receipt.", None),
+    ]
+    store = PgChunkStore("postgresql://x")
+    loaded = store.load_source("acme", "policy.md", conn=FakeConn(rows))
+    assert len(loaded) == 1
+    chunk, emb = loaded[0]
+    assert chunk.source == "policy.md" and chunk.id == "c1" and emb is None
+
+
+def test_refresh_failure_keeps_serving_memory():
+    class BoomStore:
+        def list_source_ids(self, *args, **kwargs):
+            raise RuntimeError("db down")
+
+    svc = RagService()
+    svc._pg = BoomStore()
+    svc.ingest("The zebra migration schedule is published annually.", "zebra.md",
+               tenant="acme")
+    out = svc.refresh(tenant="acme")
+    assert out == {"synced": 0, "dropped": 0}
+    ctx = svc.prepare("zebra migration", tenant="acme")
+    assert any(c["source"] == "zebra.md" for c in ctx.citations)
