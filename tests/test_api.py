@@ -179,6 +179,30 @@ def test_metrics_endpoint_renders_counters(client):
     assert "aegis_requests_total" in r.text
 
 
+def test_metrics_scoped_to_caller_tenant():
+    """H7: a non-admin tenant must not see other tenants' usage series."""
+    from aegis.metrics import Metrics
+
+    m = Metrics()
+    m.inc("aegis_requests_total", tenant="acme", provider="echo")
+    m.inc("aegis_requests_total", tenant="globex", provider="echo")
+    scoped = m.render(tenant="acme")
+    assert 'tenant="acme"' in scoped
+    assert 'tenant="globex"' not in scoped
+    assert "aegis_uptime_seconds" in scoped  # untagged globals still visible
+    full = m.render()
+    assert 'tenant="globex"' in full
+
+
+def test_metrics_route_hides_other_tenants(client):
+    from aegis.metrics import metrics
+
+    metrics.inc("aegis_requests_total", tenant="someone-else", provider="echo")
+    r = client.get("/metrics", headers=auth_headers())
+    assert r.status_code == 200
+    assert 'tenant="someone-else"' not in r.text
+
+
 def test_chat_reports_masked_pii_types(client):
     r = client.post("/v1/chat",
                     json={"messages": [{"role": "user",

@@ -414,12 +414,14 @@ async def readyz() -> dict:
     """Readiness: boot chain intact + at least one provider (echo counts).
 
     No auth so K8s probes stay simple. Returns 503 when not ready so the
-    pod is removed from service without failing liveness.
+    pod is removed from service without failing liveness. Uses the O(1)
+    tail probe, not a full chain verify — probe cost stays flat as the
+    audit log grows (M13).
     """
     gateway: Gateway | None = STATE.get("gateway")
     if gateway is None:
         raise HTTPException(status_code=503, detail="starting")
-    ok, msg = gateway.audit.verify()
+    ok, msg = gateway.audit.probe()
     if not ok or not gateway.registry:
         raise HTTPException(status_code=503, detail=msg or "no providers")
     return {"status": "ready", "audit": msg}
@@ -427,12 +429,16 @@ async def readyz() -> dict:
 
 @app.get("/metrics")
 async def prometheus_metrics(tenant: Tenant = Depends(get_tenant)):
-    # Authenticated: series carry per-tenant labels (usage by tenant id),
-    # which must not be world-readable. Scrape with a bearer token
-    # (Prometheus `authorization: credentials:`) holding any valid tenant.
+    # Authenticated, and tenant-scoped: `admin` callers see every series
+    # (global dashboards keep working with an admin scrape token holding
+    # `authorization: credentials:`); any other tenant sees only its own
+    # `tenant="<id>"` series plus untagged globals. Without scoping, any
+    # valid tenant token could read every tenant's usage — cross-tenant
+    # disclosure through an observability side channel.
     from fastapi import Response
 
-    return Response(content=metrics.render(), media_type="text/plain; version=0.0.4")
+    body = metrics.render() if "admin" in tenant.scopes else metrics.render(tenant=tenant.id)
+    return Response(content=body, media_type="text/plain; version=0.0.4")
 
 
 @app.get("/admin/audit")

@@ -92,9 +92,14 @@ class RagService:
     def ingest(self, text: str, source: str, tenant: str = "default") -> dict:
         store = self._for(tenant)
         chunks = chunk_document(text, source)
+        # Replace semantics (M10): chunk IDs hash the body, so re-ingesting an
+        # edited document mints new IDs and the previous generation would
+        # linger — still retrievable, resurrectable on restart. Drop the old
+        # generation first; the durable copy is pruned best-effort below.
+        store.remove_source(source)
         added = store.index(chunks)
         embs = {c.id: store._embs[c.id] for c in chunks if c.id in store._embs}
-        self._persist_best_effort(tenant, chunks, embs or None)
+        self._persist_best_effort(tenant, source, chunks, embs or None)
         return {
             "source": source,
             "chunks_created": len(chunks),
@@ -102,13 +107,14 @@ class RagService:
             "index_size": store.size,
         }
 
-    def _persist_best_effort(self, tenant: str, chunks: list,  # type: ignore[no-untyped-def]
+    def _persist_best_effort(self, tenant: str, source: str, chunks: list,  # type: ignore[no-untyped-def]
                              embeddings: dict | None = None) -> bool:
         """Write-through to Postgres; False when absent/unreachable (memory kept)."""
         if self._pg is None:
             return False
         try:
             self._pg.save(tenant, chunks, embeddings=embeddings)
+            self._pg.prune_source(tenant, source, {c.id for c in chunks})
             return True
         except Exception:  # noqa: BLE001 — persistence never blocks ingest
             log.warning("rag persist failed, memory index kept")

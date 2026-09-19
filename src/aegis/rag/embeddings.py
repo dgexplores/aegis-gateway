@@ -72,6 +72,20 @@ class GMIEmbedProvider:
         items = sorted(resp.json()["data"], key=lambda d: d["index"])
         return [l2norm(d["embedding"]) for d in items]
 
+    async def aembed(self, texts: list[str]) -> list[list[float]]:
+        """Async variant: sync httpx.post would block the event loop (M6)."""
+        import httpx
+
+        if not self.available:
+            raise RuntimeError("GMI_API_KEY not set")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(self.api_url,
+                                     json={"model": self.model, "input": texts},
+                                     headers={"Authorization": f"Bearer {self.api_key}"})
+            resp.raise_for_status()
+            items = sorted(resp.json()["data"], key=lambda d: d["index"])
+            return [l2norm(d["embedding"]) for d in items]
+
 
 class OpenAIEmbedProvider:
     name = "openai"
@@ -96,6 +110,20 @@ class OpenAIEmbedProvider:
         resp.raise_for_status()
         items = sorted(resp.json()["data"], key=lambda d: d["index"])
         return [l2norm(d["embedding"]) for d in items]
+
+    async def aembed(self, texts: list[str]) -> list[list[float]]:
+        """Async variant: sync httpx.post would block the event loop (M6)."""
+        import httpx
+
+        if not self.available:
+            raise RuntimeError("OPENAI_API_KEY not set")
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post("https://api.openai.com/v1/embeddings",
+                                     json={"model": self.model, "input": texts},
+                                     headers={"Authorization": f"Bearer {self.api_key}"})
+            resp.raise_for_status()
+            items = sorted(resp.json()["data"], key=lambda d: d["index"])
+            return [l2norm(d["embedding"]) for d in items]
 
 
 def get_embed_provider(name: str = "", model: str = ""):

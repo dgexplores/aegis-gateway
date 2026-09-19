@@ -50,3 +50,25 @@ def test_audit_rotation_keeps_verify_green(tmp_path):
     assert (tmp_path / "audit.jsonl.1").exists()
     ok, _ = chain.verify()
     assert ok is True
+
+
+def test_probe_ok_on_long_chain_and_catches_tail_tamper(tmp_path):
+    """M13: probe is O(1) and green on long chains; tampered tail -> not ready."""
+    chain = AuditChain("test-audit-key-32-chars-minimum!!",
+                       path=str(tmp_path / "audit.jsonl"))
+    for i in range(200):
+        chain.append("t", "ev", {"i": i})
+    ok, msg = chain.probe()
+    assert ok is True
+    assert "length=200" in msg
+    # tamper with the last line only
+    lines = (tmp_path / "audit.jsonl").read_text().splitlines()
+    import json as _json
+
+    rec = _json.loads(lines[-1])
+    rec["event"] = "forged"
+    lines[-1] = _json.dumps(rec)
+    (tmp_path / "audit.jsonl").write_text("\n".join(lines) + "\n")
+    ok, msg = chain.probe()
+    assert ok is False
+    assert "seq=200" in msg
