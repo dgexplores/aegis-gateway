@@ -4,7 +4,10 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`217 tests` · `red-team 12/12 blocked` · `eval gate 12/12` · `retrieval recall 100%` · `p95 0.6ms`
+`228 tests` · `red-team 12/12 blocked` · `eval gate 12/12` · `retrieval recall 100%` · `p95 0.6ms`
+
+> **Where the project stands:** see [`STATUS.md`](STATUS.md) for what has been done,
+> what is verified, what is still open, and how to deploy.
 
 ---
 
@@ -358,7 +361,7 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 217 tests
+make test       # 228 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -372,7 +375,7 @@ RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
 RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
 PII-EVAL   all must-recall masked (EMAIL/SSN/CARD/IP/PHONE + AADHAAR/PAN/PASSPORT/UPI)
-PYTEST     217 passed
+PYTEST     228 passed
 ```
 
 `make smoke` additionally probes `/admin/status`, which needs the `admin` scope.
