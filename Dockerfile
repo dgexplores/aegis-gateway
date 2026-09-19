@@ -32,6 +32,8 @@ RUN pip install --no-cache-dir --prefix=/gatedeps ".[dev]"
 COPY tests ./tests
 COPY scripts ./scripts
 COPY deploy ./deploy
+# Repo-root deploy artifacts the suite asserts on (prod-guard, env-shape).
+COPY docker-compose.yml Dockerfile render.yaml .env.example ./
 CMD ["sh", "-c", "\
 pytest -q \
 && python scripts/redteam.py --corpus scripts/attacks.yaml \
