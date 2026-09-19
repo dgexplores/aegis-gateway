@@ -10,7 +10,7 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 228
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 233
 tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
 Kubernetes, Render) all boot. What remains is not correctness work: it is
 **eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
@@ -82,7 +82,7 @@ EVAL GATE   12/12 passed
 RAG EVAL    recall@4=100%  MRR=1.0  no drift vs baseline
 PII-EVAL    all must-recall cases masked
 PROD-GUARD  PASSED (10 checks)
-PYTEST      228 passed
+PYTEST      233 passed
 VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green
 ```
 
@@ -161,7 +161,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 228 tests + red-team + evals + rag + pii + prod-guard
+make verify      # lint + types + 233 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```

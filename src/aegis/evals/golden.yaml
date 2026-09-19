@@ -142,7 +142,7 @@ cases:
     requires_citation: true
     expect_source: budget-codes.md
   - id: qa-payroll
-    question: "When does payroll run each month?"
+    question: "When does monthly payroll run?"
     must_contain: ["last working day"]
     requires_citation: true
     expect_source: payroll-schedule.md
