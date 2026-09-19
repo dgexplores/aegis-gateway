@@ -3,279 +3,355 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>AEGIS — capability console</title>
-<meta name="description" content="AEGIS Gateway console: run a real conversation, see the injection scan, the PII vault and the tamper-evident audit chain that every request passes through."/>
+<title>AEGIS — Secure AI Gateway</title>
+<meta name="description" content="AEGIS Gateway: Injection defense, PII vault, hash-chained audit, hybrid RAG, eval-gated CI. One secure door for every AI call."/>
 <meta name="theme-color" content="#0E7C6B"/>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230E7C6B'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
-<!-- Self-contained: no CDN, no web fonts. Works on a locked-down network. -->
+<!-- Self-contained: no CDN fonts, GSAP bundled locally via static/dashboard-gsap.js -->
 <link rel="stylesheet" href="/static/dashboard.css"/>
 </head>
 <body>
 <a href="#main" class="sr-only">Skip to main content</a>
 
-<header class="top">
-  <div class="top-inner">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true">Æ</div>
-      <div>
-        <div class="brand-name">AEGIS</div>
-        <div class="brand-sub">Secure AI gateway · capability console</div>
-      </div>
+<!-- Navigation: Floating glass pill -->
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <div class="nav-brand" aria-label="AEGIS home">
+      <span class="nav-mark" aria-hidden="true">Æ</span>
+      <span class="nav-name">AEGIS</span>
     </div>
-    <span id="healthPill" class="pill" role="status"><span class="dot"></span>checking…</span>
-    <span id="chainPill" class="pill" title="Tamper-evident audit chain">chain —</span>
-    <button id="themeBtn" class="btn sm" type="button" aria-label="Switch colour theme">Theme</button>
-    <a class="btn sm" href="/docs">API docs</a>
+    <div class="nav-actions">
+      <span id="healthPill" class="pill" role="status" aria-live="polite"><span class="dot"></span>checking…</span>
+      <span id="chainPill" class="pill" title="Tamper-evident audit chain">chain —</span>
+      <button id="themeBtn" class="btn sm" type="button" aria-label="Switch colour theme">Theme</button>
+      <a class="btn sm" href="/docs" target="_blank" rel="noopener">API docs</a>
+    </div>
   </div>
-</header>
+</nav>
 
-<main id="main" class="wrap">
+<main id="main" class="overflow-x-hidden w-full max-w-full">
 
-  <!-- key: progressive disclosure, shown only when it matters -->
-  <section class="card" id="keyCard">
-    <div class="card-body">
-      <div class="row">
-        <span id="keyPill" class="pill accent"><span class="dot"></span>Demo key ready</span>
-        <span class="small muted">The key lives in this page only. Nothing is written to storage.</span>
-        <span class="spacer"></span>
-        <button id="keyToggle" class="btn sm ghost" type="button">Change key</button>
-      </div>
-      <div id="keyEditor" class="row mt-10" hidden>
-        <label class="sr-only" for="apiKey">API key</label>
-        <input id="apiKey" type="password" autocomplete="off" class="mono flex-1"
-               value="__AEGIS_DEMO_SLOT__" placeholder="paste your key"/>
-        <button id="keyReveal" class="btn sm" type="button">Show</button>
-        <button id="keySave" class="btn sm primary" type="button">Use key</button>
-        <span id="keyMsg" class="small muted" role="status"></span>
+<!-- HERO: Editorial Split — wide left copy, right visual -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <h1 id="hero-title" class="hero-title">
+        One secure door for
+        <span class="inline-img hero-img-gateway"></span>
+        every AI call
+      </h1>
+      <p class="hero-sub">
+        Injection defense · PII vault · Hash-chained audit · Hybrid RAG · Eval-gated CI
+      </p>
+      <div class="hero-ctas">
+        <button class="btn primary lg" id="hero-deploy">Deploy AEGIS</button>
+        <button class="btn ghost lg" id="hero-console">Open Console</button>
       </div>
     </div>
-  </section>
-
-  <nav class="tabs mt-14" role="tablist" aria-label="Sections">
-    <button class="tab" role="tab" data-view="console" aria-selected="true">Console</button>
-    <button class="tab" role="tab" data-view="knowledge" aria-selected="false">Knowledge</button>
-    <button class="tab" role="tab" data-view="evidence" aria-selected="false">Evidence</button>
-    <button class="tab" role="tab" data-view="ops" aria-selected="false">Ops</button>
-    <button class="tab" role="tab" data-view="tour" aria-selected="false">Capability tour</button>
-  </nav>
-
-  <!-- ==================== 1 · CONSOLE ==================== -->
-  <section class="view" id="view-console" role="tabpanel">
-    <h1 class="sr-only">Console</h1>
-
-    <div class="card">
-      <div class="card-head">
-        <div class="grow">
-          <h2>Conversation</h2>
-          <p class="small muted">Multi-turn, exactly as an app would drive it. Every turn passes the
-            full pipeline, and every answer carries the evidence for that turn.</p>
-        </div>
-        <button id="resetThread" class="btn sm" type="button">Reset</button>
-      </div>
-      <div class="card-body">
-        <div id="thread" class="thread" aria-live="polite">
-          <p class="small muted" id="threadEmpty">
-            Send something to begin. Use a quick action below to watch a specific capability fire.
-          </p>
+    <div class="hero-visual" aria-hidden="true">
+      <div class="visual-card hero-visual-secure">
+        <div class="visual-overlay">
+          <span class="visual-tag">Live pipeline trace</span>
+          <span class="visual-metric">228 tests passing</span>
         </div>
       </div>
     </div>
+  </div>
+</section>
 
-    <div class="card">
-      <div class="card-head"><div class="grow"><h2>Compose</h2></div>
-        <label class="chk"><input id="streamToggle" type="checkbox"/> stream tokens</label>
-      </div>
-      <div class="card-body composer">
-        <label class="field" for="chatInput">Message</label>
-        <textarea id="chatInput" placeholder="Ask anything — or paste something you would not trust an AI with.">Hello — what can you do?</textarea>
-        <div class="quick" id="quickActions">
-          <button class="btn sm primary" id="sendBtn" type="button">Send</button>
-          <button class="btn sm" data-demo="attack" type="button">Block an attack</button>
-          <button class="btn sm" data-demo="soft" type="button">Trigger a soft refusal</button>
-          <button class="btn sm" data-demo="pii" type="button">Mask private data</button>
-          <button class="btn sm" data-demo="memory" type="button">Two-turn memory</button>
+<!-- INTEREST: Capability Bento — gapless dense grid -->
+<section class="capabilities" aria-labelledby="cap-title">
+  <div class="section-inner">
+    <header class="section-head">
+      <h2 id="cap-title" class="section-title">Capabilities</h2>
+      <p class="section-sub">Five production-grade primitives behind one endpoint</p>
+    </header>
+    <div class="bento-grid" role="list">
+      <article class="capability-card" role="listitem" data-cap="injection">
+        <div class="card-visual cap-img-injection"></div>
+        <div class="card-content">
+          <h3>Injection Defense</h3>
+          <p>Three-band scanner catches instruction overrides, encoded payloads, role-tag smuggling, and exfiltration attempts before the model sees them.</        </div>
+      </article>
+      <article class="capability-card" role="listitem" data-cap="pii">
+        <div class="card-visual cap-img-pii"></div>
+        <div class="card-content">
+          <h3>PII Vault</h3>
+          <p>Reversible pseudonymization for emails, cards, Aadhaar, PAN, passport, UPI. Provider never sees raw values; caller gets them restored.</p>
         </div>
-        <p class="tiny muted" id="composerHint">Enter sends · Shift+Enter adds a line.
-          Quick actions append to the thread so you can see how a real conversation behaves.</p>
-      </div>
+      </article>
+      <article class="capability-card" role="listitem" data-cap="audit">
+        <div class="card-visual cap-img-audit"></div>
+        <div class="card-content">
+          <h3>Tamper-Evident Audit</h3>
+          <p>HMAC-signed hash chain. Every record re-verified on read: signature, linkage, payload digest. Rotation carries head forward.</p>
+        </div>
+      </article>
+      <article class="capability-card" role="listitem" data-cap="rag">
+        <div class="card-visual cap-img-rag"></div>
+        <div class="card-content">
+          <h3>Hybrid RAG</h3>
+          <p>BM25 + hashed vectors with RRF fusion. Per-tenant isolation. Postgres source-of-truth with embeddings column. Eval-gated CI.</p>
+        </div>
+      </article>
+      <article class="capability-card" role="listitem" data-cap="budget">
+        <div class="card-visual cap-img-budget"></div>
+        <div class="card-content">
+          <h3>Budgets & Breakers</h3>
+          <p>Per-tenant rate limits, daily token budgets, circuit breakers, failover to echo. Never 500 if fallback exists.</p>
+        </div>
+      </article>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- ==================== 2 · KNOWLEDGE ==================== -->
-  <section class="view" id="view-knowledge" role="tabpanel" hidden>
-    <h1 class="sr-only">Knowledge</h1>
-
-    <div class="card">
-      <div class="card-head">
-        <div class="grow">
-          <h2>Documents this tenant can answer from</h2>
-          <p class="small muted">Tenant-isolated: another tenant's documents are unreachable from here.</p>
-        </div>
-        <span id="ragBackendPill" class="pill">backend —</span>
-        <button id="docsRefresh" class="btn sm" type="button">Refresh</button>
-      </div>
-      <div class="card-body">
-        <div class="table-scroll">
-          <table>
-            <thead><tr>
-              <th>Source</th><th>Chunks</th><th>Tokens</th><th>Vectors</th><th>Preview</th><th></th>
-            </tr></thead>
-            <tbody id="docsBody"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody>
-          </table>
-        </div>
-        <p class="tiny muted mt-8" id="docsSummary"></p>
-      </div>
+<!-- Infinite Marquee: Trusted runtime signals -->
+<section class="marquee" aria-hidden="true">
+  <div class="marquee-inner">
+    <div class="marquee-track">
+      <span class="marquee-item">Injection blocked: 12/12</span>
+      <span class="marquee-item">Eval gate: 64/64 passed</span>
+      <span class="marquee-item">Retrieval recall: 100%</span>
+      <span class="marquee-item">PII masked: 207/207</span>
+      <span class="marquee-item">Benign FP: 0/34</span>
+      <span class="marquee-item">P95 latency: 0.6ms</span>
+      <span class="marquee-item">Injection blocked: 12/12</span>
+      <span class="marquee-item">Eval gate: 64/64 passed</span>
+      <span class="marquee-item">Retrieval recall: 100%</span>
+      <span class="marquee-item">PII masked: 207/207</span>
+      <span class="marquee-item">Benign FP: 0/34</span>
+      <span class="marquee-item">P95 latency: 0.6ms</span>
     </div>
+  </div>
+</section>
 
-    <div class="card">
-      <div class="card-head"><div class="grow"><h2>Add a document</h2></div></div>
-      <div class="card-body">
-        <div class="row mt-10">
-          <button class="btn sm" data-seed="company" type="button">Load sample company</button>
-          <button class="btn sm danger" data-seed="poisoned" type="button">Ingest a poisoned policy</button>
-          <button class="btn sm" data-seed="pii" type="button">Ingest a doc containing PII</button>
-          <span class="tiny muted">Each one plants a real case you can then ask about.</span>
-        </div>
-        <div class="grid-2">
-          <div>
-            <label class="field" for="ragSource">Source name</label>
-            <input id="ragSource" type="text" value="holiday-policy.md"/>
-            <label class="field mt-10" for="ragText">Document text</label>
-            <textarea id="ragText" rows="7">Full-time staff receive 20 vacation days each year. Unused days roll over once. Requests are booked in the HR portal.</textarea>
-            <button id="ingestBtn" class="btn primary mt-10" type="button">Save document</button>
-            <p class="tiny muted" id="ingestMsg" role="status"></p>
+<!-- DESIRE: Console + Evidence + Knowledge — with GSAP scroll animations -->
+<section class="console-section" aria-labelledby="console-title">
+  <div class="section-inner">
+    <header class="section-head">
+      <h2 id="console-title" class="section-title">Console</h2>
+      <p class="section-sub">Multi-turn conversation with per-turn evidence trace</p>
+    </header>
+    <div class="console-grid">
+      <div class="console-main">
+        <div class="card console-thread" id="console-thread" role="log" aria-live="polite" aria-label="Conversation">
+          <div class="card-head">
+            <div class="grow">
+              <h3>Conversation</h3>
+              <p class="small muted">Every turn passes the full pipeline. Every answer carries its evidence.</p>
+            </div>
+            <button id="resetThread" class="btn sm" type="button">Reset</button>
           </div>
-          <div>
-            <label class="field" for="ragQ">Ask a question against these documents</label>
-            <input id="ragQ" type="text" value="How many vacation days do we get?"/>
-            <button id="ragAskBtn" class="btn primary mt-10" type="button">Ask</button>
-            <div id="ragAnswer" class="payload min-h-64" role="status">Answer with citations appears here.</div>
-            <div id="ragMeta" class="small muted"></div>
-            <div id="ragEvidence"></div>
+          <div class="card-body">
+            <div id="thread" class="thread">
+              <p class="small muted" id="threadEmpty">Send something to begin. Quick actions below fire specific capabilities.</p>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ==================== 3 · EVIDENCE ==================== -->
-  <section class="view" id="view-evidence" role="tabpanel" hidden>
-    <h1 class="sr-only">Evidence</h1>
-
-    <div class="card">
-      <div class="card-head">
-        <div class="grow">
-          <h2>Audit chain</h2>
-          <p class="small muted">Every record is re-verified on read: its HMAC is recomputed, its link to the
-            previous record is checked, and its payload is tied back to the signed digest.</p>
+        <div class="card composer-card">
+          <div class="card-head">
+            <div class="grow"><h3>Compose</h3></div>
+            <label class="chk"><input id="streamToggle" type="checkbox"/> stream tokens</label>
+          </div>
+          <div class="card-body composer">
+            <label class="field" for="chatInput">Message</label>
+            <textarea id="chatInput" placeholder="Ask anything — or paste something you would not trust an AI with.">Hello — what can you do?</textarea>
+            <div class="quick" id="quickActions">
+              <button class="btn sm primary" id="sendBtn" type="button">Send</button>
+              <button class="btn sm" data-demo="attack" type="button">Block an attack</button>
+              <button class="btn sm" data-demo="soft" type="button">Soft refusal</button>
+              <button class="btn sm" data-demo="pii" type="button">Mask PII</button>
+              <button class="btn sm" data-demo="memory" type="button">Two-turn memory</button>
+            </div>
+            <p class="tiny muted" id="composerHint">Enter sends · Shift+Enter adds line. Quick actions append to thread.</p>
+          </div>
         </div>
-        <label class="chk"><input id="auditAuto" type="checkbox" checked/> auto-refresh</label>
-        <button id="auditRefresh" class="btn sm" type="button">Refresh</button>
-        <button id="auditExport" class="btn sm" type="button">Export NDJSON</button>
       </div>
-      <div class="card-body">
-        <div class="row mt-10">
-          <label class="small muted" for="auditLimit">Rows</label>
-          <select id="auditLimit" class="w-auto">
-            <option>10</option><option selected>25</option><option>50</option>
-            <option>100</option><option>250</option><option>500</option>
-          </select>
-          <label class="small muted" for="auditEvent">Event</label>
-          <select id="auditEvent" class="w-auto"><option value="">all</option></select>
-          <label class="small muted" for="auditTenant">Tenant</label>
-          <input id="auditTenant" type="text" placeholder="all (needs admin)" class="w-170"/>
-          <span class="spacer"></span>
-          <span id="auditVerdict" class="pill">—</span>
+      <aside class="console-sidebar">
+        <div class="card evidence-sidebar" id="evidenceSidebar" aria-label="Latest evidence">
+          <div class="card-head">
+            <h3>Latest Evidence</h3>
+            <span id="evidencePill" class="pill">—</span>
+          </div>
+          <div class="card-body" id="evidenceBody">
+            <p class="small muted">Send a message to see per-turn evidence here.</p>
+          </div>
         </div>
-
-        <div class="grid-4" id="auditTiles"></div>
-
-        <div class="table-scroll mt-12">
-          <table>
-            <thead><tr>
-              <th>Seq</th><th>When</th><th>Event</th><th>Tenant</th><th>Request id</th>
-              <th>Signature</th><th>Link</th><th>Payload</th><th></th>
-            </tr></thead>
-            <tbody id="auditBody"><tr><td colspan="9" class="muted small">Loading…</td></tr></tbody>
-          </table>
+        <div class="card key-card" id="keyCard">
+          <div class="card-head"><h3>API Key</h3></div>
+          <div class="card-body">
+            <div class="row">
+              <span id="keyPill" class="pill accent"><span class="dot"></span>Demo key ready</span>
+              <span class="spacer"></span>
+              <button id="keyToggle" class="btn sm ghost" type="button">Change</button>
+            </div>
+            <div id="keyEditor" class="row mt-10" hidden>
+              <input id="apiKey" type="password" autocomplete="off" class="mono flex-1" value="__AEGIS_DEMO_SLOT__" placeholder="paste your key"/>
+              <button id="keyReveal" class="btn sm" type="button">Show</button>
+              <button id="keySave" class="btn sm primary" type="button">Use key</button>
+            </div>
+          </div>
         </div>
-        <p class="tiny muted mt-8" id="auditMsg"></p>
-
-        <div id="auditDetail"></div>
-      </div>
+      </aside>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- ==================== 4 · OPS ==================== -->
-  <section class="view" id="view-ops" role="tabpanel" hidden>
-    <h1 class="sr-only">Operations</h1>
+<!-- Knowledge & Evidence tabs (progressive disclosure) -->
+<section class="tabs-section" aria-labelledby="tabs-title">
+  <div class="section-inner">
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" data-view="knowledge" aria-selected="true">Knowledge</button>
+      <button class="tab" role="tab" data-view="evidence" aria-selected="false">Evidence</button>
+      <button class="tab" role="tab" data-view="ops" aria-selected="false">Ops</button>
+      <button class="tab" role="tab" data-view="tour" aria-selected="false">Capability Tour</button>
+    </nav>
 
-    <div class="card">
-      <div class="card-head">
-        <div class="grow"><h2>Runtime state</h2>
-          <p class="small muted">Read from <code class="mono">/admin/status</code> — requires the
-            <code class="mono">admin</code> scope.</p></div>
-        <button id="opsRefresh" class="btn sm" type="button">Refresh</button>
-      </div>
-      <div class="card-body">
-        <div class="grid-4" id="opsTiles"><p class="small muted">Loading…</p></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head"><div class="grow"><h2>How a request flows</h2>
-        <p class="small muted">One pipeline, shared by the HTTP routes, the eval runner and the
-          red-team harness — so the thing under test is the thing in production.</p></div></div>
-      <div class="card-body">
-        <div class="pipe">
-          <div class="pipe-step"><b>Auth</b><span>hashed key + scopes</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Rate limit</b><span>per-tenant window</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Injection scan</b><span>every turn, worst wins</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>PII vault</b><span>pseudonyms out</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Budget</b><span>preflight + actuals</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Cache</b><span>tenant-scoped</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Route</b><span>cost tier</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Failover</b><span>breakers, echo last</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Restore</b><span>PII back for the caller</span></div><span class="pipe-arrow">→</span>
-          <div class="pipe-step"><b>Audit</b><span>hash-chained record</span></div>
+    <!-- KNOWLEDGE -->
+    <section class="view" id="view-knowledge" role="tabpanel">
+      <div class="card">
+        <div class="card-head">
+          <div class="grow"><h3>Documents this tenant can answer from</h3></div>
+          <span id="ragBackendPill" class="pill">backend —</span>
+          <button id="docsRefresh" class="btn sm" type="button">Refresh</button>
         </div>
-        <p class="small muted mt-10">A hard block short-circuits at step 3: the provider is
-          never called, and the refusal is itself audited.</p>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head"><div class="grow"><h2>Prometheus metrics</h2></div>
-        <button id="metricsRefresh" class="btn sm" type="button">Refresh</button></div>
-      <div class="card-body"><pre id="promRaw" class="raw-block">—</pre></div>
-    </div>
-  </section>
-
-  <!-- ==================== 5 · TOUR ==================== -->
-  <section class="view" id="view-tour" role="tabpanel" hidden>
-    <h1 class="sr-only">Capability tour</h1>
-
-    <div class="card">
-      <div class="card-head">
-        <div class="grow">
-          <h2>Capability tour</h2>
-          <p class="small muted">Each check drives the real API and grades the observed behaviour against
-            what the gateway claims. Nothing is simulated — a failure here is a real failure.</p>
+        <div class="card-body">
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Source</th><th>Chunks</th><th>Tokens</th><th>Vectors</th><th>Preview</th><th></th></tr></thead>
+              <tbody id="docsBody"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <span id="tourSummary" class="pill">not run</span>
-        <button id="tourRunAll" class="btn sm primary" type="button">Run all</button>
       </div>
-      <div class="card-body"><div id="tourList"></div></div>
-    </div>
-  </section>
+      <div class="card">
+        <div class="card-head"><h3>Add a document</h3></div>
+        <div class="card-body">
+          <div class="row mt-10">
+            <button class="btn sm" data-seed="company" type="button">Load sample company</button>
+            <button class="btn sm danger" data-seed="poisoned" type="button">Ingest poisoned policy</button>
+            <button class="btn sm" data-seed="pii" type="button">Ingest doc with PII</button>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label class="field" for="ragSource">Source name</label>
+              <input id="ragSource" type="text" value="holiday-policy.md"/>
+              <label class="field mt-10" for="ragText">Document text</label>
+              <textarea id="ragText" rows="7">Full-time staff receive 20 vacation days each year. Unused days roll over once. Requests are booked in the HR portal.</textarea>
+              <button id="ingestBtn" class="btn primary mt-10" type="button">Save document</button>
+              <p class="tiny muted" id="ingestMsg" role="status"></p>
+            </div>
+            <div>
+              <label class="field" for="ragQ">Ask a question against these documents</label>
+              <input id="ragQ" type="text" value="How many vacation days do we get?"/>
+              <button id="ragAskBtn" class="btn primary mt-10" type="button">Ask</button>
+              <div id="ragAnswer" class="payload min-h-64" role="status">Answer with citations appears here.</div>
+              <div id="ragMeta" class="small muted"></div>
+              <div id="ragEvidence"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <p class="tiny muted footnote">
-    Injection scan · HMAC PII vault · hash-chained audit · hybrid RAG · budgets, breakers and eval gates —
-    all behind one door.
-  </p>
+    <!-- EVIDENCE -->
+    <section class="view" id="view-evidence" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow"><h3>Audit Chain</h3></div>
+          <label class="chk"><input id="auditAuto" type="checkbox" checked/> auto-refresh</label>
+          <button id="auditRefresh" class="btn sm" type="button">Refresh</button>
+          <button id="auditExport" class="btn sm" type="button">Export NDJSON</button>
+        </div>
+        <div class="card-body">
+          <div class="row mt-10">
+            <label class="small muted" for="auditLimit">Rows</label>
+            <select id="auditLimit" class="w-auto"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>250</option><option>500</option></select>
+            <label class="small muted" for="auditEvent">Event</label>
+            <select id="auditEvent" class="w-auto"><option value="">all</option></select>
+            <label class="small muted" for="auditTenant">Tenant</label>
+            <input id="auditTenant" type="text" placeholder="all (needs admin)" class="w-170"/>
+            <span class="spacer"></span>
+            <span id="auditVerdict" class="pill">—</span>
+          </div>
+          <div class="grid-4" id="auditTiles"></div>
+          <div class="table-scroll mt-12">
+            <table>
+              <thead><tr><th>Seq</th><th>When</th><th>Event</th><th>Tenant</th><th>Request id</th><th>Signature</th><th>Link</th><th>Payload</th><th></th></tr></thead>
+              <tbody id="auditBody"><tr><td colspan="9" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div id="auditDetail"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OPS -->
+    <section class="view" id="view-ops" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head"><h3>Runtime state</h3></div>
+        <div class="card-body">
+          <div class="grid-4" id="opsTiles"><p class="small muted">Loading…</p></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>How a request flows</h2></div>
+        <div class="card-body">
+          <div class="pipe">
+            <div class="pipe-step"><b>Auth</b><span>hashed key + scopes</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Rate limit</b><span>per-tenant window</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Injection scan</b><span>every turn, worst wins</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>PII vault</b><span>pseudonyms out</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Budget</b><span>preflight + actuals</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Cache</b><span>tenant-scoped</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Route</b><span>cost tier</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Failover</b><span>breakers, echo last</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Restore</b><span>PII back for caller</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Audit</b><span>hash-chained record</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TOUR -->
+    <section class="view" id="view-tour" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow"><h3>Capability Tour</h3></div>
+          <span id="tourSummary" class="pill">not run</span>
+          <button id="tourRunAll" class="btn sm primary" type="button">Run all</button>
+        </div>
+        <div class="card-body"><div id="tourList"></div></div>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- ACTION: Footer CTA -->
+<footer class="footer" role="contentinfo">
+  <div class="footer-inner">
+    <div class="footer-copy">
+      <h2>Ready to secure your AI calls?</h2>
+      <p>Deploy in minutes. Audit forever. One secure door for every model.</p>
+    </div>
+    <div class="footer-ctas">
+      <button class="btn primary lg" id="footer-deploy">Deploy AEGIS</button>
+      <a class="btn ghost lg" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">View on GitHub</a>
+    </div>
+    <nav class="footer-links" aria-label="Footer links">
+      <a href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">GitHub</a>
+      <a href="/docs" target="_blank" rel="noopener">API docs</a>
+      <a href="https://github.com/dgexplores/aegis-gateway/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://github.com/dgexplores/aegis-gateway/releases" target="_blank" rel="noopener">Releases</a>
+    </nav>
+    <p class="footer-note">Injection scan · HMAC PII vault · Hash-chained audit · Hybrid RAG · Budgets, breakers, eval gates — all behind one door.</p>
+  </div>
+</footer>
+
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="/static/dashboard.js" defer></script>
+<script src="/static/dashboard-gsap.js" defer></script>
 </body>
 </html>
