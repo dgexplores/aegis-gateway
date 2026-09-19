@@ -196,8 +196,13 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke boot
         run: |
+          # Single worker: the RAG index is per-process memory (Redis only
+          # shares limiter/budget state), so >1 workers would split-brain
+          # ingest vs list across processes. Multi-worker needs the shared
+          # RAG backend (same class of limitation as the M12 audit ledger).
           docker run -d --name aegis -p 8080:8080 \
             -e AEGIS_ENV=test \
+            -e AEGIS_WORKERS=1 \
             -e AEGIS_AUDIT_HMAC_KEY=test-audit-key-32-chars-minimum!! \
             -e AEGIS_VAULT_HMAC_KEY=test-vault-key-32-chars-minimum!!! \
             -e AEGIS_TENANTS=demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag+admin \
