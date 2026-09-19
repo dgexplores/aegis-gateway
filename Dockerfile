@@ -23,6 +23,7 @@ ENV PATH=/gatedeps/bin:$PATH \
     PYTHONPATH=/app/src \
     AEGIS_ENV=test \
     AEGIS_AUDIT_PATH=/tmp/audit.jsonl \
+    AEGIS_RATE_LIMIT_PER_MIN=1000 \
     AEGIS_PROVIDERS=echo
 RUN pip install --no-cache-dir --prefix=/gatedeps ".[dev]"
 COPY tests ./tests
@@ -34,6 +35,7 @@ pytest -q \
 && python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85 \
 && python scripts/rag_eval.py --baseline scripts/rag_baseline.json \
 && python scripts/pii_eval.py \
+&& python scripts/benign_eval.py \
 && python scripts/prod_guard.py"]
 
 FROM python:3.14-slim AS runtime
