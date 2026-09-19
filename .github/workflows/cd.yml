@@ -92,6 +92,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: prod
+    # Publish-release-notes writes the GitHub release; the workflow default
+    # is contents:read, which makes generate_release_notes fail with
+    # "Resource not accessible by integration".
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       - name: Prod gate — full verify on the release source
