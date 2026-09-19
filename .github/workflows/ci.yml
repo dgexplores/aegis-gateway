@@ -93,6 +93,7 @@ jobs:
       AEGIS_VAULT_HMAC_KEY: test-vault-key-32-chars-minimum!!!
       AEGIS_TENANTS: ci:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855:chat+rag
       AEGIS_PROVIDERS: echo
+      AEGIS_RATE_LIMIT_PER_MIN: 1000
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -106,6 +107,10 @@ jobs:
         run: python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
       - name: Retrieval eval + drift gate (recall/MRR vs baseline)
         run: python scripts/rag_eval.py --baseline scripts/rag_baseline.json
+      - name: PII precision/recall harness (20+ cases per type)
+        run: python scripts/pii_eval.py
+      - name: Benign-text FP harness (injection precision)
+        run: python scripts/benign_eval.py
 
   integration:
     runs-on: ubuntu-latest

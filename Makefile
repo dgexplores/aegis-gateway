@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval fuzz prod-guard verify run demo smoke evidence docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -39,7 +39,7 @@ security:
 	PYTHONPATH=src python scripts/redteam.py --corpus scripts/attacks.yaml
 
 evals:
-	PYTHONPATH=src python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
+	AEGIS_RATE_LIMIT_PER_MIN=1000 PYTHONPATH=src python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
 
 rag-eval:
 	python scripts/rag_eval.py --baseline scripts/rag_baseline.json
@@ -47,11 +47,14 @@ rag-eval:
 pii-eval:
 	python scripts/pii_eval.py
 
+benign-eval:
+	python scripts/benign_eval.py
+
 fuzz:
 	PYTHONPATH=src python scripts/fuzz_attacks.py --count 200
 
-verify: lint type test security evals rag-eval pii-eval prod-guard
-	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green"
+verify: lint type test security evals rag-eval pii-eval benign-eval prod-guard
+	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+benign+prod-guard green"
 
 prod-guard:  ## deploy artifacts shippable? (durable audit, probes, hardening, compose)
 	python scripts/prod_guard.py

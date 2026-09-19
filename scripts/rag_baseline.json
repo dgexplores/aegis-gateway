@@ -1,20 +1,22 @@
 {
   "hybrid": {
-    "cases": 6,
+    "cases": 58,
     "recall@4": 1.0,
-    "mrr": 1.0,
+    "mrr": 0.9871,
     "misses": []
   },
   "bm25": {
-    "cases": 6,
+    "cases": 58,
     "recall@4": 1.0,
-    "mrr": 1.0,
+    "mrr": 0.9799,
     "misses": []
   },
   "vector": {
-    "cases": 6,
-    "recall@4": 1.0,
-    "mrr": 1.0,
-    "misses": []
+    "cases": 58,
+    "recall@4": 0.9828,
+    "mrr": 0.9066,
+    "misses": [
+      "qa-payroll"
+    ]
   }
 }
