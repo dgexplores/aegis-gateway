@@ -19,8 +19,11 @@ RUN pip install --no-cache-dir --prefix=/install ".[backends]"
 #   docker build --target gate -t aegis-gate:local .
 #   docker run --rm aegis-gate:local
 FROM builder AS gate
+# --prefix installs land outside the interpreter's site dirs, so the gate
+# console scripts (pytest, ruff, mypy) would fail with ModuleNotFoundError
+# without this. Pinned: the base image is python:3.14-slim, so the path is stable.
 ENV PATH=/gatedeps/bin:$PATH \
-    PYTHONPATH=/app/src \
+    PYTHONPATH=/app/src:/gatedeps/lib/python3.14/site-packages \
     AEGIS_ENV=test \
     AEGIS_AUDIT_PATH=/tmp/audit.jsonl \
     AEGIS_RATE_LIMIT_PER_MIN=1000 \
