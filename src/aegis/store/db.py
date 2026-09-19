@@ -44,6 +44,10 @@ ON CONFLICT (tenant, chunk_id) DO UPDATE SET
   text = EXCLUDED.text, embedding = EXCLUDED.embedding, updated_at = now()"""
 LOAD_SQL = "SELECT tenant, source, seq, chunk_id, text FROM rag_chunks"
 LOAD_EMB_SQL = "SELECT tenant, source, seq, chunk_id, text, embedding FROM rag_chunks"
+LIST_SOURCE_IDS_SQL = "SELECT source, chunk_id FROM rag_chunks WHERE tenant = %s"
+LOAD_SOURCE_SQL = "SELECT source, seq, chunk_id, text FROM rag_chunks WHERE tenant = %s AND source = %s"
+LOAD_SOURCE_EMB_SQL = ("SELECT source, seq, chunk_id, text, embedding FROM rag_chunks "
+                       "WHERE tenant = %s AND source = %s")
 DELETE_SOURCE_SQL = "DELETE FROM rag_chunks WHERE tenant = %s AND source = %s"
 
 
@@ -136,6 +140,55 @@ class PgChunkStore:
         finally:
             if own:
                 conn.close()
+
+    def list_source_ids(self, tenant: str, conn=None) -> dict:  # type: ignore[no-untyped-def]
+        """Map source -> chunk ids for one tenant (light sync probe)."""
+        own = conn is None
+        if own:
+            conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(LIST_SOURCE_IDS_SQL, (tenant,))
+                grouped: dict[str, list[str]] = {}
+                for source, chunk_id in cur.fetchall():
+                    grouped.setdefault(source, []).append(chunk_id)
+                return grouped
+        finally:
+            if own:
+                conn.close()
+
+    def load_source(self, tenant: str, source: str, conn=None) -> list:  # type: ignore[no-untyped-def]
+        """Full rows for one tenant source (chunk, embedding|None pairs)."""
+        own = conn is None
+        if own:
+            conn = self._connect()
+        try:
+            import json as _json
+
+            with conn.cursor() as cur:
+                try:
+                    cur.execute(LOAD_SOURCE_EMB_SQL, (tenant, source))
+                    rows = cur.fetchall()
+                    has_emb = True
+                except Exception:  # noqa: BLE001 — schema without embedding column
+                    cur.execute(LOAD_SOURCE_SQL, (tenant, source))
+                    rows = cur.fetchall()
+                    has_emb = False
+        finally:
+            if own:
+                conn.close()
+        doc_id = hashlib.sha256(source.encode()).hexdigest()[:12]
+        out = []
+        for row in rows:
+            if has_emb and len(row) == 5:
+                src, seq, chunk_id, text, emb_json = row
+                emb = _json.loads(emb_json) if emb_json else None
+            else:
+                src, seq, chunk_id, text = row[:4]
+                emb = None
+            out.append((Chunk(id=chunk_id, doc_id=doc_id, source=src, text=text,
+                              seq=seq, token_estimate=max(1, len(text) // 4)), emb))
+        return out
 
     def load(self, conn=None) -> list:  # type: ignore[no-untyped-def]
         """Returns (tenant, chunk, embedding|None) triples; 2-tuple rows for legacy callers."""

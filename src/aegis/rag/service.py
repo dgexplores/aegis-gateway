@@ -120,8 +120,47 @@ class RagService:
             log.warning("rag persist failed, memory index kept")
             return False
 
+    def refresh(self, tenant: str = "default") -> dict:
+        """Sync this instance's index from Postgres (cross-worker reads).
+
+        Compares per-source chunk-id sets (one light query); sources whose
+        sets differ — new, edited (M10 re-hash), or deleted elsewhere — are
+        reloaded fully, and locally held sources missing remotely are dropped.
+        Best-effort like all persistence reads: a DB failure keeps serving
+        memory and never fails the request path. No-op without PG attached.
+        """
+        if self._pg is None:
+            return {"synced": 0, "dropped": 0}
+        try:
+            remote = self._pg.list_source_ids(tenant)
+        except Exception:  # noqa: BLE001 — persistence never blocks reads
+            log.warning("rag refresh failed, memory index kept")
+            return {"synced": 0, "dropped": 0}
+        store = self._for(tenant)
+        local: dict[str, set[str]] = {}
+        for cid, ch in store._chunks.items():
+            local.setdefault(ch.source, set()).add(cid)
+        synced, dropped = 0, 0
+        for source in [s for s in local if s not in remote]:
+            dropped += store.remove_source(source)
+        for source, ids in remote.items():
+            if set(ids) != local.get(source, set()):
+                store.remove_source(source)
+                try:
+                    rows = self._pg.load_source(tenant, source)
+                except Exception:  # noqa: BLE001 — keep serving memory
+                    log.warning("rag refresh failed, memory index kept")
+                    continue
+                chunks = [chunk for chunk, _ in rows]
+                synced += store.index(chunks)
+                for chunk, emb in rows:
+                    if emb and chunk.id not in store._embs:
+                        store._embs[chunk.id] = emb
+        return {"synced": synced, "dropped": dropped}
+
     def list_documents(self, tenant: str = "default") -> dict:
         """Inventory for the tenant's document manager."""
+        self.refresh(tenant)
         store = self._for(tenant)
         docs = store.documents()
         return {
@@ -178,6 +217,7 @@ class RagService:
         return {"tenant": tenant, "chunks_removed": count, "persisted_removed": persisted}
 
     def prepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
+        self.refresh(tenant)
         results: list[Retrieved] = self._for(tenant).retrieve(question, top_k=self.top_k)
         context_lines = [
             f"[{r.chunk.source}#chunk{r.chunk.seq}] {r.chunk.text}" for r in results
