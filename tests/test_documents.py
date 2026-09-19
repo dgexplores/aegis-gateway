@@ -89,6 +89,44 @@ def test_reingesting_after_delete_works():
     assert r.retrieve("warranty months", top_k=1)[0].chunk.source == "w.md"
 
 
+def test_reingest_replaces_stale_chunks_m10():
+    """M10: re-ingesting an edited doc must not leave the old text retrievable."""
+    svc = RagService()
+    svc.ingest("The cafeteria serves lunch from noon.", "cafe.md", tenant="acme")
+    assert svc._for("acme").size >= 1
+    svc.ingest("The cafeteria serves dinner from six in the evening.", "cafe.md", tenant="acme")
+    hits = svc._for("acme").retrieve("cafeteria", top_k=10)
+    assert hits, "re-ingested doc must stay retrievable"
+    assert all("noon" not in h.chunk.text for h in hits), "old generation must be gone"
+    assert any("dinner" in h.chunk.text for h in hits)
+
+
+def test_reingest_prunes_durable_copy_m10():
+    """M10: the Postgres copy is pruned to the new generation best-effort."""
+
+    class _PruningPgStore:
+        def __init__(self):
+            self.rows: dict[str, str] = {}
+
+        def save(self, tenant, chunks, embeddings=None):
+            for c in chunks:
+                self.rows[c.id] = c.text
+            return len(chunks)
+
+        def prune_source(self, tenant, source, keep_ids):
+            doomed = [cid for cid, text in self.rows.items() if cid not in keep_ids]
+            for cid in doomed:
+                del self.rows[cid]
+            return len(doomed)
+
+    svc = RagService()
+    svc._pg = _PruningPgStore()
+    svc.ingest("The cafeteria serves lunch from noon.", "cafe.md", tenant="acme")
+    assert len(svc._pg.rows) >= 1
+    svc.ingest("Dinner from six.", "cafe.md", tenant="acme")
+    assert all("noon" not in text for text in svc._pg.rows.values())
+
+
 class _FailingPgStore:
     def delete_source(self, tenant, source):
         raise RuntimeError("database is down")

@@ -112,6 +112,31 @@ class PgChunkStore:
             if own:
                 conn.close()
 
+    def prune_source(self, tenant: str, source: str, keep_ids: set[str], conn=None) -> int:  # type: ignore[no-untyped-def]
+        """Delete a source's rows except `keep_ids` (M10 stale-chunk policy).
+
+        Best-effort companion to `save`'s upsert: when a re-ingested document
+        shrinks or its chunks re-hash, generation-N rows that share no id with
+        generation-N+1 would otherwise survive and resurrect on `bootstrap()`.
+        """
+        own = conn is None
+        if own:
+            conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                if keep_ids:
+                    cur.execute(
+                        "DELETE FROM rag_chunks WHERE tenant = %s AND source = %s "
+                        "AND NOT (chunk_id = ANY(%s))",
+                        (tenant, source, list(keep_ids)),
+                    )
+                else:
+                    cur.execute(DELETE_SOURCE_SQL, (tenant, source))
+                return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+        finally:
+            if own:
+                conn.close()
+
     def load(self, conn=None) -> list:  # type: ignore[no-untyped-def]
         """Returns (tenant, chunk, embedding|None) triples; 2-tuple rows for legacy callers."""
         own = conn is None

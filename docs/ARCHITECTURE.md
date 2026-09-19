@@ -89,6 +89,15 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
   document keeps skewing rankings forever.
 - ADR-4 echo fallback always last: guarantees liveness (never 503 on valid
   input when fallback exists), keeps evals/red-team deterministic.
+- ADR-7 multi-pod ledger reconciliation (M12): each pod keeps its own chain
+  (no single writer to become a single point of failure). Rotation uploads
+  the sealed segment to `AEGIS_AUDIT_S3_BUCKET`. To reconcile: collect every
+  segment (S3 objects + live tails via `/admin/audit/export`), verify each
+  with `verify()`, then order segments by head linkage (segment B's first
+  `prev_hash` equals segment A's last `entry_hash`). Segments that share no
+  head link belong to different pods — that is expected, not corruption.
+  Within one pod the order is total; across pods it is partial (merge by `ts`
+  for a timeline view, never for verification).
 
 ## 6. Failure modes
 | Failure | Behavior |

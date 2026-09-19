@@ -285,6 +285,28 @@ class AuditChain:
         except AuditError as exc:
             return False, str(exc)
 
+    def probe(self) -> tuple[bool, str]:
+        """O(1) readiness check: signature-verify only the tail record.
+
+        `verify()` re-reads every line, so its cost grows with chain length —
+        a liveness probe must not do that (M13). The full chain was verified
+        at boot (`_load` in `__init__`) and every append re-checks linkage
+        under lock, so per-probe work is one tail read plus one HMAC.
+        """
+        try:
+            with self._locked(exclusive=False):
+                tail = self._read_tail()
+                if tail is None:
+                    return True, "chain empty, ready"
+                expected = self._entry_hash(tail.seq, tail.ts, tail.tenant,
+                                            tail.event, tail.payload_sha256,
+                                            tail.prev_hash, tail.request_id)
+                if not hmac.compare_digest(expected, tail.entry_hash):
+                    return False, f"audit tail corrupt at seq={tail.seq}"
+                return True, f"tail ok, head={tail.entry_hash[:12]}…, length={tail.seq}"
+        except (OSError, AuditError) as exc:
+            return False, f"audit probe failed: {exc}"
+
     # -- read side (evidence inspection) -------------------------------------
 
     def _tail_lines(self, want: int, block: int = 65536) -> tuple[list[str], bool]:
