@@ -64,3 +64,267 @@ cases:
   - id: pii-card-question
     question: "My card is 4111 1111 1111 1111, can I use it for expenses?"
     must_contain: ["expense"]
+
+  # --- M1: retrieval depth — one grounded case per knowledge-base doc ---
+  - id: qa-sick-leave
+    question: "How many sick days do employees get per year?"
+    must_contain: ["12 days"]
+    requires_citation: true
+    expect_source: sick-leave.md
+  - id: qa-parental-leave
+    question: "How long is paid parental leave for new parents?"
+    must_contain: ["sixteen weeks"]
+    requires_citation: true
+    expect_source: parental-leave.md
+  - id: qa-public-holidays
+    question: "How many public holidays does the company observe?"
+    must_contain: ["eleven"]
+    requires_citation: true
+    expect_source: public-holidays.md
+  - id: qa-remote-work
+    question: "How many days per week can employees work remotely?"
+    must_contain: ["three days"]
+    requires_citation: true
+    expect_source: remote-work.md
+  - id: qa-onboarding
+    question: "What must new hires complete in week one?"
+    must_contain: ["security training"]
+    requires_citation: true
+    expect_source: onboarding-checklist.md
+  - id: qa-performance-review
+    question: "When do performance reviews run and what scale is used?"
+    must_contain: ["five-point"]
+    requires_citation: true
+    expect_source: performance-review.md
+  - id: qa-vpn
+    question: "How do I connect to the corporate VPN?"
+    must_contain: ["WireGuard"]
+    requires_citation: true
+    expect_source: vpn-setup.md
+  - id: qa-wifi
+    question: "What is the office Wi-Fi SSID and auth method?"
+    must_contain: ["Aegis-Corp"]
+    requires_citation: true
+    expect_source: wifi-access.md
+  - id: qa-mfa
+    question: "How many MFA factors must I enroll?"
+    must_contain: ["two MFA"]
+    requires_citation: true
+    expect_source: mfa-enrollment.md
+  - id: qa-laptop
+    question: "What is the lead time for a laptop request?"
+    must_contain: ["fifteen business day"]
+    requires_citation: true
+    expect_source: laptop-request.md
+  - id: qa-software-install
+    question: "How do I install approved software?"
+    must_contain: ["company portal"]
+    requires_citation: true
+    expect_source: software-install.md
+  - id: qa-it-incident
+    question: "Where do I report IT outages and what severities exist?"
+    must_contain: ["#it-help"]
+    requires_citation: true
+    expect_source: it-incident-response.md
+  - id: qa-travel
+    question: "How far ahead must flights be booked?"
+    must_contain: ["fourteen days"]
+    requires_citation: true
+    expect_source: travel-policy.md
+  - id: qa-invoice
+    question: "By when must vendor invoices be submitted each month?"
+    must_contain: ["25th"]
+    requires_citation: true
+    expect_source: invoice-submission.md
+  - id: qa-budget-codes
+    question: "What cost center code is used for travel spend?"
+    must_contain: ["CC-4100"]
+    requires_citation: true
+    expect_source: budget-codes.md
+  - id: qa-payroll
+    question: "When does payroll run each month?"
+    must_contain: ["last working day"]
+    requires_citation: true
+    expect_source: payroll-schedule.md
+  - id: qa-phishing
+    question: "Where do I forward suspected phishing emails?"
+    must_contain: ["phishing@aegis.example"]
+    requires_citation: true
+    expect_source: phishing-report.md
+  - id: qa-badge
+    question: "What hours does my office badge grant access?"
+    must_contain: ["7am to 9pm"]
+    requires_citation: true
+    expect_source: badge-access.md
+  - id: qa-data-classification
+    question: "How is customer PII classified?"
+    must_contain: ["Confidential"]
+    requires_citation: true
+    expect_source: data-classification.md
+  - id: qa-retention
+    question: "How long are financial records retained?"
+    must_contain: ["seven years"]
+    requires_citation: true
+    expect_source: retention-schedule.md
+  - id: qa-office-hours
+    question: "What are headquarters operating hours?"
+    must_contain: ["9am to 6pm"]
+    requires_citation: true
+    expect_source: office-hours.md
+  - id: qa-parking
+    question: "Which parking zone is for staff and where are EV chargers?"
+    must_contain: ["zone B"]
+    requires_citation: true
+    expect_source: parking-policy.md
+  - id: qa-cafeteria
+    question: "When is lunch served and what is the daily subsidy cap?"
+    must_contain: ["150 rupees"]
+    requires_citation: true
+    expect_source: cafeteria-menu.md
+  - id: qa-meeting-rooms
+    question: "What is the maximum meeting room booking block?"
+    must_contain: ["four hour"]
+    requires_citation: true
+    expect_source: meeting-rooms.md
+  - id: qa-nda
+    question: "How long does the contractor NDA last?"
+    must_contain: ["two-year"]
+    requires_citation: true
+    expect_source: nda-policy.md
+  - id: qa-contract-approval
+    question: "What contract value needs legal plus finance sign-off?"
+    must_contain: ["500000"]
+    requires_citation: true
+    expect_source: contract-approval.md
+  - id: qa-compliance-training
+    question: "By when must annual POSH training be completed?"
+    must_contain: ["September 30th"]
+    requires_citation: true
+    expect_source: compliance-training.md
+  - id: qa-deploy
+    question: "Which days do production deploys run?"
+    must_contain: ["Tuesday and Thursday"]
+    requires_citation: true
+    expect_source: deploy-process.md
+  - id: qa-oncall
+    question: "When does the weekly on-call rotation start?"
+    must_contain: ["Monday 10am"]
+    requires_citation: true
+    expect_source: oncall-rotation.md
+  - id: qa-code-review
+    question: "What is the code review first-response target?"
+    must_contain: ["four business hours"]
+    requires_citation: true
+    expect_source: code-review-sla.md
+  - id: qa-environments
+    question: "How many environments exist and which mirrors prod?"
+    must_contain: ["staging mirroring prod"]
+    requires_citation: true
+    expect_source: environments-guide.md
+  - id: qa-sla
+    question: "What monthly uptime does the customer SLA promise?"
+    must_contain: ["99.9%"]
+    requires_citation: true
+    expect_source: sla-commitments.md
+  - id: qa-escalation
+    question: "When does L1 escalate to L2?"
+    must_contain: ["thirty minutes"]
+    requires_citation: true
+    expect_source: escalation-matrix.md
+  - id: qa-status-page
+    question: "What is the public status page URL?"
+    must_contain: ["status.aegis.example"]
+    requires_citation: true
+    expect_source: status-page.md
+  - id: qa-api-limits
+    question: "What is the public API hourly rate limit?"
+    must_contain: ["1000 requests"]
+    requires_citation: true
+    expect_source: api-rate-limits.md
+  - id: qa-backup
+    question: "When do production database backups run?"
+    must_contain: ["2am UTC"]
+    requires_citation: true
+    expect_source: backup-policy.md
+  - id: qa-password-policy
+    question: "What is the minimum password length?"
+    must_contain: ["fourteen characters"]
+    requires_citation: true
+    expect_source: password-policy.md
+  - id: qa-referral
+    question: "What is the referral bonus payout amount?"
+    must_contain: ["50000 rupees"]
+    requires_citation: true
+    expect_source: recruitment-referral.md
+  - id: qa-exit-process
+    question: "How much notice is needed for resignations?"
+    must_contain: ["thirty days"]
+    requires_citation: true
+    expect_source: exit-process.md
+  - id: qa-procurement
+    question: "Above what amount are three quotes needed?"
+    must_contain: ["100000 rupees"]
+    requires_citation: true
+    expect_source: procurement-threshold.md
+  - id: qa-conference
+    question: "What is the yearly conference budget per engineer?"
+    must_contain: ["75000 rupees"]
+    requires_citation: true
+    expect_source: conference-budget.md
+  - id: qa-health-insurance
+    question: "What does group health insurance cover per family?"
+    must_contain: ["500000 rupees"]
+    requires_citation: true
+    expect_source: health-insurance.md
+  - id: qa-grievance
+    question: "What is the grievance resolution target?"
+    must_contain: ["fifteen working days"]
+    requires_citation: true
+    expect_source: grievance-redressal.md
+  - id: qa-open-source
+    question: "What license is the default for releasing company code?"
+    must_contain: ["Apache-2.0"]
+    requires_citation: true
+    expect_source: open-source-policy.md
+  - id: qa-data-request
+    question: "How fast are customer data exports completed?"
+    must_contain: ["thirty days"]
+    requires_citation: true
+    expect_source: customer-data-request.md
+  - id: qa-feature-flag
+    question: "What are the feature flag rollout stages?"
+    must_contain: ["1%, 10%, 50%, 100%"]
+    requires_citation: true
+    expect_source: feature-flag-guide.md
+  - id: qa-load-testing
+    question: "What is the p99 latency SLO at planned throughput?"
+    must_contain: ["800 milliseconds"]
+    requires_citation: true
+    expect_source: load-testing.md
+  - id: qa-seo
+    question: "What is the LCP target for marketing pages on mobile?"
+    must_contain: ["2.5 seconds"]
+    requires_citation: true
+    expect_source: seo-guidelines.md
+
+  # --- fairness: Hinglish variants of new docs (retrieval must not depend on register) ---
+  - id: qa-sick-hinglish
+    question: "Saal me kitne sick leave milte hain?"
+    must_contain: ["12 days"]
+    requires_citation: true
+    expect_source: sick-leave.md
+  - id: qa-vpn-hinglish
+    question: "VPN kaise connect karun office ke liye?"
+    must_contain: ["WireGuard"]
+    requires_citation: true
+    expect_source: vpn-setup.md
+  - id: qa-payroll-hinglish
+    question: "Payroll salary kab milti hai har mahine?"
+    must_contain: ["last working day"]
+    requires_citation: true
+    expect_source: payroll-schedule.md
+  - id: qa-deploy-hinglish
+    question: "Production deploy pipeline hafte me kin days run hota hai?"
+    must_contain: ["Tuesday and Thursday"]
+    requires_citation: true
+    expect_source: deploy-process.md
