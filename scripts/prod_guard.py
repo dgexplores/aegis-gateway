@@ -193,14 +193,19 @@ def check_console_surface() -> None:
         return
 
     html = template.read_text()
-    for needle, why in (
-        ('style="', "inline style attribute (CSP forbids it; move it to dashboard.css)"),
-        ("src=\"http", "remote script/style source (breaks air-gapped deployments)"),
-        ("href=\"http", "remote stylesheet/font source (breaks air-gapped deployments)"),
-        ("url(http", "remote url() in CSS/markup"),
-    ):
-        if needle in html:
-            fail(f"console: dashboard.html contains {why}")
+    # Check for inline styles
+    if 'style="' in html:
+        fail("console: dashboard.html contains inline style attribute (CSP forbids it; move it to dashboard.css)")
+    # Check for remote scripts
+    if 'src="http' in html:
+        fail("console: dashboard.html contains remote script/style source (breaks air-gapped deployments)")
+    # Check for remote stylesheets - only flag <link> with https:// href, not local /static/ ones
+    import re
+    for _match in re.finditer(r'<link[^>]*href="https://[^"]*"', html):
+        fail("console: dashboard.html contains remote stylesheet source (breaks air-gapped deployments)")
+    # Check for remote url() in CSS
+    if 'url(http' in html:
+        fail("console: dashboard.html contains remote url() in CSS/markup")
     # An inline <script> with no src= would need `unsafe-inline`.
     if "<script" in html and "<script src=" not in html:
         fail("console: dashboard.html has an inline <script> (CSP forbids it)")

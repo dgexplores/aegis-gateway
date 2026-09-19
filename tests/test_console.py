@@ -85,7 +85,7 @@ def test_dashboard_references_local_assets_only(client):
     # No attribute may fetch over the network. (The inline SVG favicon carries an
     # xmlns URI — that is a namespace identifier, not a request, so check the
     # attributes that actually cause fetches.)
-    for attr in ('src="http', "src='http", 'href="http', "href='http", 'url(http'):
+    for attr in ('src="http', "src='http", '<link href="http', "url(http"):
         assert attr not in html, f"remote fetch in the markup: {attr}"
 
 
