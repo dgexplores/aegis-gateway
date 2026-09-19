@@ -444,3 +444,79 @@ class AuditChain:
             "payload_alg": "fernet" if self.encrypt_key else "none",
             "chain": {"head": self.head, "length": self.seq},
         }
+
+
+def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
+    """Parse one segment file, verifying every signature and link.
+
+    Same checks as AuditChain._load, but standalone so reconcile can name
+    the offending file. Raises AuditError (tamper) or OSError (unreadable).
+    """
+    p = Path(path)
+    verifier = AuditChain.__new__(AuditChain)
+    verifier._key = hmac_key.encode()
+    records: list[AuditRecord] = []
+    last: AuditRecord | None = None
+    with p.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            raw = json.loads(line)
+            raw.setdefault("payload_enc", None)
+            raw.setdefault("payload_alg", "none")
+            raw.setdefault("request_id", "")
+            rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
+            expected = verifier._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
+                                            rec.payload_sha256, rec.prev_hash,
+                                            rec.request_id)
+            if not hmac.compare_digest(expected, rec.entry_hash):
+                raise AuditError(f"{p}: chain corrupt at seq={rec.seq}")
+            if last is not None and rec.prev_hash != last.entry_hash:
+                raise AuditError(f"{p}: broken linkage at seq={rec.seq}")
+            records.append(rec)
+            last = rec
+    return records
+
+
+def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
+    """Order per-pod audit segments by head linkage (M12).
+
+    Verifies every segment, then chains them: segment B follows A when B's
+    first prev_hash equals A's last entry_hash (rotation carry-over).
+    Segments sharing no link are different pods — reported as separate
+    chains, which is expected, not corruption. Tampered/unreadable files
+    land in `errors` and never poison a chain.
+    """
+    verified: dict[str, list[AuditRecord]] = {}
+    errors: dict[str, str] = {}
+    for raw_path in paths:
+        name = str(raw_path)
+        if name in verified or name in errors:
+            continue
+        try:
+            verified[name] = load_verified_records(name, hmac_key)
+        except (AuditError, OSError, ValueError, KeyError) as exc:
+            errors[name] = str(exc)
+    firsts = {n: recs[0].prev_hash for n, recs in verified.items() if recs}
+    next_of: dict[str, str] = {}
+    for name, recs in verified.items():
+        if not recs:
+            continue
+        for other, first_prev in firsts.items():
+            if other != name and first_prev == recs[-1].entry_hash:
+                next_of[name] = other
+                break
+    starts = sorted(n for n in verified if n not in next_of.values())
+    chains: list[list[str]] = []
+    for start in starts:
+        chain, seen = [start], {start}
+        while chain[-1] in next_of and next_of[chain[-1]] not in seen:
+            chain.append(next_of[chain[-1]])
+            seen.add(chain[-1])
+        chains.append(chain)
+    return {
+        "chains": chains,
+        "records": sum(len(verified[n]) for chain in chains for n in chain),
+        "errors": errors,
+    }
