@@ -24,7 +24,7 @@ aegis-gateway = "aegis.serve:main"
 
 [project.optional-dependencies]
 backends = [
-    "psycopg[binary]>=3.1",
+    "psycopg[binary]>=3.3.6",
 ]
 dev = [
     "pytest>=9.1.1",
