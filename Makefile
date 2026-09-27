@@ -53,8 +53,11 @@ benign-eval:
 fuzz:
 	PYTHONPATH=src python scripts/fuzz_attacks.py --count 200
 
-verify: lint type test security evals rag-eval pii-eval benign-eval prod-guard
-	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+benign+prod-guard green"
+verify: lint type test security evals rag-eval pii-eval benign-eval prod-guard docs-check
+	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+benign+prod-guard+docs green"
+
+docs-check:  ## do the README's numbers and screenshots still match the repo?
+	python scripts/docs_check.py
 
 prod-guard:  ## deploy artifacts shippable? (durable audit, probes, hardening, compose)
 	python scripts/prod_guard.py

@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`233 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
+`252 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
 
 > **Where the project stands:** see [`STATUS.md`](STATUS.md) for what has been done,
 > what is verified, what is still open, and how to deploy.
@@ -26,6 +26,27 @@ Your code today:     app  →  OpenAI/GMI
 With AEGIS:          app  →  AEGIS Gateway  →  OpenAI / GMI Cloud / local model
                         ↳ all security + logging happens here
 ```
+
+### See it work
+
+These are real screenshots of the running console — no mocks, no staged data.
+
+**PII is masked before the provider sees it, and restored for you.**
+The provider received `«917a6a17eb6c7625»`. You received `priya@corp.example`.
+
+![Evidence panel: PII masked outbound, restored inbound](docs/images/pii-masked.png)
+
+**A prompt injection never reaches the model.** Score `0.85 ≥ 0.70`, hard band,
+provider never called — and the panel says so explicitly rather than asking you
+to take its word for it.
+
+![Evidence panel: injection blocked, provider never called](docs/images/attack-blocked.png)
+
+**And it proves itself on demand.** The capability tour drives the real API and
+grades what it observes against what the gateway claims. Ten checks, ten passes,
+nothing simulated:
+
+![Capability tour: 10 passed, expected vs observed against live API](docs/images/capability-tour.png)
 
 ### The trust boundary
 
@@ -269,6 +290,8 @@ Endpoints:
 
 ## The capability console (`/dashboard`)
 
+![The AEGIS console](docs/images/console.png)
+
 The backend has always supported multi-turn conversations, a reversible PII vault,
 a tamper-evident audit chain and per-tenant document management. The console is
 what makes that *visible*, because a capability nobody can see is a capability
@@ -287,6 +310,8 @@ Five views:
 - **Evidence** — the audit chain read back row by row: signature valid, chain link
   valid, payload digest match. Filter by event, click any row for the full
   record, export the window as NDJSON.
+
+  ![Audit chain: every row re-verified on read](docs/images/audit-chain.png)
 - **Ops** — chain state, cache, budget, breaker states, raw Prometheus.
 - **Capability tour** — ten checks that drive the real API and grade what they
   observe against what the gateway claims. Nothing is simulated.
@@ -361,7 +386,7 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 233 tests
+make test       # 252 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -393,7 +418,12 @@ Attack classes: instruction override, system-prompt extraction, DAN/persona hija
 
 **Stack:** Python 3.11–3.14 · FastAPI · Pydantic v2 · httpx · Redis (shared limits, optional) · Postgres (RAG source-of-truth, optional, pgvector-ready) · Docker/Kubernetes · GitHub Actions (tests on 3.11/3.12/3.14, red-team + eval + retrieval-drift gates, live Postgres roundtrip proof; no heavy ML deps to run).
 
-**Roadmap:** bandit router trained on evals → golden set to 100 from prod misses → audit S3 archive by default → MCP tool-call firewall.
+**Roadmap:** see [`ROADMAP.md`](ROADMAP.md) — three objectives with measurable
+exit criteria. The short version: make the quality gates measure quality
+instead of plumbing, collapse the per-pod audit chains into one ledger, and
+ship the evidence as a signed artifact a customer can verify offline.
+Also tracked: a bandit router trained on eval outcomes, and an MCP tool-call
+firewall.
 
 ---
 
