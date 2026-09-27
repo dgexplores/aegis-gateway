@@ -1,6 +1,6 @@
 # STATUS — where this project stands
 
-_Last updated: 2026-09-19. This is the handover document: what was done, what is
+_Last updated: 2026-09-28. This is the handover document: what was done, what is
 verified, what is still open, and how to deploy._
 
 ---
@@ -10,7 +10,7 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 233
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 252
 tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
 Kubernetes, Render) all boot. What remains is not correctness work: it is
 **eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
@@ -161,7 +161,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 233 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 252 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```
