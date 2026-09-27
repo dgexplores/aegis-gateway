@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>AEGIS — Secure AI Gateway</title>
 <meta name="description" content="AEGIS Gateway: Injection defense, PII vault, hash-chained audit, hybrid RAG, eval-gated CI. One secure door for every AI call."/>
-<meta name="theme-color" content="#0E7C6B"/>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230E7C6B'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
-<!-- Self-contained: no CDN fonts, GSAP bundled locally via static/dashboard-gsap.js -->
+<meta name="theme-color" content="#2d5da1"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232d5da1'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
+<!-- Self-contained: no CDN fonts, handwriting bundled under /static/fonts. Motion is CSS-only, so nothing depends on JS to be visible. -->
 <link rel="stylesheet" href="/static/dashboard.css"/>
 </head>
 <body>
@@ -29,7 +29,7 @@
   </div>
 </nav>
 
-<main id="main" class="overflow-x-hidden w-full max-w-full">
+<main id="main">
 
 <!-- HERO: Editorial Split — wide left copy, right visual -->
 <section class="hero" aria-labelledby="hero-title">
@@ -44,7 +44,7 @@
         Injection defense · PII vault · Hash-chained audit · Hybrid RAG · Eval-gated CI
       </p>
       <div class="hero-ctas">
-        <button class="btn primary lg" id="hero-deploy">Deploy AEGIS</button>
+        <a class="btn primary lg" id="hero-deploy" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">Deploy AEGIS</a>
         <button class="btn ghost lg" id="hero-console">Open Console</button>
       </div>
     </div>
@@ -52,7 +52,7 @@
       <div class="visual-card hero-visual-secure">
         <div class="visual-overlay">
           <span class="visual-tag">Live pipeline trace</span>
-          <span class="visual-metric">228 tests passing</span>
+          <span class="visual-metric">242 tests passing</span>
         </div>
       </div>
     </div>
@@ -71,7 +71,8 @@
         <div class="card-visual cap-img-injection"></div>
         <div class="card-content">
           <h3>Injection Defense</h3>
-          <p>Three-band scanner catches instruction overrides, encoded payloads, role-tag smuggling, and exfiltration attempts before the model sees them.</        </div>
+          <p>Three-band scanner catches instruction overrides, encoded payloads, role-tag smuggling, and exfiltration attempts before the model sees them.</p>
+        </div>
       </article>
       <article class="capability-card" role="listitem" data-cap="pii">
         <div class="card-visual cap-img-pii"></div>
@@ -185,6 +186,7 @@
               <span class="spacer"></span>
               <button id="keyToggle" class="btn sm ghost" type="button">Change</button>
             </div>
+            <p class="tiny muted mt-10" id="keyMsg" role="status"></p>
             <div id="keyEditor" class="row mt-10" hidden>
               <input id="apiKey" type="password" autocomplete="off" class="mono flex-1" value="__AEGIS_DEMO_SLOT__" placeholder="paste your key"/>
               <button id="keyReveal" class="btn sm" type="button">Show</button>
@@ -222,6 +224,7 @@
               <tbody id="docsBody"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody>
             </table>
           </div>
+          <p class="small muted mt-12" id="docsSummary" role="status"></p>
         </div>
       </div>
       <div class="card">
@@ -274,6 +277,7 @@
             <span class="spacer"></span>
             <span id="auditVerdict" class="pill">—</span>
           </div>
+          <p class="small muted mt-10" id="auditMsg" role="status"></p>
           <div class="grid-4" id="auditTiles"></div>
           <div class="table-scroll mt-12">
             <table>
@@ -289,7 +293,10 @@
     <!-- OPS -->
     <section class="view" id="view-ops" role="tabpanel" hidden>
       <div class="card">
-        <div class="card-head"><h3>Runtime state</h3></div>
+        <div class="card-head">
+          <div class="grow"><h3>Runtime state</h3></div>
+          <button id="opsRefresh" class="btn sm" type="button">Refresh</button>
+        </div>
         <div class="card-body">
           <div class="grid-4" id="opsTiles"><p class="small muted">Loading…</p></div>
         </div>
@@ -335,7 +342,7 @@
       <p>Deploy in minutes. Audit forever. One secure door for every model.</p>
     </div>
     <div class="footer-ctas">
-      <button class="btn primary lg" id="footer-deploy">Deploy AEGIS</button>
+      <a class="btn primary lg" id="footer-deploy" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">Deploy AEGIS</a>
       <a class="btn ghost lg" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">View on GitHub</a>
     </div>
     <nav class="footer-links" aria-label="Footer links">
@@ -352,6 +359,5 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="/static/dashboard.js" defer></script>
-<script src="/static/dashboard-gsap.js" defer></script>
 </body>
 </html>

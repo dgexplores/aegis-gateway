@@ -801,12 +801,6 @@ async function refreshOps() {
       : esc(friendlyError(err));
     tiles.innerHTML = `<p class="small muted">${hint}</p>`;
   }
-  try {
-    const res = await fetch('/metrics', { headers: hdr() });
-    $('#promRaw').textContent = res.ok ? (await res.text()).slice(0, 6000) : `${res.status} — metrics need a valid tenant key`;
-  } catch {
-    $('#promRaw').textContent = 'unavailable';
-  }
 }
 
 async function refreshChainPill() {
@@ -1190,8 +1184,12 @@ function init() {
     } catch (err) { toast(friendlyError(err), 5000); }
   });
 
+  $('#hero-console').addEventListener('click', () => {
+    $('.console-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('#chatInput').focus();
+  });
+
   $('#opsRefresh').addEventListener('click', refreshOps);
-  $('#metricsRefresh').addEventListener('click', refreshOps);
 
   $('#tourRunAll').addEventListener('click', runAll);
 
