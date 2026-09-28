@@ -13,25 +13,30 @@ That rule is why some numbers in this repo are deliberately small today.
 
 ## Objective 1 — Make the quality gates actually measure quality
 
-**Why.** The three eval gates currently pass because the plumbing works, not
-because the capability is good. A `precision 1.00` computed over two PII cases is
-not a measurement. A retrieval gate that cannot detect a regression is a
-placeholder. This is the single highest-value investment in the project, and it
-is **data, not code**.
+**Why.** The eval gates pass because the capability is good, but the sample sizes
+are still too small to prove it. A retrieval score over 58 queries can be
+carried by one lucky document, and 12 injection vectors cannot describe an
+attack surface. This is the single highest-value investment in the project, and
+it is **data, not code**.
 
 **How we know we are done.**
 
 | Gate | Now | Done when |
 |---|---|---|
-| PII eval | 1–2 cases per type | ≥ 20 cases per type, and the gate goes **blocking** on a precision regression |
-| Benign FP | unmeasured | ≥ 200 benign prompts; gate reports a false-positive rate and blocks above a set threshold |
-| Retrieval | tiny corpus, drift gate cannot fail | ≥ 50 documents, ≥ 200 queries; drift gate blocks on a recall@4 drop over 2 points |
-| Injection | 12 cases | ≥ 40 vectors across 3 bands, including encoded, multi-turn and role-tag smuggling |
+| PII eval | 207 cases, ≥20 per type — **done** | ≥ 20 cases per type, and the gate goes **blocking** on a precision regression |
+| Benign FP | 200 cases, 0 false positives — **done** | ≥ 200 benign prompts; gate reports a false-positive rate and blocks above a set threshold |
+| Retrieval | 52 documents, 58 grounded queries — query count missing | ≥ 50 documents, ≥ 200 queries; drift gate blocks on a recall@4 drop over 2 points |
+| Injection | 12 vectors, no bands | ≥ 40 vectors across 3 bands, including encoded, multi-turn and role-tag smuggling |
 
 The first two are the priority. **A gateway that blocks legitimate traffic gets
 switched off**, and today we cannot prove it does not.
 
-**Status.** Not started. This is next.
+**Status.** Partly landed (`412a880`, then the benign corpus). PII depth, the
+retrieval document count and benign scale are done. Next is the grounded query
+count, then banded injection vectors.
+
+One caveat carried forward: these corpora are hand-authored, not sampled from
+production traffic, and every number is measured against the `echo` stub.
 
 ---
 
