@@ -94,21 +94,27 @@ pass (a 13th admin probe is skipped without an admin-scoped key) ·
 
 ## 4. What is left
 
-### 4.1 The one that matters most — eval corpus depth
+### 4.1 Eval corpus depth — partly landed, still the top item
 
-**M1 / M2 / M3.** Three of the CI gates are currently plumbing assertions rather
-than quality measurements:
+**M1 / M2 / M3.** The three CI gates were plumbing assertions. The first pass at
+this landed in `412a880`. Measured today by running the gates themselves:
 
-- the retrieval drift gate passes because the corpus is tiny — it cannot detect a
-  retrieval regression;
-- the PII eval has 1–2 cases per type, so "precision 1.00" is not meaningful;
-- there is no benign-text precision harness, so injection false positives are
-  unmeasured.
+| Gate | Was | Now | Roadmap target |
+|---|---|---|---|
+| PII | 1–2 cases per type | **207 cases, ≥20 per type, 9 types**, P=1.00 R=1.00 on every type | ≥20 per type — **met** |
+| Retrieval | tiny corpus, gate could not fail | **52 documents, 58 grounded queries**, recall@4 100% on all three arms, drift baseline in place | ≥50 documents — **met**; ≥200 queries — **not met** |
+| Benign FP | no harness | **200 cases, 0 false positives**, blocking at score ≥ 0.7; 67% of cases trip at least one pattern and 35 sit at ≥0.45 | ≥200 prompts — **met** |
+| Injection | 12 vectors | 12 vectors, no band taxonomy | ≥40 across 3 bands — **not met** |
 
-This needs **new corpora**, not code: 50+ retrieval documents, 20+ PII cases per
-type, and a benign-text set. Until that lands, treat "recall@4 = 100%" as "the
-plumbing works", not "retrieval is good". This is the highest-value remaining
-investment.
+`recall@4 = 100%` and `0.00%` FP are now real measurements rather than
+tautologies — the benign tail reaches 0.65 against a 0.70 block line, so the
+weight table is genuinely under test. Two caveats keep this honest: the corpora
+are hand-authored, not sampled from production traffic, and M3's other half is
+still open — the groundedness judge runs against the `echo` stub, so no number
+here is a real-model number yet.
+
+Remaining slice, still **data, not code**: 200 grounded queries, and 40 banded
+injection vectors (encoded, multi-turn, role-tag smuggling).
 
 ### 4.2 Scheduled hardening
 
@@ -119,7 +125,7 @@ investment.
 | **M12** | Each pod has its own audit chain; there is no single ledger | Reconciling N chains is manual. The S3 archive is the intended answer |
 | **M13** | `/readyz` re-reads the whole audit file | Cost grows with chain length; a probe should not do full verification |
 | **M10** | No stale-chunk policy for RAG | A re-ingested document's old chunks can linger |
-| **M4** | Injection false positives are unmeasured | A benign document mentioning "ignore previous instructions" could be refused |
+| **M4** | Injection false positives are measured now, but only against a hand-authored corpus | 200 prompts, 0 false positives, worst case 0.65 against a 0.70 block line. Real traffic would be a stronger sample, and a benign prompt at 0.68 would still be refused |
 | **H1 / H2** | The audit log stores hashes by default; payloads only when `AEGIS_AUDIT_ENCRYPT_KEY` is set | Documented explicitly in the README, so the claim matches the artifact — but "prove what the AI said" requires setting the key |
 | **L6** | The repo has never been `ruff format`ed (~40 files) | The format check is non-blocking; making it blocking is a large unrelated diff |
 
