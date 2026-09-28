@@ -95,11 +95,17 @@ def test_chat_returns_what_the_provider_received(client):
 
 
 def test_outbound_preview_is_absent_in_production(tmp_path, monkeypatch):
-    """Diagnostic output must not become product surface."""
+    """Diagnostic output must not become product surface.
+
+    `audit_encrypt_key` is cleared because production refuses to boot when the
+    key is set but no cipher can honour it, and this test is about the outbound
+    preview rather than audit evidence.
+    """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("aegis.gateway._connect_redis", lambda url, *, strict: None)
     settings = make_settings(tmp_path, env="production",
-                             redis_url="redis://stub:6379/0")
+                             redis_url="redis://stub:6379/0",
+                             audit_encrypt_key="")
     gw = asyncio.run(build_gateway(settings))
     result = asyncio.run(gw.handle_chat(
         "acme", [{"role": "user", "content": "hi"}], debug=False

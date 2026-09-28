@@ -101,7 +101,29 @@ class Settings(BaseSettings):
             if len(self.vault_hmac_key) < 32:
                 problems.append("AEGIS_VAULT_HMAC_KEY must be >=32 chars")
             problems.extend(self._tenant_problems(self.tenant_map()))
+            problems.extend(self._audit_cipher_problems())
         return problems
+
+    def _audit_cipher_problems(self) -> list[str]:
+        """An encrypt key that cannot encrypt is a silent data-exposure bug.
+
+        With `cryptography` absent, `encrypt_payload` falls back to base64 — an
+        encoding, not a cipher. The gateway would still boot, still report
+        `payload_alg: fernet`, and still write fully readable payloads to disk.
+        For a production deployment whose whole claim is verifiable, encrypted
+        evidence, that combination is unacceptable, so refuse to start rather
+        than serve evidence that is not protected the way the operator was told.
+        """
+        from aegis.security.audit import payload_cipher_alg
+
+        if self.audit_encrypt_key and payload_cipher_alg(self.audit_encrypt_key) != "fernet":
+            return [(
+                "AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not installed, so audit "
+                "payloads would be base64-encoded (readable to anyone with the file), not "
+                "encrypted. `cryptography` is a core dependency, so this means a broken "
+                "environment — reinstall it, or unset the key to store digests only."
+            )]
+        return []
 
     @staticmethod
     def _tenant_problems(tenants: dict[str, tuple[str, set[str]]]) -> list[str]:

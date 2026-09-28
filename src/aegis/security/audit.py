@@ -60,6 +60,27 @@ class AuditRecord:
     request_id: str = ""
 
 
+def payload_cipher_alg(key: str) -> str:
+    """The algorithm `encrypt_payload` would actually use for this key.
+
+    Reporting the *real* algorithm is the whole point. An operator who sets
+    AEGIS_AUDIT_ENCRYPT_KEY needs to know whether their evidence is encrypted or
+    merely encoded, and the answer depends on whether `cryptography` is
+    installed — not on what the key looks like.
+    """
+    if not key:
+        return "none"
+    return "fernet" if fernet_available() else "base64"
+
+
+def fernet_available() -> bool:
+    try:
+        import cryptography.fernet  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def encrypt_payload(payload_bytes: bytes, key: str) -> tuple[str | None, str]:
     """Encrypt audit payload for at-rest evidence. Returns (cipher, alg).
 
@@ -67,6 +88,12 @@ def encrypt_payload(payload_bytes: bytes, key: str) -> tuple[str | None, str]:
     SHA-256 so any string works); else base64 envelope (alg=base64) so the
     JSONL export still carries the payload without blocking on new deps.
     Empty key disables encryption (None, none).
+
+    The base64 fallback is *encoding, not encryption*: anyone who can read the
+    audit file can read the payload. It exists so a payload copy still travels
+    in the export, and it is labelled `base64` precisely so nothing mistakes it
+    for ciphertext. Callers that need to promise encryption must check
+    `payload_cipher_alg()` rather than assume a key implies fernet.
     """
     if not key:
         return None, "none"
@@ -441,7 +468,12 @@ class AuditChain:
             "all_signatures_valid": all(r["sig_ok"] for r in selected),
             "all_links_valid": all(r["link_ok"] is not False for r in selected),
             "payload_available": bool(self.encrypt_key),
-            "payload_alg": "fernet" if self.encrypt_key else "none",
+            # The algorithm actually in use, not the one the key implies. With
+            # `cryptography` absent the payload copy is base64, and saying
+            # "fernet" here would have the console promise encryption the file
+            # does not have.
+            "payload_alg": payload_cipher_alg(self.encrypt_key),
+            "payload_encrypted": payload_cipher_alg(self.encrypt_key) == "fernet",
             "chain": {"head": self.head, "length": self.seq},
         }
 

@@ -7,6 +7,8 @@ that the signature covers. These tests pin that contract, including the cases
 where the honest answer is "this row is broken".
 """
 
+import base64
+import builtins
 import json
 
 import pytest
@@ -172,6 +174,56 @@ def test_payloads_absent_when_encryption_disabled(tmp_path):
     assert data["payload_available"] is False
     assert data["records"][0]["payload"] is None
     assert data["records"][0]["payload_ok"] is None
+    assert data["payload_alg"] == "none"
+    assert data["payload_encrypted"] is False
+
+
+def test_reported_alg_is_the_one_actually_used(tmp_path, monkeypatch):
+    """The API must not promise encryption the file does not have.
+
+    With `cryptography` unavailable, `encrypt_payload` writes base64 — an
+    encoding anyone with the audit file can reverse. `tail_records` used to
+    report `fernet` purely because a key was set, so the console showed
+    "fernet — decryptable" while the payload sat in plaintext on disk. The
+    reported algorithm has to come from the code path, not from the config.
+    """
+    import aegis.security.audit as audit_mod
+
+    real_import = builtins.__import__
+
+    def no_cryptography(name, *args, **kwargs):
+        if name.startswith("cryptography"):
+            raise ImportError("cryptography is not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(audit_mod, "fernet_available", lambda: False)
+    monkeypatch.setattr(builtins, "__import__", no_cryptography)
+    chain = make_chain(tmp_path, encrypt_key="evidence-key")
+    chain.append("acme", "chat_completed", {"secret": "value"})
+
+    data = chain.tail_records(limit=1)
+    raw = (tmp_path / "audit.jsonl").read_text()
+    on_disk = json.loads(raw.splitlines()[0])
+    assert on_disk["payload_alg"] == "base64"
+    assert data["payload_alg"] == "base64", "must report base64, not fernet"
+    assert data["payload_encrypted"] is False, "base64 is not encryption"
+    assert "value" in base64.b64decode(on_disk["payload_enc"]).decode(), (
+        "the point of the test: under base64 the payload is readable by anyone "
+        "holding the audit file, so the API must not call it encrypted"
+    )
+
+
+def test_encrypted_flag_is_true_only_under_fernet(tmp_path):
+    from aegis.security.audit import payload_cipher_alg
+
+    if payload_cipher_alg("k") != "fernet":
+        pytest.skip("cryptography is not installed in this environment")
+    chain = make_chain(tmp_path, encrypt_key="evidence-key")
+    chain.append("acme", "chat_completed", {"secret": "value"})
+    data = chain.tail_records(limit=1)
+    assert data["payload_alg"] == "fernet"
+    assert data["payload_encrypted"] is True
+    assert "value" not in (tmp_path / "audit.jsonl").read_text()  # ciphertext only
 
 
 def test_filters_by_tenant_and_event(tmp_path):

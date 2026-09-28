@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`254 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
+`260 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
 
 > **Where the project stands:** see [`STATUS.md`](STATUS.md) for what has been done,
 > what is verified, what is still open, and how to deploy.
@@ -386,7 +386,7 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 254 tests
+make test       # 260 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -400,7 +400,7 @@ RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
 RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
 PII-EVAL   all must-recall masked (EMAIL/SSN/CARD/IP/PHONE + AADHAAR/PAN/PASSPORT/UPI)
-PYTEST     254 passed
+PYTEST     260 passed
 ```
 
 `make smoke` additionally probes `/admin/status`, which needs the `admin` scope.
@@ -455,8 +455,23 @@ present, so chains written before the field existed still verify byte-for-byte).
 By default the payload is **hashed, not stored**: you can prove *that* a request
 happened, and that nobody edited the ledger, but not reconstruct the answer.
 Set `AEGIS_AUDIT_ENCRYPT_KEY` to retain an encrypted copy of each payload
-(`payload_enc`, Fernet when `cryptography` is installed) — required if you need
-to answer "what did the AI actually say".
+(`payload_enc`, Fernet via `cryptography`, which is a core dependency) — required
+if you need to answer "what did the AI actually say".
+
+**Encryption is a core dependency, not an extra.** It was optional once, and the
+consequence was that the headline feature was off by default: without
+`cryptography`, the payload copy fell back to base64 — an *encoding, not a cipher*,
+readable by anyone holding `audit.jsonl` — while the API still reported
+`fernet`. The fallback still exists for a broken environment, but the gateway
+now handles the difference explicitly rather than quietly:
+
+- `GET /admin/audit` reports the algorithm actually in use (`payload_alg`) plus
+  `payload_encrypted`, instead of inferring encryption from the key being set;
+- the console labels it *"fernet — encrypted at rest"* or *"base64 — encoded, NOT
+  encrypted"*, never a vague "decryptable";
+- a **production** gateway with the key set but no cipher refuses to boot, because
+  advertising verifiable encrypted evidence while writing plaintext is the one
+  thing a compliance product must not do.
 
 `GET /admin/audit` reads the trail back. Every returned row is re-verified on the
 way out, so you never take integrity on faith:

@@ -764,6 +764,23 @@ async function ragAsk() {
 
 /* -------------------------------------------------------------- evidence -- */
 
+/** How the payload copies on this gateway are actually protected.
+ *
+ * Three states, and they must not be collapsed into each other:
+ *   none    — no encrypt key; only the digest is stored, never the payload.
+ *   base64  — payloads are stored, but *encoded*, not encrypted. Anyone who can
+ *             read the audit file can read them. This happens when
+ *             AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not
+ *             installed, so it needs saying out loud rather than looking like
+ *             the "decryptable" case it superficially resembles.
+ *   fernet  — real encryption at rest.
+ */
+function payloadMode(data) {
+  if (!data.payload_available) return 'hash-only (no encrypt key)';
+  if (data.payload_alg === 'fernet') return 'fernet — encrypted at rest';
+  return 'base64 — encoded, NOT encrypted';
+}
+
 async function refreshAudit() {
   const limit = Number($('#auditLimit').value);
   const event = $('#auditEvent').value;
@@ -811,7 +828,7 @@ async function refreshAudit() {
       ['Chain head', shortHash(data.chain.head, 16)],
       ['Rows returned', `${data.count} of ${data.scanned} scanned`],
       ['Window', data.window_reached_start ? 'reaches genesis' : 'tail only'],
-      ['Payloads', data.payload_available ? `${data.payload_alg} — decryptable` : 'hash-only (no encrypt key)'],
+      ['Payloads', payloadMode(data)],
       ['Malformed lines', String((data.malformed || []).length)],
     ].map(([k, v]) => `<div class="metric-tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join('');
 
@@ -878,7 +895,7 @@ function showAuditDetail(seq) {
           <dt>entry hash</dt><dd>${esc(row.entry_hash)}</dd>
           <dt>signature</dt><dd>${row.sig_ok ? 'recomputed HMAC matches ✓' : 'RECOMPUTED HMAC DOES NOT MATCH ✕'}</dd>
           <dt>chain link</dt><dd>${row.link_ok === null ? 'not checkable in this window' : row.link_ok ? 'prev_hash matches the preceding record ✓' : 'PREV_HASH DOES NOT MATCH ✕'}</dd>
-          <dt>payload</dt><dd>${row.payload_ok === null ? 'not stored (hash-only mode)' : row.payload_ok ? 'decrypted bytes hash to the signed digest ✓' : 'DECRYPTED BYTES DO NOT MATCH THE SIGNED DIGEST ✕'}</dd>
+          <dt>payload</dt><dd>${row.payload_ok === null ? 'not stored (hash-only mode)' : row.payload_ok ? `read back and hashed to the signed digest ✓ (${esc(data.payload_alg)})` : 'PAYLOAD BYTES DO NOT MATCH THE SIGNED DIGEST ✕'}</dd>
         </dl>
         <div class="pane-label">Payload</div>
         <pre class="raw-block">${esc(row.payload ? JSON.stringify(row.payload, null, 2) : '(no payload copy stored)')}</pre>

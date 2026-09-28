@@ -8,6 +8,7 @@ references a renamed route is a broken capability, not a cosmetic bug.
 """
 
 import hashlib
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -161,6 +162,31 @@ def test_console_surfaces_the_evidence_the_backend_provides():
     for token in ("outbound", "pii_masked", "audit_seq", "sig_ok", "link_ok",
                   "payload_ok", "request_id", "cached"):
         assert token in js, f"the console does not surface '{token}'"
+
+
+def test_console_never_calls_base64_encrypted():
+    """The Evidence panel must not label an encoding as encryption.
+
+    It used to render `${data.payload_alg} — decryptable`, so a gateway without
+    `cryptography` — where the payload is base64, readable by anyone with the
+    audit file — showed "fernet — decryptable" while serving plaintext. For a
+    product whose claim is verifiable, encrypted evidence, the UI promising
+    protection the artifact does not have is the defect that matters.
+    """
+    js = script()
+    # Only what the panel can actually display matters, so look inside
+    # payloadMode rather than at the whole file — the explanatory comment above
+    # it discusses "decryptable" precisely to warn against using it.
+    body = re.search(r"function payloadMode\(data\) \{(.*?)\n\}", js, re.S)
+    assert body, "payloadMode is gone; the panel has no way to name the algorithm"
+    rendered = body.group(1)
+    assert "decryptable" not in rendered, (
+        "the panel must distinguish encrypted-at-rest from merely-decodable"
+    )
+    assert "NOT encrypted" in rendered, "the base64 state has to be named explicitly"
+    # All three states must be distinguished, not collapsed into one string.
+    for branch in ("hash-only (no encrypt key)", "encrypted at rest", "NOT encrypted"):
+        assert branch in rendered, f"missing payload state: {branch!r}"
 
 
 def test_console_escapes_interpolated_values():

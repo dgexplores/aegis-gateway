@@ -233,6 +233,45 @@ def test_production_rejects_zero_tenants():  # type: ignore[no-untyped-def]
     assert any("no usable tenant" in p for p in s.require_production_secrets())
 
 
+def test_production_rejects_encrypt_key_that_cannot_encrypt(monkeypatch):  # type: ignore[no-untyped-def]
+    """An encrypt key with no cipher behind it must not boot in production.
+
+    Without `cryptography`, audit payloads are base64 — readable by anyone with
+    the file. Booting anyway means the gateway advertises encrypted, verifiable
+    evidence while writing plaintext, which is the one failure mode a product
+    selling compliance cannot have.
+    """
+    import aegis.security.audit as audit_mod
+
+    monkeypatch.setattr(audit_mod, "fernet_available", lambda: False)
+    s = make_settings(env="production", audit_encrypt_key="evidence-key")
+    problems = s.require_production_secrets()
+    assert any("base64" in p and "cryptography" in p for p in problems), problems
+
+
+def test_production_accepts_encrypt_key_when_cipher_is_available():  # type: ignore[no-untyped-def]
+    from aegis.security.audit import payload_cipher_alg
+
+    if payload_cipher_alg("k") != "fernet":
+        pytest.skip("cryptography is not installed in this environment")
+    s = make_settings(env="production", audit_encrypt_key="evidence-key")
+    assert not any("base64" in p for p in s.require_production_secrets())
+
+
+def test_development_allows_the_base64_fallback():  # type: ignore[no-untyped-def]
+    """Only production is fatal. A local demo must still be able to store
+    payloads without pulling in an extra dependency."""
+    import aegis.security.audit as audit_mod
+
+    original = audit_mod.fernet_available
+    audit_mod.fernet_available = lambda: False  # type: ignore[assignment]
+    try:
+        s = make_settings(env="development", audit_encrypt_key="evidence-key")
+        assert not any("base64" in p for p in s.require_production_secrets())
+    finally:
+        audit_mod.fernet_available = original  # type: ignore[assignment]
+
+
 def test_shipped_env_example_parses_with_expected_scopes():  # type: ignore[no-untyped-def]
     """The built-in default used `chat,rag` while the parser splits scopes on
     `+`, so the rag scope was silently dropped and every RAG call 403'd."""
