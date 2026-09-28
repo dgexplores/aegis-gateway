@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AEGIS — one secure door for every AI call</title>
+<meta name="description" content="AEGIS is a self-hosted AI gateway that screens every prompt, masks PII before the provider sees it, and writes a tamper-evident record you can verify. Open the console and watch it happen."/>
+<meta name="theme-color" content="#2d5da1"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232d5da1'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
+<link rel="stylesheet" href="/static/dashboard.css"/>
+</head>
+<body class="page-landing">
+<a href="#main" class="sr-only">Skip to main content</a>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a class="nav-brand" href="/" aria-label="AEGIS home">
+      <span class="nav-mark" aria-hidden="true">Æ</span>
+      <span class="nav-name">AEGIS</span>
+    </a>
+    <div class="nav-actions">
+      <a class="btn sm" href="#problem">Why</a>
+      <a class="btn sm" href="#proof">Proof</a>
+      <button id="themeBtn" class="btn sm" type="button" aria-label="Switch colour theme">Theme</button>
+      <a class="btn sm primary" href="/dashboard">Open the console</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <h1 id="hero-title" class="hero-title">Every AI call goes<br/>through one door.</h1>
+      <p class="hero-sub">
+        AEGIS screens the prompt, masks the personal data before the provider ever
+        sees it, and writes a record you can verify afterwards. It is the part
+        between your application and every model you buy.
+      </p>
+      <div class="hero-actions">
+        <a class="btn primary lg" href="/dashboard">Open the console</a>
+        <a class="btn lg" href="#proof">See the receipts</a>
+      </div>
+      <p class="hero-note">
+        Self-hosted, open source, MIT. No data leaves your network except the
+        model call you asked for.
+      </p>
+    </div>
+    <figure class="hero-art">
+      <div class="visual-card hero-visual-secure" role="img" aria-label="A hand-drawn shield with a check mark: the request was screened and allowed through."></div>
+      <figcaption class="hero-caption">Screened, masked, called, recorded.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="marquee" aria-label="Results from the last recorded evaluation run">
+  <div class="marquee-inner">
+    <div class="marquee-track">
+      <span class="marquee-item">Injection blocked: 12/12</span>
+      <span class="marquee-item">Eval gate: 64/64 passed</span>
+      <span class="marquee-item">Retrieval recall: 100%</span>
+      <span class="marquee-item">PII masked: 207/207</span>
+      <span class="marquee-item">Benign false positives: 0/34</span>
+      <span class="marquee-item">P95 latency: 0.6ms</span>
+      <span class="marquee-item">Injection blocked: 12/12</span>
+      <span class="marquee-item">Eval gate: 64/64 passed</span>
+      <span class="marquee-item">Retrieval recall: 100%</span>
+      <span class="marquee-item">PII masked: 207/207</span>
+      <span class="marquee-item">Benign false positives: 0/34</span>
+      <span class="marquee-item">P95 latency: 0.6ms</span>
+    </div>
+  </div>
+  <p class="marquee-foot small muted">
+    From a local <code>make evals</code> run. Nothing here is a stored claim —
+    the console's Capability Tour re-runs these against the live API and shows
+    the pass or fail.
+  </p>
+</section>
+
+<section class="section-inner" id="problem" aria-labelledby="problem-title">
+  <header class="section-head">
+    <h2 id="problem-title" class="section-title">What this actually changes</h2>
+    <p class="section-sub">The same three questions, before and after.</p>
+  </header>
+  <div class="table-wrap">
+    <table class="compare">
+      <caption class="sr-only">What an unprotected AI call exposes, and what AEGIS does about it</caption>
+      <thead>
+        <tr><th scope="col">Question</th><th scope="col">Without a gateway</th><th scope="col">With AEGIS</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">What did we send?</th>
+          <td class="muted">Whatever your code passed. The provider keeps a copy you cannot see or delete.</td>
+          <td>A pseudonymised copy, recorded before it left.</td>
+        </tr>
+        <tr>
+          <th scope="row">Why was it allowed?</th>
+          <td class="muted">No answer. Logs say <code>200 OK</code>.</td>
+          <td>Scored, labelled, and written to a hash-chained record.</td>
+        </tr>
+        <tr>
+          <th scope="row">Can you prove it later?</th>
+          <td class="muted">Not to a customer, an auditor, or yourself.</td>
+          <td>Yes — one command re-verifies the whole chain.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section-inner" aria-labelledby="flow-title">
+  <header class="section-head">
+    <h2 id="flow-title" class="section-title">How a request flows</h2>
+    <p class="section-sub">Six stages. Every one of them leaves a record.</p>
+  </header>
+  <ol class="flow">
+    <li class="flow-step"><span class="flow-n">1</span><h3>Intake</h3><p>Authenticate the caller, resolve the tenant, check the rate limit and the budget.</p></li>
+    <li class="flow-step"><span class="flow-n">2</span><h3>Screen</h3><p>Scan the prompt for injected instructions and exfiltration intent. Score it against two bands.</p></li>
+    <li class="flow-step"><span class="flow-n">3</span><h3>Vault</h3><p>Swap emails, cards and keys for reversible pseudonyms. The original never leaves.</p></li>
+    <li class="flow-step"><span class="flow-n">4</span><h3>Route</h3><p>Pick a provider by tier. Fall over to the next one on a timeout or a refusal.</p></li>
+    <li class="flow-step"><span class="flow-n">5</span><h3>Restore</h3><p>Put the real values back in the answer, so the model never sees the real values either.</p></li>
+    <li class="flow-step"><span class="flow-n">6</span><h3>Seal</h3><p>Append the turn to a hash-chained audit record. Tampering breaks the chain.</p></li>
+  </ol>
+</section>
+
+<section class="capabilities" aria-labelledby="cap-title">
+  <div class="section-inner">
+    <header class="section-head">
+      <h2 id="cap-title" class="section-title">Capabilities</h2>
+      <p class="section-sub">Five production-grade primitives behind one endpoint.</p>
+    </header>
+    <div class="bento-grid">
+      <article class="capability-card" data-cap="injection">
+        <div class="card-visual cap-img-injection" aria-hidden="true"></div>
+        <div class="card-content">
+          <h3>Injection Defense</h3>
+          <p>Three-band scorer: pattern hits, Unicode smuggling, exfiltration probes, and scripted attempts to erase earlier instructions. A hard hit is refused before the provider is called; a soft hit is shielded in the middle band.</p>
+        </div>
+      </article>
+      <article class="capability-card" data-cap="pii">
+        <div class="card-visual cap-img-pii" aria-hidden="true"></div>
+        <div class="card-content">
+          <h3>PII Vault</h3>
+          <p>Reversible pseudonyms for emails, cards, IBANs, national IDs, API keys and passports. The provider sees the alias; you see the value restored.</p>
+        </div>
+      </article>
+      <article class="capability-card" data-cap="audit">
+        <div class="card-visual cap-img-audit" aria-hidden="true"></div>
+        <div class="card-content">
+          <h3>Tamper-Evident Audit</h3>
+          <p>HMAC-signed hash chain. Every read re-verifies the run, the sequence, the payload digest and the previous link.</p>
+        </div>
+      </article>
+      <article class="capability-card" data-cap="rag">
+        <div class="card-visual cap-img-rag" aria-hidden="true"></div>
+        <div class="card-content">
+          <h3>Hybrid RAG</h3>
+          <p>BM25 + vectors + fuzzy fusion. Per-tenant isolation. Poisoning filter. Every source-first answer carries citations.</p>
+        </div>
+      </article>
+      <article class="capability-card" data-cap="budget">
+        <div class="card-visual cap-img-budget" aria-hidden="true"></div>
+        <div class="card-content">
+          <h3>Budgets &amp; Breakers</h3>
+          <p>Per-tenant rate and daily token budgets, circuit breakers, failover to the next provider. Never 500 on a provider fault.</p>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section-inner" id="proof" aria-labelledby="proof-title">
+  <header class="section-head">
+    <h2 id="proof-title" class="section-title">Receipts, not adjectives</h2>
+    <p class="section-sub">Every screenshot below is a real response from a local run.</p>
+  </header>
+  <div class="proof-grid">
+    <figure class="proof">
+      <img src="/static/shots/attack-blocked.png" alt="Console showing a prompt-injection attempt refused before the provider was called, with a score of 0.85 and the signals that triggered it." width="1280" height="1000" loading="lazy"/>
+      <figcaption><strong>Injection refused</strong> Scored 0.85, hard band, provider never called.</figcaption>
+    </figure>
+    <figure class="proof">
+      <img src="/static/shots/pii-masked.png" alt="Console showing an email address and a card number replaced by pseudonyms on the way out, then restored in the answer." width="1280" height="1000" loading="lazy"/>
+      <figcaption><strong>PII vaulted</strong> Card and email masked outbound, restored on return.</figcaption>
+    </figure>
+    <figure class="proof">
+      <img src="/static/shots/audit-chain.png" alt="Console showing a verified audit chain with sequence numbers, validity badges and a payload digest match." width="1280" height="1000" loading="lazy"/>
+      <figcaption><strong>Chain verified</strong> Sequence, signature, link and digest all checked.</figcaption>
+    </figure>
+  </div>
+  <p class="proof-cta">
+    <a class="btn primary lg" href="/dashboard">Run it yourself in the console</a>
+    <span class="small muted">The Capability Tour drives the live API and grades what it observes.</span>
+  </p>
+</section>
+
+<section class="section-inner" aria-labelledby="stack-title">
+  <header class="section-head">
+    <h2 id="stack-title" class="section-title">Why it is built this way</h2>
+  </header>
+  <div class="bento-grid">
+    <article class="capability-card"><div class="card-content">
+      <h3>Python 3.11&ndash;3.14, one dependency-light process</h3>
+      <p>Runs as a container or a bare process. Postgres optional: SQLite by default, Postgres for multi-pod audit writes and shared RAG.</p>
+    </div></article>
+    <article class="capability-card"><div class="card-content">
+      <h3>Fail-closed by default</h3>
+      <p>A scanner error does not become an allow. Deny on doubt, and say so in the record.</p>
+    </div></article>
+    <article class="capability-card"><div class="card-content">
+      <h3>Eval-gated CI</h3>
+      <p>Injection recall, benign false-positive rate and retrieval quality are release gates, not dashboard numbers. A regression blocks the merge.</p>
+    </div></article>
+    <article class="capability-card"><div class="card-content">
+      <h3>Bring your own model</h3>
+      <p>OpenAI, Anthropic and a configurable OpenAI-compatible endpoint, plus a deterministic echo provider for tests. Swap by environment variable, not a fork.</p>
+    </div></article>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer" role="contentinfo">
+  <div class="footer-inner">
+    <h2>Put one door between your app and every model.</h2>
+    <p class="muted">Deploy in minutes. Audit for years.</p>
+    <div class="footer-cta">
+      <a class="btn primary" href="/dashboard">Open the console</a>
+      <a class="btn" href="/docs" target="_blank" rel="noopener">API docs</a>
+    </div>
+    <nav class="footer-links" aria-label="Footer links">
+      <a href="https://github.com/dgexplores/aegis-gateway">GitHub</a>
+      <a href="/docs">API</a>
+      <a href="/healthz">Health</a>
+      <a href="/readyz">Readiness</a>
+    </nav>
+    <p class="footer-note">
+      Injection scan &middot; PII vault &middot; hash-chained audit &middot; hybrid RAG &middot;
+      budgets, breakers, failover &middot; eval-gated CI &mdash; all on one door.
+    </p>
+  </div>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/theme.js" defer></script>
+</body>
+</html>

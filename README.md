@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`252 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
+`254 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
 
 > **Where the project stands:** see [`STATUS.md`](STATUS.md) for what has been done,
 > what is verified, what is still open, and how to deploy.
@@ -34,19 +34,19 @@ These are real screenshots of the running console — no mocks, no staged data.
 **PII is masked before the provider sees it, and restored for you.**
 The provider received `«917a6a17eb6c7625»`. You received `priya@corp.example`.
 
-![Evidence panel: PII masked outbound, restored inbound](docs/images/pii-masked.png)
+![Evidence panel: PII masked outbound, restored inbound](src/aegis/static/shots/pii-masked.png)
 
 **A prompt injection never reaches the model.** Score `0.85 ≥ 0.70`, hard band,
 provider never called — and the panel says so explicitly rather than asking you
 to take its word for it.
 
-![Evidence panel: injection blocked, provider never called](docs/images/attack-blocked.png)
+![Evidence panel: injection blocked, provider never called](src/aegis/static/shots/attack-blocked.png)
 
 **And it proves itself on demand.** The capability tour drives the real API and
 grades what it observes against what the gateway claims. Ten checks, ten passes,
 nothing simulated:
 
-![Capability tour: 10 passed, expected vs observed against live API](docs/images/capability-tour.png)
+![Capability tour: 10 passed, expected vs observed against live API](src/aegis/static/shots/capability-tour.png)
 
 ### The trust boundary
 
@@ -290,7 +290,7 @@ Endpoints:
 
 ## The capability console (`/dashboard`)
 
-![The AEGIS console](docs/images/console.png)
+![The AEGIS console](src/aegis/static/shots/console.png)
 
 The backend has always supported multi-turn conversations, a reversible PII vault,
 a tamper-evident audit chain and per-tenant document management. The console is
@@ -311,7 +311,7 @@ Five views:
   valid, payload digest match. Filter by event, click any row for the full
   record, export the window as NDJSON.
 
-  ![Audit chain: every row re-verified on read](docs/images/audit-chain.png)
+  ![Audit chain: every row re-verified on read](src/aegis/static/shots/audit-chain.png)
 - **Ops** — chain state, cache, budget, breaker states, raw Prometheus.
 - **Capability tour** — ten checks that drive the real API and grade what they
   observe against what the gateway claims. Nothing is simulated.
@@ -386,7 +386,7 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 252 tests
+make test       # 254 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -400,7 +400,7 @@ RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
 RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
 PII-EVAL   all must-recall masked (EMAIL/SSN/CARD/IP/PHONE + AADHAAR/PAN/PASSPORT/UPI)
-PYTEST     233 passed
+PYTEST     254 passed
 ```
 
 `make smoke` additionally probes `/admin/status`, which needs the `admin` scope.

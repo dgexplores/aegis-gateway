@@ -17,8 +17,12 @@ offset shadows, balanced markup, and a motion shim that resolves.
 """
 
 import re
+import shutil
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
+
+import pytest
 
 VOID_ELEMENTS = {
     "area", "base", "br", "col", "embed", "hr", "img",
@@ -35,10 +39,12 @@ def _static() -> Path:
     return Path(__file__).resolve().parents[1] / "src" / "aegis" / "static"
 
 
-def _template() -> str:
-    return (Path(__file__).resolve().parents[1] / "src" / "aegis" / "templates" / "dashboard.html").read_text(
-        encoding="utf-8"
-    )
+def _templates() -> Path:
+    return Path(__file__).resolve().parents[1] / "src" / "aegis" / "templates"
+
+
+def _template(name: str = "dashboard.html") -> str:
+    return (_templates() / name).read_text(encoding="utf-8")
 
 
 def _stylesheet() -> str:
@@ -137,6 +143,54 @@ def test_template_markup_is_balanced():
     assert not parser.stack, f"never closed: {[tag for tag, _ in parser.stack]}"
 
 
+def test_shipped_javascript_parses():
+    """A duplicate `const` is a *parse* error, so the whole file silently stops
+    executing: every binding is lost, `init()` never runs, and the console
+    renders as a dead page with no visible error beyond one line in devtools.
+
+    That happened twice here — once when the motion shim read an undefined
+    global, and once when a new `SCENARIOS` collided with the capability
+    tour's. Nothing in the Python suite noticed, because the tests read the
+    file as text. A parser does.
+    """
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not available to parse the console's JavaScript")
+    for script in sorted(_static().glob("*.js")):
+        result = subprocess.run(  # noqa: S603 — argv list, no shell; target is a repo-globbed path, not input
+            [node, "--check", str(script)], capture_output=True, text=True, check=False
+        )
+        assert result.returncode == 0, (
+            f"{script.name} does not parse, so the console would not run at all:\n"
+            f"{result.stderr.strip()[:400]}"
+        )
+
+
+def test_every_class_the_console_generates_is_defined_in_the_stylesheet():
+    """Covers the classes the script builds at runtime, not just the markup's.
+
+    The template-only version of this check could not see a class the console
+    injects, so it passed while the panel rendered unstyled. Found so far:
+    `.raw`, the `<details>` wrapper around "Raw response" — every evidence
+    body in the app ends in a disclosure with no rule behind it, so the
+    triangle, spacing and hover state were all missing.
+    """
+    js = (_static() / "dashboard.js").read_text(encoding="utf-8")
+    css = _stylesheet()
+
+    generated: set[str] = set()
+    for value in re.findall(r'class="([^"$<]*)"', js):  # template literals only
+        generated.update(value.split())
+    for value in re.findall(r"className = '([a-z][a-z0-9_ -]*)'", js):
+        generated.update(value.split())
+
+    undefined = sorted(
+        name for name in generated
+        if name and not re.search(rf"\.{re.escape(name)}(?![A-Za-z0-9_-])", css)
+    )
+    assert not undefined, f"classes the script generates with no CSS rule: {undefined}"
+
+
 def test_every_element_the_console_looks_up_exists_in_the_template():
     """Every `$('#id')` must resolve, and every `id="..."` in the template must
     be reachable from script.
@@ -165,12 +219,35 @@ def test_every_element_the_console_looks_up_exists_in_the_template():
 def test_interactive_controls_in_the_template_are_wired():
     """A button that looks actionable but has no handler is a defect the a11y
     tree cannot reveal — the three primary CTAs shipped unbound. Only <button>
-    is checked: an <a> navigates on its own and needs no script."""
-    html, js = _template(), (_static() / "dashboard.js").read_text(encoding="utf-8")
-    buttons = set(re.findall(r'<button\b[^>]*\bid="([A-Za-z0-9_-]+)"', html))
-    assert buttons, "no buttons found in the template — the selector is wrong"
-    unwired = sorted(b for b in buttons if f"'#{b}'" not in js and f'"#{b}"' not in js)
-    assert not unwired, f"buttons with no handler in dashboard.js: {unwired}"
+    is checked: an <a> navigates on its own and needs no script.
+
+    The handler may live in dashboard.js (the console) or theme.js (shared with
+    the landing page), so a button counts as wired if either script names it.
+    """
+    js = "\n".join(
+        (_static() / name).read_text(encoding="utf-8")
+        for name in ("dashboard.js", "theme.js")
+    )
+
+    def is_wired(element_id: str) -> bool:
+        """An id counts as handled if it appears in any binding form the
+        scripts actually use: the `$` helper, a querySelector, or
+        getElementById. Matching only one spelling reports false failures."""
+        ident = re.escape(element_id)
+        return bool(
+            re.search(rf"\$\$?\(\s*['\"]#{ident}['\"]", js)
+            or re.search(rf"querySelector\w*\(\s*['\"]#{ident}['\"]", js)
+            or re.search(rf"getElementById\(\s*['\"]{ident}['\"]", js)
+        )
+
+    for template in ("dashboard.html", "landing.html"):
+        html = _templates() / template
+        text = html.read_text(encoding="utf-8")
+        buttons = set(re.findall(r'<button\b[^>]*\bid="([A-Za-z0-9_-]+)"', text))
+        if template == "dashboard.html":
+            assert buttons, "no buttons found in the template — the selector is wrong"
+        unwired = sorted(b for b in buttons if not is_wired(b))
+        assert not unwired, f"{template}: buttons with no handler: {unwired}"
 
 
 def test_console_javascript_never_hides_content_with_inline_opacity():

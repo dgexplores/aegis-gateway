@@ -4,6 +4,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -527,11 +528,30 @@ async def admin_status(
     }
 
 
+TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+
+
+def _serve_template(name: str, transform: Callable[[str], str] | None = None) -> HTMLResponse:
+    html_path = TEMPLATES_DIR / name
+    if not html_path.exists():
+        return HTMLResponse(
+            f"<h1>Page not found</h1><p>Expected at templates/{name}</p>",
+            status_code=500,
+            headers={"Cache-Control": "no-store"},
+        )
+    html = html_path.read_text(encoding="utf-8")
+    return HTMLResponse(
+        transform(html) if transform else html,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/", include_in_schema=False)
 async def root():
-    from fastapi.responses import RedirectResponse
-
-    return RedirectResponse(url="/dashboard")
+    """The pitch. The working product is a separate page at /dashboard, so a
+    reader is never asked to care about the argument before they can touch
+    the thing — and the console is never buried under marketing copy."""
+    return _serve_template("landing.html")
 
 
 DEMO_PLACEHOLDER = "__AEGIS_DEMO_SLOT__"
@@ -553,14 +573,4 @@ def _render_dashboard(html: str) -> str:
 
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard():
-    html_path = Path(__file__).parent.parent / "templates" / "dashboard.html"
-    if html_path.exists():
-        return HTMLResponse(
-            _render_dashboard(html_path.read_text(encoding="utf-8")),
-            headers={"Cache-Control": "no-store"},
-        )
-    return HTMLResponse(
-        "<h1>Dashboard not found</h1><p>Expected at templates/dashboard.html</p>",
-        status_code=500,
-        headers={"Cache-Control": "no-store"},
-    )
+    return _serve_template("dashboard.html", _render_dashboard)

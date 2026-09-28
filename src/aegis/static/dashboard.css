@@ -253,6 +253,44 @@ p { margin: 0; }
 .card-body { padding: 1.25rem; }
 
 /* ============================================================
+   FIRST RUN — the demo entry point
+   The first thing anyone sees when the thread is empty is a blank box,
+   which is the worst possible introduction to a console whose whole
+   argument is that it shows its work. These cards are the way in: each
+   one fires a real request and leaves its evidence in the thread.
+   ============================================================ */
+.firstrun { display: flex; flex-direction: column; gap: 0.4rem; }
+.firstrun-title { font-family: var(--font-head); font-size: 1.25rem; }
+.firstrun-grid {
+  display: grid; grid-template-columns: 1fr; gap: 0.75rem;
+  margin-top: 1rem;
+}
+@media (min-width: 700px) { .firstrun-grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1100px) { .firstrun-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.firstrun-card {
+  display: flex; flex-direction: column; gap: 0.3rem;
+  padding: 0.85rem 0.95rem; text-align: left; cursor: pointer;
+  color: var(--ink); background: var(--paper);
+  border: 2px dashed color-mix(in srgb, var(--ink) 45%, transparent);
+  border-radius: 14px 9px 15px 10px / 10px 15px 9px 14px;
+  transition: transform 120ms var(--ease), box-shadow 120ms var(--ease), border-color 120ms var(--ease);
+}
+.firstrun-card strong { font-family: var(--font-head); font-weight: 700; font-size: 1.0625rem; line-height: 1.2; }
+.firstrun-card:hover:not(:disabled) {
+  border-style: solid; border-color: var(--ink);
+  transform: translate(-2px, -2px) rotate(var(--tilt-a));
+  box-shadow: var(--shadow-sm);
+}
+.firstrun-card:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: none; }
+.firstrun-card:disabled { opacity: 0.6; cursor: progress; }
+.firstrun-card.running { border-color: var(--blue); }
+.firstrun-card.running::after {
+  content: "running…"; font-family: var(--font-head);
+  font-size: 0.8125rem; color: var(--blue);
+}
+
+/* ============================================================
    FORM CONTROLS
    ============================================================ */
 input[type=text], input[type=password], input[type=number], select, textarea {
@@ -543,6 +581,12 @@ th {
 tbody tr:hover { background: var(--paper-3); }
 tbody tr.rowbad { background: color-mix(in srgb, var(--red) 12%, var(--paper)); }
 td.wrap-cell { white-space: normal; max-width: 22rem; }
+
+/* The sidebar's verdict sentence, above the fact list. */
+.latest-line {
+  margin: 0 0 0.15rem; font-size: 0.9375rem; line-height: 1.45; color: var(--ink);
+}
+
 .clickable { cursor: pointer; }
 
 /* ============================================================
@@ -584,6 +628,19 @@ td.wrap-cell { white-space: normal; max-width: 22rem; }
 .stage.skipped { opacity: 0.5; }
 .stage-name { font-family: var(--font-head); font-weight: 700; min-width: 8.5rem; }
 .stage-detail { color: var(--ink-2); }
+
+/* The "Raw response" disclosure the console injects into every evidence body. */
+.raw { margin-top: 0.75rem; }
+.raw > summary {
+  width: fit-content; padding: 0.2rem 0.1rem; cursor: pointer;
+  list-style: none;
+  font-family: var(--font-head); font-size: 0.9375rem; color: var(--ink-2);
+  border-bottom: 2px dashed color-mix(in srgb, var(--ink) 35%, transparent);
+}
+.raw > summary::-webkit-details-marker { display: none; }
+.raw > summary::before { content: "\25B8\00a0"; color: var(--red); }
+.raw[open] > summary::before { content: "\25BE\00a0"; }
+.raw > summary:hover { color: var(--ink); border-bottom-color: var(--ink); }
 
 .payload {
   font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.6;
@@ -828,3 +885,82 @@ td.wrap-cell { white-space: normal; max-width: 22rem; }
   .hero-copy > *, .turn, .bubble:hover, .turn.user .bubble:hover { transform: none; }
   .bubble, .tour-out, .evidence[data-open="true"] .evidence-body { animation: none; }
 }
+
+/* ============================================================
+   LANDING PAGE
+   The pitch lives here; the working product lives at /dashboard.
+   Sections here are static: no fetch, no binding, nothing to break.
+   ============================================================ */
+.page-landing .hero { padding-top: 7.5rem; }
+.page-landing .hero-note {
+  margin: 0.9rem 0 0; font-size: 0.9375rem; color: var(--ink-2); max-width: 34ch;
+}
+
+/* The before/after table is the argument, so it gets the full width and a
+   rule between the two answers rather than a third column of icons. */
+.table-wrap { overflow-x: auto; }
+.compare { min-width: 34rem; }
+.compare th[scope="row"] {
+  font-family: var(--font-head); font-weight: 700; color: var(--ink); width: 22%;
+}
+.compare td:last-child { background: color-mix(in srgb, var(--green) 6%, transparent); }
+.compare code {
+  font-family: var(--mono); font-size: 0.875rem;
+  background: var(--paper-3); padding: 0.05rem 0.3rem; border-radius: 5px;
+}
+
+/* Six request stages, drawn as a numbered run of cards. */
+.flow {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem;
+}
+.flow-step {
+  position: relative; padding: 1.6rem 0.95rem 0.95rem;
+  background: var(--paper); color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 14px 9px 15px 10px / 10px 15px 9px 14px;
+  box-shadow: var(--shadow-sm);
+}
+.flow-n {
+  position: absolute; top: -0.7rem; left: 0.85rem;
+  display: grid; place-items: center;
+  width: 1.7rem; height: 1.7rem; border-radius: 50%;
+  background: var(--blue); color: var(--paper);
+  font-family: var(--font-head); font-weight: 700; font-size: 0.9375rem;
+}
+.flow-step h3 { font-family: var(--font-head); font-size: 1.125rem; margin: 0 0 0.25rem; }
+.flow-step p { margin: 0; font-size: 0.9375rem; color: var(--ink-2); line-height: 1.5; }
+
+/* Real screenshots. Lazy-loaded, and the caption carries the claim so the
+   image is decorative-with-context rather than the only source. */
+.proof-grid {
+  display: grid; gap: 1.1rem; grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 900px) { .proof-grid { grid-template-columns: repeat(3, 1fr); } }
+.proof {
+  margin: 0; display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.7rem; background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 14px 9px 15px 10px / 10px 15px 9px 14px;
+  box-shadow: var(--shadow-sm);
+}
+.proof img {
+  width: 100%; height: auto; display: block; background: var(--paper-3);
+  border: 1.5px dashed color-mix(in srgb, var(--ink) 30%, transparent); border-radius: 9px;
+}
+.proof figcaption { font-size: 0.9375rem; color: var(--ink-2); line-height: 1.45; }
+.proof figcaption strong { display: block; font-family: var(--font-head); color: var(--ink); }
+.proof-cta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin-top: 1.4rem;
+}
+
+/* The marquee is a claim, so it says where the claim came from. */
+.marquee-foot {
+  max-width: 52ch; margin: 0.75rem auto 0; text-align: center; line-height: 1.5;
+}
+.marquee-foot code { font-family: var(--mono); font-size: 0.8125rem; }
+
+/* The console opens on the product, so it starts tight under the nav rather
+   than below a hero it no longer has. */
+.page-console .console-section { padding-top: 5.5rem; }
