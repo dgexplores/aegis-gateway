@@ -3,27 +3,28 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>AEGIS — Secure AI Gateway</title>
-<meta name="description" content="AEGIS Gateway: Injection defense, PII vault, hash-chained audit, hybrid RAG, eval-gated CI. One secure door for every AI call."/>
+<title>AEGIS Console — run the gateway yourself</title>
+<meta name="description" content="The AEGIS console: send a prompt, watch injection screening, PII vaulting, provider routing and the sealed audit record for that turn, then run the capability tour against the live API."/>
 <meta name="theme-color" content="#2d5da1"/>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232d5da1'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
 <!-- Self-contained: no CDN fonts, handwriting bundled under /static/fonts. Motion is CSS-only, so nothing depends on JS to be visible. -->
 <link rel="stylesheet" href="/static/dashboard.css"/>
 </head>
-<body>
+<body class="page-console">
 <a href="#main" class="sr-only">Skip to main content</a>
 
 <!-- Navigation: Floating glass pill -->
 <nav class="nav" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
-    <div class="nav-brand" aria-label="AEGIS home">
+    <a class="nav-brand" href="/" aria-label="AEGIS home">
       <span class="nav-mark" aria-hidden="true">Æ</span>
       <span class="nav-name">AEGIS</span>
-    </div>
+    </a>
     <div class="nav-actions">
       <span id="healthPill" class="pill" role="status" aria-live="polite"><span class="dot"></span>checking…</span>
       <span id="chainPill" class="pill" title="Tamper-evident audit chain">chain —</span>
       <button id="themeBtn" class="btn sm" type="button" aria-label="Switch colour theme">Theme</button>
+      <a class="btn sm" href="/" title="Back to the pitch">Overview</a>
       <a class="btn sm" href="/docs" target="_blank" rel="noopener">API docs</a>
     </div>
   </div>
@@ -32,101 +33,6 @@
 <main id="main">
 
 <!-- HERO: Editorial Split — wide left copy, right visual -->
-<section class="hero" aria-labelledby="hero-title">
-  <div class="hero-inner">
-    <div class="hero-copy">
-      <h1 id="hero-title" class="hero-title">
-        One secure door for
-        <span class="inline-img hero-img-gateway"></span>
-        every AI call
-      </h1>
-      <p class="hero-sub">
-        Injection defense · PII vault · Hash-chained audit · Hybrid RAG · Eval-gated CI
-      </p>
-      <div class="hero-ctas">
-        <a class="btn primary lg" id="hero-deploy" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">Deploy AEGIS</a>
-        <button class="btn ghost lg" id="hero-console">Open Console</button>
-      </div>
-    </div>
-    <div class="hero-visual" aria-hidden="true">
-      <div class="visual-card hero-visual-secure">
-        <div class="visual-overlay">
-          <span class="visual-tag">Live pipeline trace</span>
-          <span class="visual-metric">242 tests passing</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- INTEREST: Capability Bento — gapless dense grid -->
-<section class="capabilities" aria-labelledby="cap-title">
-  <div class="section-inner">
-    <header class="section-head">
-      <h2 id="cap-title" class="section-title">Capabilities</h2>
-      <p class="section-sub">Five production-grade primitives behind one endpoint</p>
-    </header>
-    <div class="bento-grid" role="list">
-      <article class="capability-card" role="listitem" data-cap="injection">
-        <div class="card-visual cap-img-injection"></div>
-        <div class="card-content">
-          <h3>Injection Defense</h3>
-          <p>Three-band scanner catches instruction overrides, encoded payloads, role-tag smuggling, and exfiltration attempts before the model sees them.</p>
-        </div>
-      </article>
-      <article class="capability-card" role="listitem" data-cap="pii">
-        <div class="card-visual cap-img-pii"></div>
-        <div class="card-content">
-          <h3>PII Vault</h3>
-          <p>Reversible pseudonymization for emails, cards, Aadhaar, PAN, passport, UPI. Provider never sees raw values; caller gets them restored.</p>
-        </div>
-      </article>
-      <article class="capability-card" role="listitem" data-cap="audit">
-        <div class="card-visual cap-img-audit"></div>
-        <div class="card-content">
-          <h3>Tamper-Evident Audit</h3>
-          <p>HMAC-signed hash chain. Every record re-verified on read: signature, linkage, payload digest. Rotation carries head forward.</p>
-        </div>
-      </article>
-      <article class="capability-card" role="listitem" data-cap="rag">
-        <div class="card-visual cap-img-rag"></div>
-        <div class="card-content">
-          <h3>Hybrid RAG</h3>
-          <p>BM25 + hashed vectors with RRF fusion. Per-tenant isolation. Postgres source-of-truth with embeddings column. Eval-gated CI.</p>
-        </div>
-      </article>
-      <article class="capability-card" role="listitem" data-cap="budget">
-        <div class="card-visual cap-img-budget"></div>
-        <div class="card-content">
-          <h3>Budgets & Breakers</h3>
-          <p>Per-tenant rate limits, daily token budgets, circuit breakers, failover to echo. Never 500 if fallback exists.</p>
-        </div>
-      </article>
-    </div>
-  </div>
-</section>
-
-<!-- Infinite Marquee: Trusted runtime signals -->
-<section class="marquee" aria-hidden="true">
-  <div class="marquee-inner">
-    <div class="marquee-track">
-      <span class="marquee-item">Injection blocked: 12/12</span>
-      <span class="marquee-item">Eval gate: 64/64 passed</span>
-      <span class="marquee-item">Retrieval recall: 100%</span>
-      <span class="marquee-item">PII masked: 207/207</span>
-      <span class="marquee-item">Benign FP: 0/34</span>
-      <span class="marquee-item">P95 latency: 0.6ms</span>
-      <span class="marquee-item">Injection blocked: 12/12</span>
-      <span class="marquee-item">Eval gate: 64/64 passed</span>
-      <span class="marquee-item">Retrieval recall: 100%</span>
-      <span class="marquee-item">PII masked: 207/207</span>
-      <span class="marquee-item">Benign FP: 0/34</span>
-      <span class="marquee-item">P95 latency: 0.6ms</span>
-    </div>
-  </div>
-</section>
-
-<!-- DESIRE: Console + Evidence + Knowledge — with GSAP scroll animations -->
 <section class="console-section" aria-labelledby="console-title">
   <div class="section-inner">
     <header class="section-head">
@@ -164,7 +70,7 @@
               <button class="btn sm" data-demo="pii" type="button">Mask PII</button>
               <button class="btn sm" data-demo="memory" type="button">Two-turn memory</button>
             </div>
-            <p class="tiny muted" id="composerHint">Enter sends · Shift+Enter adds line. Quick actions append to thread.</p>
+            <p class="tiny muted" id="composerHint">Enter sends · Shift+Enter adds line. Quick actions run on a fresh thread, so each one is reproducible.</p>
           </div>
         </div>
       </div>
@@ -358,6 +264,7 @@
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/theme.js" defer></script>
 <script src="/static/dashboard.js" defer></script>
 </body>
 </html>

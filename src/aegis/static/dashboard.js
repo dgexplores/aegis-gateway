@@ -87,20 +87,6 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
 
 /* ------------------------------------------------------------------ theme -- */
 
-const THEME_KEY_ATTR = 'data-theme';
-
-function applyTheme(mode) {
-  if (mode === 'auto') document.documentElement.removeAttribute(THEME_KEY_ATTR);
-  else document.documentElement.setAttribute(THEME_KEY_ATTR, mode);
-  $('#themeBtn').textContent = `Theme: ${mode}`;
-}
-
-function cycleTheme() {
-  const current = document.documentElement.getAttribute(THEME_KEY_ATTR) || 'auto';
-  const next = current === 'auto' ? 'light' : current === 'light' ? 'dark' : 'auto';
-  applyTheme(next);
-  toast(`Theme: ${next}`);
-}
 
 /* -------------------------------------------------------------------- key -- */
 
@@ -153,6 +139,59 @@ function verdictPill(meta) {
   if (band === 'allow') return '<span class="pill ok"><span class="dot"></span>ALLOWED</span>';
   if (band === 'soft') return '<span class="pill warn"><span class="dot"></span>REFUSED · SOFT BAND</span>';
   return '<span class="pill bad"><span class="dot"></span>BLOCKED</span>';
+}
+
+/* The sidebar's job is "what is the current verdict", not "replay the thread".
+   It used to be static placeholder copy that promised evidence it never
+   received, so it told the reader to send a message and then kept saying so
+   after they had. It now mirrors the newest turn. */
+function renderLatest(meta) {
+  const pill = $('#evidencePill');
+  const body = $('#evidenceBody');
+  body.textContent = '';
+
+  if (!meta) {
+    pill.textContent = '—';
+    pill.className = 'pill';
+    const empty = document.createElement('p');
+    empty.className = 'small muted';
+    empty.textContent = 'Send a message to see per-turn evidence here.';
+    body.appendChild(empty);
+    return;
+  }
+
+  const band = bandOf(meta);
+  pill.className = `pill ${band === 'allow' ? 'ok' : band === 'soft' ? 'warn' : 'bad'}`;
+  pill.textContent = band === 'allow' ? 'allowed' : band === 'soft' ? 'refused' : 'blocked';
+
+  const head = document.createElement('p');
+  head.className = 'latest-line';
+  head.textContent = band === 'hard'
+    ? 'Stopped before the provider was called.'
+    : band === 'soft'
+      ? 'Provider was shielded: it saw a redacted prompt and a refusal instruction.'
+      : 'Prompt inspected, PII vaulted, provider called, vault rehydrated.';
+  body.appendChild(head);
+
+  const facts = [
+    ['verdict score', meta.score.toFixed(2)],
+    meta.labels.length ? ['signals', meta.labels.join(', ').replace(/_/g, ' ')] : null,
+    ['PII masked', meta.pii.length ? meta.pii.join(', ').toLowerCase() : 'none'],
+    ['provider', [meta.provider, meta.tier].filter(Boolean).join(' · ') || 'not called'],
+    meta.seq == null ? null : ['proof', `#${meta.seq}`],
+    meta.latency == null ? null : ['latency', fmtMs(meta.latency)],
+  ].filter(Boolean);
+
+  const list = document.createElement('dl');
+  list.className = 'kv';
+  for (const [term, value] of facts) {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    list.append(dt, dd);
+  }
+  body.appendChild(list);
 }
 
 function normalizeMeta(raw) {
@@ -386,14 +425,75 @@ function pushTurn(role, content, meta) {
   renderThread();
 }
 
+const STARTERS = [
+  {
+    title: 'Block a prompt injection',
+    blurb: 'A hidden instruction scores into the hard band. The provider is never called.',
+    run: () => runDemo('attack'),
+  },
+  {
+    title: 'Mask PII before it leaves',
+    blurb: 'An email and a card become vault pseudonyms outbound, then come back to you intact.',
+    run: () => runDemo('pii'),
+  },
+  {
+    title: 'Two turns, still redacted',
+    blurb: 'History survives, and the card stays masked on every turn of the conversation.',
+    run: () => runDemo('memory'),
+  },
+  {
+    title: 'Answer from your own docs',
+    blurb: 'Ingest a policy, ask a question, get an answer with citations.',
+    run: async () => { await seed('company'); await ragAsk(); },
+  },
+  {
+    title: 'Verify all 10 capabilities',
+    blurb: 'The tour drives the real API and grades what it observes against what is claimed.',
+    run: () => { showView('tour'); return runAll(); },
+  },
+];
+
+function renderFirstRun(host) {
+  const wrap = document.createElement('div');
+  wrap.className = 'firstrun';
+
+  const title = document.createElement('h4');
+  title.className = 'firstrun-title';
+  title.textContent = 'Nothing sent yet';
+
+  const lede = document.createElement('p');
+  lede.className = 'small muted';
+  lede.textContent = 'Pick one. Every scenario runs against the live gateway and shows the evidence it produced.';
+
+  const grid = document.createElement('div');
+  grid.className = 'firstrun-grid';
+  for (const scenario of STARTERS) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'firstrun-card';
+    const heading = document.createElement('strong');
+    heading.textContent = scenario.title;
+    const detail = document.createElement('span');
+    detail.className = 'small muted';
+    detail.textContent = scenario.blurb;
+    card.append(heading, detail);
+    card.addEventListener('click', async () => {
+      card.disabled = true;
+      card.classList.add('running');
+      try { await scenario.run(); } finally { card.disabled = false; card.classList.remove('running'); }
+    });
+    grid.appendChild(card);
+  }
+
+  wrap.append(title, lede, grid);
+  host.appendChild(wrap);
+}
+
 function renderThread() {
   const host = $('#thread');
   host.textContent = '';
   if (!state.thread.length) {
-    const p = document.createElement('p');
-    p.className = 'small muted';
-    p.textContent = 'Send something to begin. Use a quick action below to watch a specific capability fire.';
-    host.appendChild(p);
+    renderFirstRun(host);
     return;
   }
   for (const turn of state.thread) {
@@ -504,6 +604,7 @@ async function sendTurn(text, { stream = false } = {}) {
     placeholder.remove();
     streamingNode = null;
     pushTurn('assistant', answer, meta);
+    renderLatest(meta);
     toast(meta.blocked
       ? (bandOf(meta) === 'hard' ? 'Blocked before the provider was called.' : 'Refused in the middle band — provider shielded.')
       : (meta.pii.length ? `Answered. ${meta.pii.join(', ')} was masked on the way out.` : 'Answered.'),
@@ -527,7 +628,18 @@ const DEMOS = {
   pii: 'My email is priya@corp.example and my card is 4111111111111111 — please help with the leave policy',
 };
 
+/* The quick actions are demonstrations, not conversation. Each one starts from
+ * a clean thread on purpose.
+ *
+ * Screening covers the whole message history, not just the newest turn — that is
+ * the safer behaviour, and it also means a single hard-blocked turn keeps every
+ * later turn in that conversation blocked. Without the reset, a visitor who taps
+ * "Block an attack" and then "Mask PII" gets two identical blocks and concludes
+ * the gateway is broken. A demo that depends on what you did before it is not a
+ * demo you can verify. */
 async function runDemo(kind) {
+  state.thread = [];
+  renderThread();
   if (kind === 'memory') {
     await sendTurn('For the record, my card is 4111111111111111 — please remember it.');
     await sendTurn('Thanks. What card did I just give you?');
@@ -1133,10 +1245,8 @@ function refreshAll() {
 }
 
 function init() {
-  applyTheme('auto');
   initKey();
   $$('.tab').forEach((t) => t.addEventListener('click', () => showView(t.dataset.view)));
-  $('#themeBtn').addEventListener('click', cycleTheme);
 
   $('#sendBtn').addEventListener('click', () => sendTurn($('#chatInput').value, { stream: $('#streamToggle').checked }));
   $('#chatInput').addEventListener('keydown', (e) => {
@@ -1182,11 +1292,6 @@ function init() {
       URL.revokeObjectURL(url);
       toast('Exported the verified window as NDJSON.');
     } catch (err) { toast(friendlyError(err), 5000); }
-  });
-
-  $('#hero-console').addEventListener('click', () => {
-    $('.console-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    $('#chatInput').focus();
   });
 
   $('#opsRefresh').addEventListener('click', refreshOps);
