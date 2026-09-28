@@ -214,8 +214,12 @@ def test_reported_alg_is_the_one_actually_used(tmp_path, monkeypatch):
 
 
 def test_encrypted_flag_is_true_only_under_fernet(tmp_path):
+    from aegis.security.audit import payload_cipher_alg
+
+    if payload_cipher_alg("k") != "fernet":
+        pytest.skip("cryptography is not installed in this environment")
     chain = make_chain(tmp_path, encrypt_key="evidence-key")
-    chain.append("acme", "chat_completed", {"a": 1})
+    chain.append("acme", "chat_completed", {"secret": "value"})
     data = chain.tail_records(limit=1)
     assert data["payload_alg"] == "fernet"
     assert data["payload_encrypted"] is True

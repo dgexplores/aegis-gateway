@@ -120,8 +120,8 @@ class Settings(BaseSettings):
             return [(
                 "AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not installed, so audit "
                 "payloads would be base64-encoded (readable to anyone with the file), not "
-                "encrypted. Install it: pip install 'aegis-gateway[backends]' — or unset the "
-                "key to store digests only."
+                "encrypted. `cryptography` is a core dependency, so this means a broken "
+                "environment — reinstall it, or unset the key to store digests only."
             )]
         return []
 

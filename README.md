@@ -455,12 +455,15 @@ present, so chains written before the field existed still verify byte-for-byte).
 By default the payload is **hashed, not stored**: you can prove *that* a request
 happened, and that nobody edited the ledger, but not reconstruct the answer.
 Set `AEGIS_AUDIT_ENCRYPT_KEY` to retain an encrypted copy of each payload
-(`payload_enc`) — required if you need to answer "what did the AI actually say".
+(`payload_enc`, Fernet via `cryptography`, which is a core dependency) — required
+if you need to answer "what did the AI actually say".
 
-**That key only encrypts if `cryptography` is installed** (`pip install -e
-'.[backends]'`). Without it the payload copy falls back to base64, which is an
-*encoding, not a cipher* — anyone holding `audit.jsonl` can read it. So the
-gateway handles the difference explicitly rather than quietly:
+**Encryption is a core dependency, not an extra.** It was optional once, and the
+consequence was that the headline feature was off by default: without
+`cryptography`, the payload copy fell back to base64 — an *encoding, not a cipher*,
+readable by anyone holding `audit.jsonl` — while the API still reported
+`fernet`. The fallback still exists for a broken environment, but the gateway
+now handles the difference explicitly rather than quietly:
 
 - `GET /admin/audit` reports the algorithm actually in use (`payload_alg`) plus
   `payload_encrypted`, instead of inferring encryption from the key being set;
@@ -468,8 +471,7 @@ gateway handles the difference explicitly rather than quietly:
   encrypted"*, never a vague "decryptable";
 - a **production** gateway with the key set but no cipher refuses to boot, because
   advertising verifiable encrypted evidence while writing plaintext is the one
-  thing a compliance product must not do. Development still permits it, so a local
-  demo runs without the extra dependency.
+  thing a compliance product must not do.
 
 `GET /admin/audit` reads the trail back. Every returned row is re-verified on the
 way out, so you never take integrity on faith:
