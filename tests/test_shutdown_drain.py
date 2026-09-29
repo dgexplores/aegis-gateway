@@ -47,8 +47,7 @@ def client(tmp_path, monkeypatch):
     settings = Settings(
         env="test",
         tenants=(
-            f"ops:{hashlib.sha256(b'k').hexdigest()}:chat+rag+admin,"
-            f"acme:{hashlib.sha256(b'j').hexdigest()}:chat+rag"
+            f"ops:{hashlib.sha256(b'k').hexdigest()}:chat+rag+admin,acme:{hashlib.sha256(b'j').hexdigest()}:chat+rag"
         ),
         providers="echo",
         rate_limit_per_min=1000,

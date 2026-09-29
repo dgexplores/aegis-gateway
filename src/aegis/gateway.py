@@ -114,9 +114,7 @@ class Gateway:
         self.settings = settings
         self.auth = Authenticator(settings)
         shared_redis = _connect_redis(settings.redis_url, strict=settings.env == "production")
-        self.limiter = SlidingWindowLimiter(
-            settings.rate_limit_per_min, redis_client=shared_redis
-        )
+        self.limiter = SlidingWindowLimiter(settings.rate_limit_per_min, redis_client=shared_redis)
         self.budget = TokenBudget(settings.daily_token_budget, redis_client=shared_redis)
         self.ops = OpsControl(redis_client=shared_redis)
         self.cache = TTLCache(settings.cache_ttl_seconds)
@@ -127,11 +125,7 @@ class Gateway:
             encrypt_key=settings.audit_encrypt_key,
             s3_bucket=settings.audit_s3_bucket,
             s3_prefix=settings.audit_s3_prefix,
-            hmac_previous_keys=[
-                k.strip()
-                for k in (settings.audit_hmac_key_previous or "").split(",")
-                if k.strip()
-            ],
+            hmac_previous_keys=[k.strip() for k in (settings.audit_hmac_key_previous or "").split(",") if k.strip()],
         )
         self._vault_key = settings.vault_hmac_key
         self._vaults: dict[str, Any] = {}
@@ -150,8 +144,11 @@ class Gateway:
         if not (killed or paused):
             return None
         state = "killed" if killed else "paused"
-        reason = ("AEGIS is not accepting requests right now." if killed
-                  else f"AEGIS access for '{tenant}' is paused by an administrator.")
+        reason = (
+            "AEGIS is not accepting requests right now."
+            if killed
+            else f"AEGIS access for '{tenant}' is paused by an administrator."
+        )
         _log_event("operator_refusal", tenant, state=state)
         return {
             "blocked": True,
@@ -212,8 +209,7 @@ class Gateway:
         and it is only ever attached when the gateway is not in production
         (see routes), because it is a debugging aid, not a product feature.
         """
-        return [{"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
-                for m in safe_messages]
+        return [{"role": str(m.get("role", "")), "content": str(m.get("content", ""))} for m in safe_messages]
 
     @property
     def vault(self):
@@ -259,16 +255,17 @@ class Gateway:
         report = _scan_conversation(messages)
         if report.score >= self.settings.injection_block_threshold:
             report.blocked = True
-            await self.audit_async(tenant, "injection_blocked",
-                                   {"score": report.score, "labels": report.labels, "band": "hard"})
+            await self.audit_async(
+                tenant, "injection_blocked", {"score": report.score, "labels": report.labels, "band": "hard"}
+            )
             metrics.inc("aegis_injection_blocked_total", tenant=tenant)
-            _log_event("injection_blocked", tenant, score=report.score,
-                       band="hard", labels=",".join(report.labels))
+            _log_event("injection_blocked", tenant, score=report.score, band="hard", labels=",".join(report.labels))
             return {
                 "blocked": True,
                 "injection": report.__dict__,
-                "answer": ("Request blocked by AEGIS: potential prompt injection detected. "
-                           "This incident has been logged."),
+                "answer": (
+                    "Request blocked by AEGIS: potential prompt injection detected. This incident has been logged."
+                ),
                 "completion": None,
                 "citations": [],
                 "pii_masked": [],
@@ -284,22 +281,25 @@ class Gateway:
             # thing somebody needs to be able to find later.
             soft_refusal = False
             report.notes = [*report.notes, "soft_band_waived_by_operator_allowlist"]
-            await self.audit_async(tenant, "soft_refusal_waived",
-                                   {"score": report.score, "labels": report.labels, "band": "soft"})
+            await self.audit_async(
+                tenant, "soft_refusal_waived", {"score": report.score, "labels": report.labels, "band": "soft"}
+            )
             metrics.inc("aegis_injection_softband_waived_total", tenant=tenant)
         if soft_refusal:
             report.blocked = True
             report.notes = [*report.notes, "soft_refusal_provider_shielded"]
-            await self.audit_async(tenant, "injection_flagged",
-                                   {"score": report.score, "labels": report.labels, "band": "soft"})
+            await self.audit_async(
+                tenant, "injection_flagged", {"score": report.score, "labels": report.labels, "band": "soft"}
+            )
             metrics.inc("aegis_injection_softblocked_total", tenant=tenant)
-            _log_event("injection_flagged", tenant, score=report.score,
-                       band="soft", labels=",".join(report.labels))
+            _log_event("injection_flagged", tenant, score=report.score, band="soft", labels=",".join(report.labels))
             return {
                 "blocked": True,
                 "injection": report.__dict__,
-                "answer": ("I can't comply with instructions that attempt to override or "
-                           "extract system behavior. Please rephrase your request."),
+                "answer": (
+                    "I can't comply with instructions that attempt to override or "
+                    "extract system behavior. Please rephrase your request."
+                ),
                 "completion": None,
                 "citations": [],
                 "pii_masked": [],
@@ -327,7 +327,10 @@ class Gateway:
         else:
             try:
                 completion, provider_name = await complete_with_failover(
-                    self.registry, safe_messages, tier.model, max_tokens,
+                    self.registry,
+                    safe_messages,
+                    tier.model,
+                    max_tokens,
                     preferred=None,
                 )
             except AllProvidersDown:
@@ -341,28 +344,27 @@ class Gateway:
 
         # 7. actuals + audit (off the event loop: append fsyncs under lock)
         self.budget.record(tenant, completion.input_tokens + completion.output_tokens)
-        audit_seq = await self.audit_async(tenant, "chat_completed", {
-            "model": completion.model,
-            "provider": provider_name,
-            "in_tokens": completion.input_tokens,
-            "out_tokens": completion.output_tokens,
-            "latency_ms": completion.latency_ms,
-        })
+        audit_seq = await self.audit_async(
+            tenant,
+            "chat_completed",
+            {
+                "model": completion.model,
+                "provider": provider_name,
+                "in_tokens": completion.input_tokens,
+                "out_tokens": completion.output_tokens,
+                "latency_ms": completion.latency_ms,
+            },
+        )
         metrics.inc("aegis_requests_total", tenant=tenant, provider=provider_name)
-        metrics.inc("aegis_tokens_total",
-                    tenant=tenant,
-                    direction="input",
-                    value=float(completion.input_tokens))
-        metrics.inc("aegis_tokens_total",
-                    tenant=tenant,
-                    direction="output",
-                    value=float(completion.output_tokens))
-        metrics.inc("aegis_cost_usd_total",
-                    tenant=tenant,
-                    provider=provider_name,
-                    tier=tier.name,
-                    value=estimate_cost_usd(tier, completion.input_tokens,
-                                            completion.output_tokens))
+        metrics.inc("aegis_tokens_total", tenant=tenant, direction="input", value=float(completion.input_tokens))
+        metrics.inc("aegis_tokens_total", tenant=tenant, direction="output", value=float(completion.output_tokens))
+        metrics.inc(
+            "aegis_cost_usd_total",
+            tenant=tenant,
+            provider=provider_name,
+            tier=tier.name,
+            value=estimate_cost_usd(tier, completion.input_tokens, completion.output_tokens),
+        )
 
         return {
             "blocked": False,
@@ -419,14 +421,22 @@ class Gateway:
         report = _scan_conversation(messages)
         if report.score >= self.settings.injection_block_threshold:
             report.blocked = True
-            await self.audit_async(tenant, "injection_blocked",
-                                   {"score": report.score, "labels": report.labels,
-                                    "band": "hard", "stream": True})
+            await self.audit_async(
+                tenant,
+                "injection_blocked",
+                {"score": report.score, "labels": report.labels, "band": "hard", "stream": True},
+            )
             metrics.inc("aegis_injection_blocked_total", tenant=tenant)
-            yield {"type": "blocked", "answer": ("Request blocked by AEGIS: potential "
-                   "prompt injection detected. This incident has been logged."),
-                   "injection": report.__dict__, "pii_masked": [], "outbound": None,
-                   "rate_limit": quota}
+            yield {
+                "type": "blocked",
+                "answer": (
+                    "Request blocked by AEGIS: potential prompt injection detected. This incident has been logged."
+                ),
+                "injection": report.__dict__,
+                "pii_masked": [],
+                "outbound": None,
+                "rate_limit": quota,
+            }
             return
         soft_refusal = report.score >= self.settings.injection_soft_threshold
         if soft_refusal and self._soft_band_waived(tenant):
@@ -437,20 +447,30 @@ class Gateway:
             # thing somebody needs to be able to find later.
             soft_refusal = False
             report.notes = [*report.notes, "soft_band_waived_by_operator_allowlist"]
-            await self.audit_async(tenant, "soft_refusal_waived",
-                                   {"score": report.score, "labels": report.labels, "band": "soft"})
+            await self.audit_async(
+                tenant, "soft_refusal_waived", {"score": report.score, "labels": report.labels, "band": "soft"}
+            )
             metrics.inc("aegis_injection_softband_waived_total", tenant=tenant)
         if soft_refusal:
             report.blocked = True
             report.notes = [*report.notes, "soft_refusal_provider_shielded"]
-            await self.audit_async(tenant, "injection_flagged",
-                                   {"score": report.score, "labels": report.labels,
-                                    "band": "soft", "stream": True})
+            await self.audit_async(
+                tenant,
+                "injection_flagged",
+                {"score": report.score, "labels": report.labels, "band": "soft", "stream": True},
+            )
             metrics.inc("aegis_injection_softblocked_total", tenant=tenant)
-            yield {"type": "blocked", "answer": ("I can't comply with instructions that "
-                   "attempt to override or extract system behavior. Please rephrase."),
-                   "injection": report.__dict__, "pii_masked": [], "outbound": None,
-                   "rate_limit": quota}
+            yield {
+                "type": "blocked",
+                "answer": (
+                    "I can't comply with instructions that "
+                    "attempt to override or extract system behavior. Please rephrase."
+                ),
+                "injection": report.__dict__,
+                "pii_masked": [],
+                "outbound": None,
+                "rate_limit": quota,
+            }
             return
 
         vault = self._vault_for(tenant)
@@ -478,18 +498,33 @@ class Gateway:
                 yield {"type": "delta", "delta": delta, "index": i}
                 await asyncio.sleep(0)
             self.budget.record(tenant, cached.input_tokens + cached.output_tokens)
-            audit_seq = await self.audit_async(tenant, "chat_completed", {
-                "model": cached.model, "provider": cached.provider,
-                "in_tokens": cached.input_tokens, "out_tokens": cached.output_tokens,
-                "latency_ms": cached.latency_ms, "stream": True, "cached": True,
-                "ttft_ms": round(ttft_ms, 2)})
+            audit_seq = await self.audit_async(
+                tenant,
+                "chat_completed",
+                {
+                    "model": cached.model,
+                    "provider": cached.provider,
+                    "in_tokens": cached.input_tokens,
+                    "out_tokens": cached.output_tokens,
+                    "latency_ms": cached.latency_ms,
+                    "stream": True,
+                    "cached": True,
+                    "ttft_ms": round(ttft_ms, 2),
+                },
+            )
             metrics.inc("aegis_ttft_ms_total", tenant=tenant, value=ttft_ms)
-            yield {"type": "done", "provider": cached.provider,
-                   "routing": {"tier": tier.name, "reason": reason},
-                   "audit_seq": audit_seq, "injection": report.__dict__,
-                   "pii_masked": pii_types, "rate_limit": quota,
-                   "ttft_ms": round(ttft_ms, 2), "cached": True,
-                   "outbound": self._outbound_preview(safe_messages) if debug else None}
+            yield {
+                "type": "done",
+                "provider": cached.provider,
+                "routing": {"tier": tier.name, "reason": reason},
+                "audit_seq": audit_seq,
+                "injection": report.__dict__,
+                "pii_masked": pii_types,
+                "rate_limit": quota,
+                "ttft_ms": round(ttft_ms, 2),
+                "cached": True,
+                "outbound": self._outbound_preview(safe_messages) if debug else None,
+            }
             return
 
         # live stream across failover chain
@@ -520,49 +555,87 @@ class Gateway:
                     oreport = scan(tail)
                     if oreport.score >= self.settings.injection_block_threshold:
                         breaker.record_failure()
-                        await self.audit_async(tenant, "stream_blocked",
-                                               {"score": oreport.score, "labels": oreport.labels,
-                                                "chunks": chunks, "provider": name})
+                        await self.audit_async(
+                            tenant,
+                            "stream_blocked",
+                            {"score": oreport.score, "labels": oreport.labels, "chunks": chunks, "provider": name},
+                        )
                         metrics.inc("aegis_injection_blocked_total", tenant=tenant)
-                        yield {"type": "blocked",
-                               "answer": ("Stream stopped by AEGIS: unsafe content "
-                                          "detected mid-response. Incident logged."),
-                               "injection": oreport.__dict__, "pii_masked": pii_types,
-                               "rate_limit": quota}
+                        yield {
+                            "type": "blocked",
+                            "answer": (
+                                "Stream stopped by AEGIS: unsafe content detected mid-response. Incident logged."
+                            ),
+                            "injection": oreport.__dict__,
+                            "pii_masked": pii_types,
+                            "rate_limit": quota,
+                        }
                         return
                     restored = vault.restore(delta)
                     restored_accum += restored
                     chunks += 1
                     metrics.inc("aegis_stream_chunks_total", tenant=tenant)
-                    yield {"type": "delta", "delta": restored, "index": chunks - 1,
-                           **({"ttft_ms": round(ttft_ms, 2)} if chunks == 1 else {})}
+                    yield {
+                        "type": "delta",
+                        "delta": restored,
+                        "index": chunks - 1,
+                        **({"ttft_ms": round(ttft_ms, 2)} if chunks == 1 else {}),
+                    }
                 # stream finished for this provider
                 breaker.record_success()
                 from aegis.providers.base import Completion as _Completion
+
                 # same estimator as the non-stream path + budget preflight
                 in_tok = sum(self.budget.estimate_tokens(str(m.get("content", ""))) for m in safe_messages)
                 out_tok = self.budget.estimate_tokens(sanitized_accum)
-                self.cache.put(cache_key, _Completion(
-                    text=sanitized_accum, model=provider_model, provider=name,
-                    input_tokens=in_tok, output_tokens=out_tok,
-                    latency_ms=round((time.perf_counter() - t0) * 1000, 2)))
+                self.cache.put(
+                    cache_key,
+                    _Completion(
+                        text=sanitized_accum,
+                        model=provider_model,
+                        provider=name,
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                        latency_ms=round((time.perf_counter() - t0) * 1000, 2),
+                    ),
+                )
                 self.budget.record(tenant, in_tok + out_tok)
-                audit_seq = await self.audit_async(tenant, "chat_completed", {
-                    "model": provider_model, "provider": name,
-                    "in_tokens": in_tok, "out_tokens": out_tok,
-                    "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
-                    "stream": True, "chunks": chunks, "ttft_ms": round(ttft_ms, 2)})
+                audit_seq = await self.audit_async(
+                    tenant,
+                    "chat_completed",
+                    {
+                        "model": provider_model,
+                        "provider": name,
+                        "in_tokens": in_tok,
+                        "out_tokens": out_tok,
+                        "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
+                        "stream": True,
+                        "chunks": chunks,
+                        "ttft_ms": round(ttft_ms, 2),
+                    },
+                )
                 metrics.inc("aegis_requests_total", tenant=tenant, provider=name)
                 metrics.inc("aegis_stream_streams_total", tenant=tenant)
-                metrics.inc("aegis_cost_usd_total", tenant=tenant, provider=name,
-                            tier=tier.name,
-                            value=estimate_cost_usd(tier, in_tok, out_tok))
-                yield {"type": "done", "provider": name,
-                       "routing": {"tier": tier.name, "reason": reason},
-                       "audit_seq": audit_seq, "injection": report.__dict__,
-                       "pii_masked": pii_types, "rate_limit": quota,
-                       "ttft_ms": round(ttft_ms, 2), "chunks": chunks, "cached": False,
-                       "outbound": self._outbound_preview(safe_messages) if debug else None}
+                metrics.inc(
+                    "aegis_cost_usd_total",
+                    tenant=tenant,
+                    provider=name,
+                    tier=tier.name,
+                    value=estimate_cost_usd(tier, in_tok, out_tok),
+                )
+                yield {
+                    "type": "done",
+                    "provider": name,
+                    "routing": {"tier": tier.name, "reason": reason},
+                    "audit_seq": audit_seq,
+                    "injection": report.__dict__,
+                    "pii_masked": pii_types,
+                    "rate_limit": quota,
+                    "ttft_ms": round(ttft_ms, 2),
+                    "chunks": chunks,
+                    "cached": False,
+                    "outbound": self._outbound_preview(safe_messages) if debug else None,
+                }
                 return
             except Exception as exc:  # noqa: BLE001 — try next provider in chain
                 try:

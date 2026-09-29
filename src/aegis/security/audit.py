@@ -145,9 +145,16 @@ def archive_to_s3(path: Path, bucket: str, prefix: str = "aegis-audit/") -> str 
 
 
 class AuditChain:
-    def __init__(self, hmac_key: str, path: str = "audit.jsonl", max_bytes: int = 10_000_000,
-                 encrypt_key: str = "", s3_bucket: str = "", s3_prefix: str = "aegis-audit/",
-                 hmac_previous_keys: Sequence[str] = ()) -> None:
+    def __init__(
+        self,
+        hmac_key: str,
+        path: str = "audit.jsonl",
+        max_bytes: int = 10_000_000,
+        encrypt_key: str = "",
+        s3_bucket: str = "",
+        s3_prefix: str = "aegis-audit/",
+        hmac_previous_keys: Sequence[str] = (),
+    ) -> None:
         # The signing key is `_keys[0]`. The rest are *accepted* for verification
         # only, and exist so a rotation does not invalidate the records the old
         # key signed. See `hmac_previous_keys` on the module for the rotation
@@ -222,8 +229,9 @@ class AuditChain:
 
     # -- internals ----------------------------------------------------------
 
-    def _entry_hash(self, seq: int, ts: float, tenant: str, event: str,
-                    payload_sha256: str, prev_hash: str, request_id: str = "") -> str:
+    def _entry_hash(
+        self, seq: int, ts: float, tenant: str, event: str, payload_sha256: str, prev_hash: str, request_id: str = ""
+    ) -> str:
         """Signed material. `request_id` is appended only when non-empty so
         pre-existing records (which lack the field) still verify."""
         material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
@@ -231,9 +239,17 @@ class AuditChain:
             material = f"{material}|{request_id}"
         return hmac.new(self._key, material.encode(), hashlib.sha256).hexdigest()
 
-    def _entry_hash_under(self, key: bytes, seq: int, ts: float, tenant: str,
-                          event: str, payload_sha256: str, prev_hash: str,
-                          request_id: str = "") -> str:
+    def _entry_hash_under(
+        self,
+        key: bytes,
+        seq: int,
+        ts: float,
+        tenant: str,
+        event: str,
+        payload_sha256: str,
+        prev_hash: str,
+        request_id: str = "",
+    ) -> str:
         material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
         if request_id:
             material = f"{material}|{request_id}"
@@ -253,9 +269,9 @@ class AuditChain:
         """
         matched = -1
         for slot, key in enumerate(self._keys):
-            expected = self._entry_hash_under(key, rec.seq, rec.ts, rec.tenant,
-                                              rec.event, rec.payload_sha256,
-                                              rec.prev_hash, rec.request_id)
+            expected = self._entry_hash_under(
+                key, rec.seq, rec.ts, rec.tenant, rec.event, rec.payload_sha256, rec.prev_hash, rec.request_id
+            )
             if hmac.compare_digest(expected, rec.entry_hash):
                 matched = slot
         return (matched >= 0), matched
@@ -307,8 +323,7 @@ class AuditChain:
         except OSError:
             pass
 
-    def append(self, tenant: str, event: str, payload: dict,
-               request_id: str = "") -> AuditRecord:
+    def append(self, tenant: str, event: str, payload: dict, request_id: str = "") -> AuditRecord:
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
@@ -319,8 +334,7 @@ class AuditChain:
             self._maybe_rotate()
             ts = time.time()
             self.seq += 1
-            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256,
-                                         self.head, request_id)
+            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id)
             record = AuditRecord(
                 seq=self.seq,
                 ts=ts,
@@ -408,8 +422,7 @@ class AuditChain:
         lines.reverse()
         return lines, pos == 0
 
-    def tail_records(self, limit: int = 50, tenant: str = "", event: str = "",
-                     with_payload: bool = True) -> dict:
+    def tail_records(self, limit: int = 50, tenant: str = "", event: str = "", with_payload: bool = True) -> dict:
         """Newest-first-selected evidence, with every signature re-verified.
 
         Each returned record carries:
@@ -440,13 +453,10 @@ class AuditChain:
                 raw.setdefault("payload_enc", None)
                 raw.setdefault("payload_alg", "none")
                 raw.setdefault("request_id", "")
-                parsed.append(
-                    AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
-                )
+                parsed.append(AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__}))
             except (json.JSONDecodeError, KeyError, TypeError) as exc:
                 # A corrupt line is evidence too — surface it rather than skip.
-                malformed.append({"error": f"{type(exc).__name__}: {exc}",
-                                  "line": line[:200]})
+                malformed.append({"error": f"{type(exc).__name__}: {exc}", "line": line[:200]})
 
         rows: list[dict] = []
         prev: AuditRecord | None = None
@@ -468,21 +478,23 @@ class AuditChain:
                     payload = {"error": f"undecryptable: {type(exc).__name__}"}
                     payload_ok = False
 
-            rows.append({
-                "seq": rec.seq,
-                "ts": rec.ts,
-                "tenant": rec.tenant,
-                "event": rec.event,
-                "request_id": rec.request_id,
-                "payload_sha256": rec.payload_sha256,
-                "entry_hash": rec.entry_hash,
-                "prev_hash": rec.prev_hash,
-                "sig_ok": sig_ok,
-                "signed_with": "current" if key_slot == 0 else f"previous:{key_slot - 1}",
-                "link_ok": link_ok,
-                "payload": payload,
-                "payload_ok": payload_ok,
-            })
+            rows.append(
+                {
+                    "seq": rec.seq,
+                    "ts": rec.ts,
+                    "tenant": rec.tenant,
+                    "event": rec.event,
+                    "request_id": rec.request_id,
+                    "payload_sha256": rec.payload_sha256,
+                    "entry_hash": rec.entry_hash,
+                    "prev_hash": rec.prev_hash,
+                    "sig_ok": sig_ok,
+                    "signed_with": "current" if key_slot == 0 else f"previous:{key_slot - 1}",
+                    "link_ok": link_ok,
+                    "payload": payload,
+                    "payload_ok": payload_ok,
+                }
+            )
             prev = rec
 
         if tenant:
@@ -511,8 +523,7 @@ class AuditChain:
         }
 
 
-def load_verified_records(path: str | Path, hmac_key: str,
-                          hmac_previous_keys: Sequence[str] = ()) -> list[AuditRecord]:
+def load_verified_records(path: str | Path, hmac_key: str, hmac_previous_keys: Sequence[str] = ()) -> list[AuditRecord]:
     """Parse one segment file, verifying every signature and link.
 
     Same checks as AuditChain._load, but standalone so reconcile can name
@@ -525,8 +536,7 @@ def load_verified_records(path: str | Path, hmac_key: str,
     # be built here too -- and if a rotation makes segments unreadable, this is
     # where it would show up.
     verifier._keys = [hmac_key.encode()] + [
-        k.encode() for k in hmac_previous_keys
-        if k and k != hmac_key and k.encode() != hmac_key.encode()
+        k.encode() for k in hmac_previous_keys if k and k != hmac_key and k.encode() != hmac_key.encode()
     ]
     verifier._key = verifier._keys[0]
     records: list[AuditRecord] = []
@@ -551,8 +561,7 @@ def load_verified_records(path: str | Path, hmac_key: str,
     return records
 
 
-def reconcile_segments(paths: list[str | Path], hmac_key: str,
-                       hmac_previous_keys: Sequence[str] = ()) -> dict:
+def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_keys: Sequence[str] = ()) -> dict:
     """Order per-pod audit segments by head linkage (M12).
 
     Verifies every segment, then chains them: segment B follows A when B's

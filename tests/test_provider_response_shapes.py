@@ -39,8 +39,7 @@ def test_a_thinking_model_that_used_its_whole_budget_raises_a_readable_error():
     An empty string would be worse than useless here: the caller would send the
     user a blank answer and nobody would know why.
     """
-    data = {"choices": [{"finish_reason": "length", "index": 0,
-                         "message": {"role": "assistant"}}]}
+    data = {"choices": [{"finish_reason": "length", "index": 0, "message": {"role": "assistant"}}]}
     with pytest.raises(ProviderError) as exc:
         extract_openai_text(data, "gemini")
     message = str(exc.value)
@@ -50,8 +49,7 @@ def test_a_thinking_model_that_used_its_whole_budget_raises_a_readable_error():
 
 
 def test_the_hint_also_fires_when_the_provider_echoes_the_reasoning():
-    data = {"choices": [{"finish_reason": "length",
-                         "message": {"reasoning_content": "thinking hard..."}}]}
+    data = {"choices": [{"finish_reason": "length", "message": {"reasoning_content": "thinking hard..."}}]}
     with pytest.raises(ProviderError, match="raise max_tokens"):
         extract_openai_text(data, "gemini")
 
@@ -89,7 +87,12 @@ def test_a_response_with_no_choices_at_all_does_not_crash():
 def test_extra_provider_specific_keys_do_not_break_extraction():
     """Gemini attaches `extra_content` with a thought signature; a parser that
     insisted on an exact message shape would break on it."""
-    data = {"choices": [{"finish_reason": "stop",
-                         "message": {"content": "ok",
-                                     "extra_content": {"google": {"thought_signature": "x"}}}}]}
+    data = {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"content": "ok", "extra_content": {"google": {"thought_signature": "x"}}},
+            }
+        ]
+    }
     assert extract_openai_text(data, "gemini") == "ok"

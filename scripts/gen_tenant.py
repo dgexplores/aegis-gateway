@@ -6,6 +6,7 @@ Usage:
   python scripts/gen_tenant.py --id acme --scopes chat+rag --key my-secret-key
 If --key not given, a random sk-... is generated.
 """
+
 import argparse
 import hashlib
 import secrets

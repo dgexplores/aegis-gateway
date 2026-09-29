@@ -119,16 +119,17 @@ def check_hpa(docs: list[dict]) -> None:
     hpas = [d for d in docs if d.get("kind") == "HorizontalPodAutoscaler"]
     if not hpas:
         return
-    workloads = {d["metadata"]["name"]: d["kind"]
-                 for d in docs if d.get("kind") in ("StatefulSet", "Deployment")}
+    workloads = {d["metadata"]["name"]: d["kind"] for d in docs if d.get("kind") in ("StatefulSet", "Deployment")}
     for hpa in hpas:
         ref = hpa["spec"].get("scaleTargetRef", {})
         target_name, target_kind = ref.get("name"), ref.get("kind")
         if target_name not in workloads:
             fail(f"HPA targets '{target_name}', which is not a workload in deploy/k8s")
         elif workloads[target_name] != target_kind:
-            fail(f"HPA scaleTargetRef.kind={target_kind} but {target_name} is a "
-                 f"{workloads[target_name]} — autoscaling would never resolve")
+            fail(
+                f"HPA scaleTargetRef.kind={target_kind} but {target_name} is a "
+                f"{workloads[target_name]} — autoscaling would never resolve"
+            )
         else:
             ok(f"HPA targets the real workload ({target_kind}/{target_name})")
 
@@ -142,8 +143,7 @@ def check_k8s_secret(docs: list[dict]) -> None:
       * AEGIS_TENANTS carrying the public demo key hash (or a placeholder), so
         the manifest either ships a known credential or boots with no tenant.
     """
-    secrets = [d for d in docs
-               if d.get("kind") == "Secret" and "aegis" in d["metadata"]["name"]]
+    secrets = [d for d in docs if d.get("kind") == "Secret" and "aegis" in d["metadata"]["name"]]
     if not secrets:
         fail("no aegis Secret in deploy/k8s (gateway would have no config)")
         return
@@ -151,8 +151,9 @@ def check_k8s_secret(docs: list[dict]) -> None:
     env = data.get("AEGIS_ENV", "production")
 
     if env == "production" and not str(data.get("AEGIS_REDIS_URL", "")).strip():
-        fail("k8s Secret: AEGIS_ENV=production requires a non-empty AEGIS_REDIS_URL "
-             "(gateway refuses to boot without it)")
+        fail(
+            "k8s Secret: AEGIS_ENV=production requires a non-empty AEGIS_REDIS_URL (gateway refuses to boot without it)"
+        )
     else:
         ok("k8s Secret supplies shared Redis state for production")
 
@@ -165,8 +166,10 @@ def check_k8s_secret(docs: list[dict]) -> None:
         # Deliberate: a placeholder is honest and fails loudly at boot (the
         # gateway refuses production with no usable tenant). Shipping a working
         # demo credential would fail silently instead. Warn, don't block CI.
-        warn("k8s Secret AEGIS_TENANTS is the REPLACE_ME placeholder — the operator "
-             "must run scripts/gen_tenant.py before the pod will boot")
+        warn(
+            "k8s Secret AEGIS_TENANTS is the REPLACE_ME placeholder — the operator "
+            "must run scripts/gen_tenant.py before the pod will boot"
+        )
     else:
         ok("k8s Secret carries no known demo credential")
 
@@ -214,21 +217,27 @@ def _check_admin_portal_credential(data: dict, where: str) -> None:
     # credential", which is precisely the false pass that must not exist.
     for label, value in (("AEGIS_ADMIN_USERNAME", user), ("AEGIS_ADMIN_PASSWORD", password)):
         if value and _is_placeholder(value):
-            fail(f"{where} ships the {label} placeholder {value!r} — that is a published "
-                 "password, not a missing one. Replace it, or remove the key to fall "
-                 "back to bearer-only auth")
+            fail(
+                f"{where} ships the {label} placeholder {value!r} — that is a published "
+                "password, not a missing one. Replace it, or remove the key to fall "
+                "back to bearer-only auth"
+            )
             return
 
     if not user and not password:
         ok(f"{where}: admin portal login unset — admin-scoped bearer tokens only")
         return
     if not user or not password:
-        fail(f"{where}: AEGIS_ADMIN_USERNAME and AEGIS_ADMIN_PASSWORD must be set together "
-             "(half a login is an open door with no way in)")
+        fail(
+            f"{where}: AEGIS_ADMIN_USERNAME and AEGIS_ADMIN_PASSWORD must be set together "
+            "(half a login is an open door with no way in)"
+        )
         return
     if password == DEMO_ADMIN_PASSWORD:
-        fail(f"{where} ships the published demo admin password — anyone who has read the "
-             "README can pause tenants and pull the kill switch")
+        fail(
+            f"{where} ships the published demo admin password — anyone who has read the "
+            "README can pause tenants and pull the kill switch"
+        )
         return
     if user == DEMO_ADMIN_USER:
         fail(f"{where} ships the demo admin id with a different password — pick your own id")
@@ -248,16 +257,22 @@ def _check_breakglass_credential(data: dict, where: str) -> None:
     """
     password = str(data.get("AEGIS_BREAKGLASS_PASSWORD", "")).strip()
     if password and _is_placeholder(password):
-        fail(f"{where} ships the AEGIS_BREAKGLASS_PASSWORD placeholder {password!r} — "
-             "that is a published secret, so the kill switch is guarded by nothing")
+        fail(
+            f"{where} ships the AEGIS_BREAKGLASS_PASSWORD placeholder {password!r} — "
+            "that is a published secret, so the kill switch is guarded by nothing"
+        )
         return
     if not password:
-        warn(f"{where}: AEGIS_BREAKGLASS_PASSWORD is unset — the kill switch is reachable "
-             "with a portal session alone. Set it to require a second secret.")
+        warn(
+            f"{where}: AEGIS_BREAKGLASS_PASSWORD is unset — the kill switch is reachable "
+            "with a portal session alone. Set it to require a second secret."
+        )
         return
     if password == DEMO_BREAKGLASS_PASSWORD:
-        fail(f"{where} ships the published demo break-glass secret — anyone who has read the "
-             "README can refuse all traffic")
+        fail(
+            f"{where} ships the published demo break-glass secret — anyone who has read the "
+            "README can refuse all traffic"
+        )
         return
     ok(f"{where}: the kill switch requires a break-glass secret")
 
@@ -312,10 +327,11 @@ def check_console_surface() -> None:
             fail(f"console: {name} contains remote script/style source (breaks air-gapped deployments)")
         # Check for remote stylesheets - only flag <link> with https:// href, not local /static/ ones
         import re
+
         for _match in re.finditer(r'<link[^>]*href="https://[^"]*"', html):
             fail(f"console: {name} contains remote stylesheet source (breaks air-gapped deployments)")
         # Check for remote url() in CSS
-        if 'url(http' in html:
+        if "url(http" in html:
             fail(f"console: {name} contains remote url() in CSS/markup")
         # An inline <script> with no src= would need `unsafe-inline`.
         if "<script" in html and "<script src=" not in html:
@@ -381,20 +397,28 @@ def check_render_blueprint() -> None:
 
     if aegis_env == "production":
         if demo_hash in tenants or empty_hash in tenants or "REPLACE_ME" in tenants:
-            fail("render.yaml: AEGIS_ENV=production with a public demo / empty / placeholder "
-                 "tenant hash — the container refuses to boot; mint one with gen_tenant.py")
+            fail(
+                "render.yaml: AEGIS_ENV=production with a public demo / empty / placeholder "
+                "tenant hash — the container refuses to boot; mint one with gen_tenant.py"
+            )
         if value("AEGIS_DEMO_API_KEY"):
-            fail("render.yaml: AEGIS_ENV=production must not set AEGIS_DEMO_API_KEY "
-                 "(/dashboard is unauthenticated and would serve a working credential)")
+            fail(
+                "render.yaml: AEGIS_ENV=production must not set AEGIS_DEMO_API_KEY "
+                "(/dashboard is unauthenticated and would serve a working credential)"
+            )
         if not value("AEGIS_REDIS_URL"):
             fail("render.yaml: AEGIS_ENV=production requires AEGIS_REDIS_URL")
         ok("render.yaml is a coherent production blueprint")
     elif demo_hash in tenants:
-        ok(f"render.yaml is an evaluation blueprint (env={aegis_env}, public demo key — "
-           "nothing is protected by refusing it, and refusing it breaks the deploy)")
+        ok(
+            f"render.yaml is an evaluation blueprint (env={aegis_env}, public demo key — "
+            "nothing is protected by refusing it, and refusing it breaks the deploy)"
+        )
     else:
-        warn(f"render.yaml runs env={aegis_env} without the demo tenant — the deployed "
-             "console will 401 every call until AEGIS_TENANTS is set")
+        warn(
+            f"render.yaml runs env={aegis_env} without the demo tenant — the deployed "
+            "console will 401 every call until AEGIS_TENANTS is set"
+        )
 
     # The image writes the chain to /data; the blueprint must persist that path
     # or the tamper-evident log evaporates on every redeploy.
@@ -402,8 +426,10 @@ def check_render_blueprint() -> None:
     if "AEGIS_AUDIT_PATH=/data/audit.jsonl" in (ROOT / "Dockerfile").read_text():
         disk = web.get("disk") or {}
         if disk.get("mountPath") != "/data":
-            fail("render.yaml: image writes the audit chain to /data but no disk is mounted "
-                 "there — the tamper-evident log is lost on every redeploy")
+            fail(
+                "render.yaml: image writes the audit chain to /data but no disk is mounted "
+                "there — the tamper-evident log is lost on every redeploy"
+            )
     if len(failures) == before:
         ok("render.yaml persists the audit chain on a disk")
 

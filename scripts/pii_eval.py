@@ -6,6 +6,7 @@ Usage:
 
 Fails (exit 1) if any must-recall case is missed. Prints per-type P/R.
 """
+
 import sys
 from collections import defaultdict
 from pathlib import Path

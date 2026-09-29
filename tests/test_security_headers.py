@@ -83,8 +83,9 @@ def test_dashboard_has_no_hardcoded_credential():
     production."""
     from pathlib import Path
 
-    template = (Path(__file__).resolve().parents[1] / "src" / "aegis" / "templates"
-                / "dashboard.html").read_text(encoding="utf-8")
+    template = (Path(__file__).resolve().parents[1] / "src" / "aegis" / "templates" / "dashboard.html").read_text(
+        encoding="utf-8"
+    )
     assert "__AEGIS_DEMO_SLOT__" in template
     demo_key = "demo-sk-aegis-2024"
     assert demo_key not in template, "a literal credential is baked into the template"
@@ -97,10 +98,12 @@ def test_dashboard_serves_no_key_in_production(tmp_path, monkeypatch):
     monkeypatch.setattr("aegis.gateway._connect_redis", lambda url, *, strict: None)
     import asyncio
 
-    prod = make_settings(tmp_path).model_copy(update={
-        "env": "production",
-        "demo_api_key": "demo-sk-aegis-2024",
-    })
+    prod = make_settings(tmp_path).model_copy(
+        update={
+            "env": "production",
+            "demo_api_key": "demo-sk-aegis-2024",
+        }
+    )
     STATE["gateway"] = asyncio.run(build_gateway(prod))
     with TestClient(app, raise_server_exceptions=False) as c:
         html = c.get("/dashboard").text

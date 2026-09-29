@@ -5,7 +5,6 @@ Heroku, and fall back to the configured default when no env var is set. It must
 reject non-numeric values rather than silently crash at runtime.
 """
 
-
 import pytest
 
 from aegis.serve import resolve_port, resolve_workers

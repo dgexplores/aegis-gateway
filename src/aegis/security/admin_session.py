@@ -71,8 +71,13 @@ def credential_fingerprint(username: str, password: str, key: str) -> str:
     return _b64e(hmac.new(key.encode(), raw, hashlib.sha256).digest()[:12])
 
 
-def sign(username: str, key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS,
-         now: float | None = None, fingerprint: str | None = None) -> str:
+def sign(
+    username: str,
+    key: str,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    now: float | None = None,
+    fingerprint: str | None = None,
+) -> str:
     """A signed `user|expiry` cookie value, bound to a credential fingerprint."""
     expires = int((time.time() if now is None else now) + ttl_seconds)
     claims: dict[str, Any] = {"u": username, "e": expires}
@@ -83,8 +88,7 @@ def sign(username: str, key: str, ttl_seconds: int = DEFAULT_TTL_SECONDS,
     return f"{body}.{_b64e(signature)}"
 
 
-def verify(token: str, key: str, now: float | None = None,
-           fingerprint: str | None = None) -> str | None:
+def verify(token: str, key: str, now: float | None = None, fingerprint: str | None = None) -> str | None:
     """The username this cookie is for, or ``None`` if it is not valid.
 
     Every rejection path returns ``None`` rather than raising, so a caller
@@ -121,8 +125,7 @@ def verify(token: str, key: str, now: float | None = None,
     return username
 
 
-def check_credentials(username: str, password: str, expected_user: str,
-                      expected_password: str) -> None:
+def check_credentials(username: str, password: str, expected_user: str, expected_password: str) -> None:
     """Raise :class:`AdminAuthError` unless both halves match."""
     user_ok = secrets.compare_digest((username or "").encode(), (expected_user or "").encode())
     pass_ok = secrets.compare_digest((password or "").encode(), (expected_password or "").encode())
@@ -132,8 +135,9 @@ def check_credentials(username: str, password: str, expected_user: str,
 
 
 def is_demo_credential(username: str, password: str) -> bool:
-    return secrets.compare_digest(username or "", DEMO_USERNAME) and \
-        secrets.compare_digest(password or "", DEMO_PASSWORD)
+    return secrets.compare_digest(username or "", DEMO_USERNAME) and secrets.compare_digest(
+        password or "", DEMO_PASSWORD
+    )
 
 
 def cookie_kwargs(secure: bool, max_age: int = DEFAULT_TTL_SECONDS) -> dict[str, Any]:

@@ -85,6 +85,7 @@ def _fresh_windows(*ids):
 
 # ----------------------------------------------------------- rate limiting --
 
+
 def test_repeated_wrong_passwords_are_throttled(client):
     _fresh_windows("testclient", f"testclient:{ADMIN_ID}")
     """A guessing run has to run out of budget, not just get slower."""
@@ -95,9 +96,7 @@ def test_repeated_wrong_passwords_are_throttled(client):
 
     codes = []
     for _ in range(25):
-        r = client.post(
-            "/admin/login", json={"username": ADMIN_ID, "password": "wrong"}
-        )
+        r = client.post("/admin/login", json={"username": ADMIN_ID, "password": "wrong"})
         codes.append(r.status_code)
         if r.status_code == 429:
             break
@@ -112,9 +111,7 @@ def test_a_throttled_login_says_when_to_retry(client):
     for key in ("admin-login:testclient", "admin-login:testclient:ops"):
         routes._LOGIN_LIMITER.reset(key)
     for _ in range(25):
-        if client.post(
-            "/admin/login", json={"username": ADMIN_ID, "password": "wrong"}
-        ).status_code == 429:
+        if client.post("/admin/login", json={"username": ADMIN_ID, "password": "wrong"}).status_code == 429:
             break
     r = client.post("/admin/login", json={"username": ADMIN_ID, "password": "wrong"})
     assert r.status_code == 429
@@ -136,9 +133,7 @@ def test_a_correct_login_after_typos_is_not_locked_out(client):
     for _ in range(3):
         client.post("/admin/login", json={"username": ADMIN_ID, "password": "nope"})
 
-    ok = client.post(
-        "/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD}
-    )
+    ok = client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     assert ok.status_code == 200, ok.text
     assert client.get("/admin/session").json()["authenticated"] is True
 
@@ -153,20 +148,17 @@ def test_a_wrong_password_is_never_audited_with_the_guessed_id(client_bearer):
     """
     _fresh_windows("testclient", "testclient:scout")
     for _ in range(4):
-        client_bearer.post(
-            "/admin/login", json={"username": "scout", "password": "guess"}
-        )
+        client_bearer.post("/admin/login", json={"username": "scout", "password": "guess"})
 
     rows = client_bearer.get("/admin/audit", params={"limit": 500}).json()["records"]
-    blob = " ".join(
-        f"{r.get('event')} {r.get('tenant')} {r.get('payload')}" for r in rows
-    )
+    blob = " ".join(f"{r.get('event')} {r.get('tenant')} {r.get('payload')}" for r in rows)
     assert "scout" not in blob, "the guessed id was written to the chain"
     for forbidden in ("login_failed", "admin_login_failed", "auth_failure"):
         assert forbidden not in blob, f"{forbidden} appeared in the chain"
 
 
 # ------------------------------------------------- password-change logout --
+
 
 def test_changing_the_password_ends_every_live_session():
     """Revocation without a session table.
@@ -191,9 +183,7 @@ def test_a_cookie_does_not_survive_a_password_change_end_to_end(client):
 
     for key in ("admin-login:testclient", "admin-login:testclient:ops"):
         routes._LOGIN_LIMITER.reset(key)
-    login = client.post(
-        "/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD}
-    )
+    login = client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     assert login.status_code == 200
     assert client.get("/admin/session").json()["authenticated"] is True
 
@@ -216,12 +206,11 @@ def test_the_fingerprint_does_not_disclose_the_password():
     assert fp == admin_session.credential_fingerprint("ops", "correct horse", key)
     assert fp != admin_session.credential_fingerprint("ops", "battery staple", key)
     # And bound to the key, so it is not portable between deployments.
-    assert fp != admin_session.credential_fingerprint(
-        "ops", "correct horse", "j" * 32
-    )
+    assert fp != admin_session.credential_fingerprint("ops", "correct horse", "j" * 32)
 
 
 # ------------------------------------------------------- audited the read --
+
 
 def test_reading_the_audit_trail_is_itself_recorded(client_bearer):
     before = client_bearer.get("/admin/audit", params={"limit": 500}).json()["count"]
@@ -229,9 +218,7 @@ def test_reading_the_audit_trail_is_itself_recorded(client_bearer):
     after = client_bearer.get("/admin/audit", params={"limit": 500}).json()["count"]
     assert after > before, "reading the log left no trace"
 
-    rows = client_bearer.get(
-        "/admin/audit", params={"limit": 500, "event": "admin_audit_read"}
-    ).json()
+    rows = client_bearer.get("/admin/audit", params={"limit": 500, "event": "admin_audit_read"}).json()
     assert rows["count"] >= 1
     record = rows["records"][0]
     assert record["sig_ok"] is True
@@ -242,9 +229,7 @@ def test_reading_the_audit_trail_is_itself_recorded(client_bearer):
 
 def test_a_cross_tenant_read_is_recorded_as_such(client_bearer):
     client_bearer.get("/admin/audit", params={"tenant": "acme", "limit": 5})
-    rows = client_bearer.get(
-        "/admin/audit", params={"limit": 500, "event": "admin_audit_read"}
-    ).json()
+    rows = client_bearer.get("/admin/audit", params={"limit": 500, "event": "admin_audit_read"}).json()
     reads = [r for r in rows["records"] if (r.get("payload") or {}).get("cross_tenant")]
     assert reads, "a cross-tenant read was not distinguishable in the log"
     assert reads[0]["payload"]["scope"] == "acme"

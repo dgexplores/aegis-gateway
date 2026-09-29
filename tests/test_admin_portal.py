@@ -77,11 +77,14 @@ def bearer(key: str) -> dict:
 
 # ------------------------------------------------------------- the login --
 
+
 def test_session_reports_anonymous_before_login(client):
     body = client.get("/admin/session").json()
     assert body == {
-        "authenticated": False, "user": None,
-        "login_available": True, "demo_credentials": False,
+        "authenticated": False,
+        "user": None,
+        "login_available": True,
+        "demo_credentials": False,
     }
 
 
@@ -112,9 +115,9 @@ def test_the_rejection_does_not_reveal_which_half_was_wrong(client):
 def test_the_cookie_is_not_readable_from_javascript(client):
     """HttpOnly, or an XSS becomes an admin session."""
     client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
-    header = client.post(
-        "/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD}
-    ).headers.get("set-cookie", "")
+    header = client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD}).headers.get(
+        "set-cookie", ""
+    )
     assert "httponly" in header.lower()
     assert "samesite=strict" in header.lower()
 
@@ -172,6 +175,7 @@ def test_no_credential_at_all_is_refused(client):
 
 # ------------------------------------------------------------ the actions --
 
+
 def test_controls_lists_the_tenants_and_providers_an_operator_can_aim_at(client):
     client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     body = client.get("/admin/controls").json()
@@ -185,8 +189,7 @@ def test_pausing_a_tenant_over_http_actually_pauses_it(client):
     client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     client.post("/admin/controls/tenant/acme/pause")
 
-    out = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]},
-                      headers=bearer(TENANT_KEY))
+    out = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]}, headers=bearer(TENANT_KEY))
     assert out.json()["blocked"] is True
     assert "paused" in out.json()["answer"].lower()
 
@@ -195,8 +198,7 @@ def test_resuming_over_http_puts_the_tenant_back(client):
     client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     client.post("/admin/controls/tenant/acme/pause")
     client.post("/admin/controls/tenant/acme/resume")
-    out = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]},
-                      headers=bearer(TENANT_KEY))
+    out = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]}, headers=bearer(TENANT_KEY))
     assert out.json()["blocked"] is False
 
 
@@ -218,8 +220,7 @@ def test_revoking_an_allow_says_whether_one_was_in_force(client):
 def test_the_kill_switch_over_http_refuses_everyone(client):
     client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     client.post("/admin/controls/kill", json={"on": True})
-    out = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]},
-                      headers=bearer(TENANT_KEY))
+    out = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]}, headers=bearer(TENANT_KEY))
     assert out.json()["operator"]["state"] == "killed"
 
 
@@ -227,8 +228,7 @@ def test_breaking_a_provider_over_http(client):
     client.post("/admin/login", json={"username": ADMIN_ID, "password": ADMIN_PASSWORD})
     body = client.post("/admin/controls/breaker/echo", json={"state": "open"}).json()
     assert body["breaker_overrides"] == {"echo": "open"}
-    assert client.post("/admin/controls/breaker/echo",
-                       json={"state": "auto"}).json()["breaker_overrides"] == {}
+    assert client.post("/admin/controls/breaker/echo", json={"state": "auto"}).json()["breaker_overrides"] == {}
 
 
 def test_pausing_a_tenant_that_does_not_exist_is_refused(client):
@@ -259,8 +259,9 @@ def test_every_control_action_is_audited_with_who_did_it(client):
     events = [r["event"] for r in STATE["gateway"].audit.tail_records(limit=50)["records"]]
     assert {"control_tenant_paused", "control_kill_on", "control_breaker_override"} <= set(events)
 
-    record = next(r for r in STATE["gateway"].audit.tail_records(limit=50)["records"]
-                  if r["event"] == "control_tenant_paused")
+    record = next(
+        r for r in STATE["gateway"].audit.tail_records(limit=50)["records"] if r["event"] == "control_tenant_paused"
+    )
     assert record["payload"]["actor"] == ADMIN_ID
     assert record["payload"]["tenant"] == "acme"
 
@@ -276,15 +277,14 @@ def test_a_failed_login_is_not_written_to_the_audit_chain(client):
 def test_the_demo_credential_is_advertised_as_such(client, tmp_path, monkeypatch):
     """If an operator is on the published default, the portal says so rather
     than letting them believe it is a real secret."""
-    monkeypatch.setitem(STATE["settings"].__dict__, "admin_password",
-                        admin_session.DEMO_PASSWORD)
-    monkeypatch.setitem(STATE["settings"].__dict__, "admin_username",
-                        admin_session.DEMO_USERNAME)
+    monkeypatch.setitem(STATE["settings"].__dict__, "admin_password", admin_session.DEMO_PASSWORD)
+    monkeypatch.setitem(STATE["settings"].__dict__, "admin_username", admin_session.DEMO_USERNAME)
     body = client.get("/admin/session").json()
     assert body["demo_credentials"] is True
 
 
 # ------------------------------------------------- the module, on its own --
+
 
 def test_verify_rejects_a_cookie_with_no_dot_in_it():
     assert admin_session.verify("nodothere", "k") is None
@@ -303,7 +303,5 @@ def test_verify_rejects_a_well_signed_cookie_whose_body_is_not_an_object():
     import hmac
 
     key = "k"
-    sig = base64.urlsafe_b64encode(
-        hmac.new(key.encode(), body.encode(), hashlib.sha256).digest()
-    ).decode().rstrip("=")
+    sig = base64.urlsafe_b64encode(hmac.new(key.encode(), body.encode(), hashlib.sha256).digest()).decode().rstrip("=")
     assert admin_session.verify(f"{body}.{sig}", key) is None

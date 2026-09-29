@@ -1,4 +1,3 @@
-
 from aegis.ratelimit import SlidingWindowLimiter
 
 
@@ -27,6 +26,7 @@ def test_keys_are_isolated():
 
 def test_window_slides():
     import time as _time
+
     limiter = SlidingWindowLimiter(limit_per_min=1)
     limiter.check("t")
     assert not limiter.check("t").allowed

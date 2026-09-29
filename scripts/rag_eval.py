@@ -38,8 +38,7 @@ def evaluate(top_k: int) -> dict:
         recalls, rrs, misses = [], [], []
         for case in cases:
             hits = retriever.retrieve(case.question, top_k=top_k, strategy=strategy)
-            rank = next((i for i, h in enumerate(hits, start=1)
-                         if h.chunk.source == case.expect_source), None)
+            rank = next((i for i, h in enumerate(hits, start=1) if h.chunk.source == case.expect_source), None)
             if rank is None:
                 recalls.append(0)
                 rrs.append(0.0)
@@ -69,12 +68,10 @@ def main() -> int:
     print(f"{'strategy':<8} {'recall@k':>8} {'mrr':>7}  misses")
     for strategy in STRATEGIES:
         row = report[strategy]
-        print(f"{strategy:<8} {row[f'recall@{args.top_k}']:>8.2%} {row['mrr']:>7.3f}  "
-              f"{','.join(row['misses']) or '-'}")
+        print(f"{strategy:<8} {row[f'recall@{args.top_k}']:>8.2%} {row['mrr']:>7.3f}  {','.join(row['misses']) or '-'}")
 
     if args.save_baseline:
-        Path(args.save_baseline).write_text(json.dumps(report, indent=2) + "\n",
-                                            encoding="utf-8")
+        Path(args.save_baseline).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         print(f"baseline saved to {args.save_baseline}")
 
     failed = False
@@ -89,8 +86,10 @@ def main() -> int:
             for metric in (f"recall@{args.top_k}", "mrr"):
                 drop = expected[strategy][metric] - report[strategy][metric]
                 if drop > args.tolerance:
-                    print(f"DRIFT: {strategy} {metric} {expected[strategy][metric]} "
-                          f"-> {report[strategy][metric]} (drop {drop:.4f})")
+                    print(
+                        f"DRIFT: {strategy} {metric} {expected[strategy][metric]} "
+                        f"-> {report[strategy][metric]} (drop {drop:.4f})"
+                    )
                     failed = True
         if not failed:
             print("no drift vs baseline")

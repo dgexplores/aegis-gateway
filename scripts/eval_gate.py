@@ -33,12 +33,9 @@ async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="src/aegis/evals/golden.yaml")
     parser.add_argument("--threshold", type=float, default=0.85)
-    parser.add_argument("--baseline", default="",
-                        help="JSON file with {'score': float} to gate on delta, not absolute")
-    parser.add_argument("--max-drop", type=float, default=0.02,
-                        help="max allowed score drop vs baseline")
-    parser.add_argument("--write-baseline", default="",
-                        help="write {'score','passed','total'} JSON after run")
+    parser.add_argument("--baseline", default="", help="JSON file with {'score': float} to gate on delta, not absolute")
+    parser.add_argument("--max-drop", type=float, default=0.02, help="max allowed score drop vs baseline")
+    parser.add_argument("--write-baseline", default="", help="write {'score','passed','total'} JSON after run")
     args = parser.parse_args()
 
     settings = get_settings()
@@ -79,8 +76,7 @@ async def main() -> int:
 
     summary = card.summary()
     print("=" * 56)
-    print(f"  AEGIS EVAL GATE   score={summary['score']:.2%}  "
-          f"({summary['passed']}/{summary['total']} passed)")
+    print(f"  AEGIS EVAL GATE   score={summary['score']:.2%}  ({summary['passed']}/{summary['total']} passed)")
     print(f"  p95 latency: {summary['p95_latency_ms']} ms   threshold: {args.threshold:.0%}")
     print("=" * 56)
     for r in card.results:
@@ -93,9 +89,10 @@ async def main() -> int:
         print(f"\nGATE FAILED: {summary['score']:.2%} < {args.threshold:.0%}")
         return 1
     if args.write_baseline:
-        Path(args.write_baseline).write_text(json.dumps({
-            "score": summary["score"], "passed": summary["passed"],
-            "total": summary["total"]}), encoding="utf-8")
+        Path(args.write_baseline).write_text(
+            json.dumps({"score": summary["score"], "passed": summary["passed"], "total": summary["total"]}),
+            encoding="utf-8",
+        )
         print(f"baseline written to {args.write_baseline}")
     if args.baseline:
         try:

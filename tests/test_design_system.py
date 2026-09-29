@@ -25,8 +25,20 @@ from pathlib import Path
 import pytest
 
 VOID_ELEMENTS = {
-    "area", "base", "br", "col", "embed", "hr", "img",
-    "input", "link", "meta", "param", "source", "track", "wbr",
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
 }
 
 BUNDLED_FONTS = (
@@ -63,8 +75,8 @@ def test_stylesheet_makes_no_remote_requests():
     a few CDN hostnames, so a stock-photo host sailed straight through."""
     css = _stylesheet()
     remote = [
-        src for src in
-        (url.strip().strip("'\"") for url in re.findall(r"url\(([^)]*)\)", css))
+        src
+        for src in (url.strip().strip("'\"") for url in re.findall(r"url\(([^)]*)\)", css))
         if re.match(r"(https?:)?//", src)
     ]
     assert not remote, f"the stylesheet fetches over the network: {remote}"
@@ -77,10 +89,7 @@ def test_every_class_used_by_the_template_is_defined_in_the_stylesheet():
     used: set[str] = set()
     for value in re.findall(r'class="([^"]*)"', html):
         used.update(value.split())
-    undefined = sorted(
-        name for name in used
-        if not re.search(rf"\.{re.escape(name)}(?![A-Za-z0-9_-])", css)
-    )
+    undefined = sorted(name for name in used if not re.search(rf"\.{re.escape(name)}(?![A-Za-z0-9_-])", css))
     assert not undefined, f"template classes with no CSS rule: {undefined}"
 
 
@@ -121,8 +130,7 @@ def test_hidden_actually_hides():
     assert rule, "no [hidden] rule — the UA default loses to every display class"
     assert "display: none" in rule.group(1)
     assert "important" in rule.group(1), (
-        "the [hidden] rule needs !important or any .row/.grid-*/.flex-1 element "
-        "renders while claiming to be hidden"
+        "the [hidden] rule needs !important or any .row/.grid-*/.flex-1 element renders while claiming to be hidden"
     )
 
 
@@ -189,8 +197,7 @@ def test_shipped_javascript_parses():
             [node, "--check", str(script)], capture_output=True, text=True, check=False
         )
         assert result.returncode == 0, (
-            f"{script.name} does not parse, so the console would not run at all:\n"
-            f"{result.stderr.strip()[:400]}"
+            f"{script.name} does not parse, so the console would not run at all:\n{result.stderr.strip()[:400]}"
         )
 
 
@@ -213,8 +220,7 @@ def test_every_class_the_console_generates_is_defined_in_the_stylesheet():
         generated.update(value.split())
 
     undefined = sorted(
-        name for name in generated
-        if name and not re.search(rf"\.{re.escape(name)}(?![A-Za-z0-9_-])", css)
+        name for name in generated if name and not re.search(rf"\.{re.escape(name)}(?![A-Za-z0-9_-])", css)
     )
     assert not undefined, f"classes the script generates with no CSS rule: {undefined}"
 
@@ -280,8 +286,7 @@ def test_user_surface_offers_no_document_input():
     """
     html = _template("dashboard.html")
 
-    for banned in ('id="ragSource"', 'id="ragText"', 'id="ingestBtn"',
-                   "data-seed", "data-delete", "Add a document"):
+    for banned in ('id="ragSource"', 'id="ragText"', 'id="ingestBtn"', "data-seed", "data-delete", "Add a document"):
         assert banned not in html, (
             f"the user surface offers document input again ({banned!r}); corpus "
             "management belongs to the operator, not to the person asking questions"
@@ -296,10 +301,7 @@ def test_interactive_controls_in_the_template_are_wired():
     The handler may live in dashboard.js (the console) or theme.js (shared with
     the landing page), so a button counts as wired if either script names it.
     """
-    js = "\n".join(
-        (_static() / name).read_text(encoding="utf-8")
-        for name in ("dashboard.js", "theme.js")
-    )
+    js = "\n".join((_static() / name).read_text(encoding="utf-8") for name in ("dashboard.js", "theme.js"))
 
     def is_wired(element_id: str) -> bool:
         """An id counts as handled if it appears in any binding form the
@@ -340,6 +342,4 @@ def test_console_javascript_never_hides_content_with_inline_opacity():
     for name in ("dashboard.js",):
         text = (_static() / name).read_text(encoding="utf-8")
         for pattern in ("style.opacity = '0'", 'style.opacity = "0"', "style.opacity=0"):
-            assert pattern not in text, (
-                f"{name} hides content with {pattern!r}; animate in CSS instead"
-            )
+            assert pattern not in text, f"{name} hides content with {pattern!r}; animate in CSS instead"

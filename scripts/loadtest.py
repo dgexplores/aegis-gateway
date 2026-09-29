@@ -81,8 +81,7 @@ def summarise(latencies: list[float], statuses: dict[str, int], wall: float) -> 
     }
 
 
-async def hammer(base: str, key: str, total: int, concurrency: int,
-                 payload: dict, mix_bad_auth: float = 0.0) -> dict:
+async def hammer(base: str, key: str, total: int, concurrency: int, payload: dict, mix_bad_auth: float = 0.0) -> dict:
     import httpx
 
     latencies: list[float] = []
@@ -92,14 +91,17 @@ async def hammer(base: str, key: str, total: int, concurrency: int,
     lock = asyncio.Lock()
 
     async with httpx.AsyncClient(base_url=base, timeout=30.0) as client:
+
         async def one(index: int) -> None:
             nonlocal remaining
             async with sem:
                 # A slice of requests sent with a bad key, so the measurement
                 # includes the rejection path and not only the happy one.
                 bad = mix_bad_auth > 0 and (index % int(1 / mix_bad_auth) == 0)
-                headers = {"Authorization": f"Bearer {'sk-wrong-key' if bad else key}",
-                           "Content-Type": "application/json"}
+                headers = {
+                    "Authorization": f"Bearer {'sk-wrong-key' if bad else key}",
+                    "Content-Type": "application/json",
+                }
                 start = time.perf_counter()
                 try:
                     r = await client.post("/v1/chat", headers=headers, json=payload)
@@ -122,11 +124,9 @@ async def hammer(base: str, key: str, total: int, concurrency: int,
 def report(label: str, result: dict) -> None:
     lat = result["latency_ms"]
     print(f"\n{label}")
-    print(f"  requests   {result['requests']}  errors {result['errors']}  "
-          f"statuses {result['statuses']}")
+    print(f"  requests   {result['requests']}  errors {result['errors']}  statuses {result['statuses']}")
     print(f"  throughput {result['throughput_rps']} rps over {result['wall_seconds']}s")
-    print(f"  latency ms p50 {lat['p50']}  p95 {lat['p95']}  p99 {lat['p99']}  "
-          f"max {lat['max']}")
+    print(f"  latency ms p50 {lat['p50']}  p95 {lat['p95']}  p99 {lat['p99']}  max {lat['max']}")
 
 
 def boot_gateway(port: int, tenants: int) -> subprocess.Popen:
@@ -155,10 +155,24 @@ def boot_gateway(port: int, tenants: int) -> subprocess.Popen:
     # Every argument here is a literal or an int we generated: no user input
     # reaches this call, which is what S603 is actually worried about.
     proc = subprocess.Popen(  # noqa: S603 — fixed argv, nothing interpolated from input
-        [sys.executable, "-m", "uvicorn", "aegis.api.routes:app",
-         "--host", "127.0.0.1", "--port", str(port), "--app-dir", str(ROOT / "src"),
-         "--log-level", "warning"],
-        env=env, cwd=str(workdir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "aegis.api.routes:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--app-dir",
+            str(ROOT / "src"),
+            "--log-level",
+            "warning",
+        ],
+        env=env,
+        cwd=str(workdir),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     return proc
 
@@ -180,16 +194,21 @@ def wait_until_up(port: int, timeout: float = 25.0) -> bool:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", help="an already-running gateway; omit to boot one")
     ap.add_argument("--key", default=DEFAULT_TENANT_KEY)
     ap.add_argument("--requests", type=int, default=2000)
     ap.add_argument("--concurrency", type=int, default=20)
-    ap.add_argument("--mix-bad-auth", type=float, default=0.05,
-                    help="fraction of requests sent with a wrong key (default 0.05)")
-    ap.add_argument("--sweep-tenants", type=int, nargs="*", default=None,
-                    help="tenant counts to compare, e.g. --sweep-tenants 1 10 50 100")
+    ap.add_argument(
+        "--mix-bad-auth", type=float, default=0.05, help="fraction of requests sent with a wrong key (default 0.05)"
+    )
+    ap.add_argument(
+        "--sweep-tenants",
+        type=int,
+        nargs="*",
+        default=None,
+        help="tenant counts to compare, e.g. --sweep-tenants 1 10 50 100",
+    )
     ap.add_argument("--json", action="store_true", help="emit the raw numbers as JSON")
     args = ap.parse_args()
 
@@ -209,11 +228,13 @@ def main() -> int:
                 return 2
             base = f"http://127.0.0.1:{port}"
 
-        result = asyncio.run(hammer(base, args.key, args.requests,
-                                    args.concurrency, payload, args.mix_bad_auth))
+        result = asyncio.run(hammer(base, args.key, args.requests, args.concurrency, payload, args.mix_bad_auth))
         results["baseline"] = result
-        report(f"baseline — {args.requests} requests, concurrency {args.concurrency}, "
-               f"{len(args.sweep_tenants or [1]) or 1} tenant(s)", result)
+        report(
+            f"baseline — {args.requests} requests, concurrency {args.concurrency}, "
+            f"{len(args.sweep_tenants or [1]) or 1} tenant(s)",
+            result,
+        )
 
         if args.sweep_tenants:
             print("\ntenant sweep — same load, growing tenant table")
@@ -226,18 +247,28 @@ def main() -> int:
                     if not wait_until_up(port2):
                         continue
                     try:
-                        r = asyncio.run(hammer(f"http://127.0.0.1:{port2}", args.key,
-                                               max(300, args.requests // 4),
-                                               args.concurrency, payload, 0.0))
+                        r = asyncio.run(
+                            hammer(
+                                f"http://127.0.0.1:{port2}",
+                                args.key,
+                                max(300, args.requests // 4),
+                                args.concurrency,
+                                payload,
+                                0.0,
+                            )
+                        )
                     finally:
                         p2.terminate()
                 else:
-                    r = asyncio.run(hammer(base, args.key, max(300, args.requests // 4),
-                                           args.concurrency, payload, 0.0))
+                    r = asyncio.run(
+                        hammer(base, args.key, max(300, args.requests // 4), args.concurrency, payload, 0.0)
+                    )
                 results[f"tenants_{n}"] = r
-                print(f"  tenants {n:>4}  p50 {r['latency_ms']['p50']:>7} ms  "
-                      f"p95 {r['latency_ms']['p95']:>7} ms  "
-                      f"rps {r['throughput_rps']:>7}  errors {r['errors']}")
+                print(
+                    f"  tenants {n:>4}  p50 {r['latency_ms']['p50']:>7} ms  "
+                    f"p95 {r['latency_ms']['p95']:>7} ms  "
+                    f"rps {r['throughput_rps']:>7}  errors {r['errors']}"
+                )
     finally:
         if proc is not None:
             proc.terminate()

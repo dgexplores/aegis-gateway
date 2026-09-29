@@ -20,8 +20,9 @@ class BreakerOpen(Exception):
 
 
 class CircuitBreaker:
-    def __init__(self, name: str, failure_threshold: int = 5, recovery_seconds: float = 15.0,
-                 override_source: Any = None) -> None:
+    def __init__(
+        self, name: str, failure_threshold: int = 5, recovery_seconds: float = 15.0, override_source: Any = None
+    ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_seconds = recovery_seconds

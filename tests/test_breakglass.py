@@ -95,11 +95,11 @@ def events() -> list[str]:
 
 
 def record_named(event: str) -> dict:
-    return next(r for r in STATE["gateway"].audit.tail_records(limit=80)["records"]
-                if r["event"] == event)
+    return next(r for r in STATE["gateway"].audit.tail_records(limit=80)["records"] if r["event"] == event)
 
 
 # ------------------------------------------------- when nothing is configured --
+
 
 def test_without_a_secret_the_kill_switch_still_works(make_client):
     """Unset must not break the control. The weaker posture is the operator's
@@ -111,6 +111,7 @@ def test_without_a_secret_the_kill_switch_still_works(make_client):
 
 
 # ---------------------------------------------------------- when it is set --
+
 
 def test_the_controls_payload_says_the_secret_is_required(guarded):
     """So the UI can ask for it, rather than an operator finding out with a 403
@@ -158,29 +159,27 @@ def test_the_kill_switch_is_still_admin_only(guarded):
 
 # ------------------------------------------------------------ brute force --
 
+
 def test_repeated_wrong_secrets_lock_the_endpoint_out(guarded):
     """A step-up worth nothing against a script is not a step-up."""
     for _ in range(ATTEMPTS):
-        assert guarded.post("/admin/controls/kill",
-                            json={"on": True, "breakglass": "nope"}).status_code == 403
+        assert guarded.post("/admin/controls/kill", json={"on": True, "breakglass": "nope"}).status_code == 403
     # The *correct* secret is now refused too: the limiter is refusing the
     # caller, not checking the password.
-    assert guarded.post("/admin/controls/kill",
-                        json={"on": True, "breakglass": GLASS}).status_code == 403
+    assert guarded.post("/admin/controls/kill", json={"on": True, "breakglass": GLASS}).status_code == 403
 
 
 def test_a_lockout_expires_so_a_locked_out_operator_is_not_stuck_forever(guarded):
     """Otherwise the limiter is a self-inflicted denial of service."""
     for _ in range(ATTEMPTS):
         guarded.post("/admin/controls/kill", json={"on": True, "breakglass": "nope"})
-    assert guarded.post("/admin/controls/kill",
-                        json={"on": True, "breakglass": GLASS}).status_code == 403
+    assert guarded.post("/admin/controls/kill", json={"on": True, "breakglass": GLASS}).status_code == 403
     _reset_breakglass()
-    assert guarded.post("/admin/controls/kill",
-                        json={"on": True, "breakglass": GLASS}).status_code == 200
+    assert guarded.post("/admin/controls/kill", json={"on": True, "breakglass": GLASS}).status_code == 200
 
 
 # ------------------------------------------------------------------ traces --
+
 
 def test_a_successful_break_glass_use_is_audited_distinctly(guarded):
     """Greppable as its own thing, not buried among ordinary kill events."""

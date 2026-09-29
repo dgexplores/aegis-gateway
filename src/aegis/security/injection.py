@@ -15,22 +15,68 @@ from dataclasses import dataclass, field
 
 # (regex, weight, label)
 _PATTERNS: list[tuple[re.Pattern[str], float, str]] = [
-    (re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)", re.IGNORECASE), 0.45, "instruction_override"),
-    (re.compile(r"disregard\s+(all\s+)?(previous|prior|your)\s+(instructions|rules|training)", re.IGNORECASE), 0.45, "instruction_override"),
-    (re.compile(r"forget\s+(everything|all|your)\s+(you|above)?\s*(were|was)?\s*(told|taught|instructed)", re.IGNORECASE), 0.40, "instruction_override"),
+    (
+        re.compile(r"ignore\s+(all\s+)?(previous|prior|above)\s+(instructions|prompts|rules)", re.IGNORECASE),
+        0.45,
+        "instruction_override",
+    ),
+    (
+        re.compile(r"disregard\s+(all\s+)?(previous|prior|your)\s+(instructions|rules|training)", re.IGNORECASE),
+        0.45,
+        "instruction_override",
+    ),
+    (
+        re.compile(
+            r"forget\s+(everything|all|your)\s+(you|above)?\s*(were|was)?\s*(told|taught|instructed)", re.IGNORECASE
+        ),
+        0.40,
+        "instruction_override",
+    ),
     (re.compile(r"new\s+instructions?\s*:", re.IGNORECASE), 0.30, "instruction_override"),
-    (re.compile(r"system\s*prompt|reveal\s+your\s+(instructions|prompt|rules)", re.IGNORECASE), 0.40, "system_prompt_extraction"),
-    (re.compile(r"(repeat|print|output|show)\s+(everything|the text|your prompt|instructions)\s+(above|before)", re.IGNORECASE), 0.45, "context_exfiltration"),
+    (
+        re.compile(r"system\s*prompt|reveal\s+your\s+(instructions|prompt|rules)", re.IGNORECASE),
+        0.40,
+        "system_prompt_extraction",
+    ),
+    (
+        re.compile(
+            r"(repeat|print|output|show)\s+(everything|the text|your prompt|instructions)\s+(above|before)",
+            re.IGNORECASE,
+        ),
+        0.45,
+        "context_exfiltration",
+    ),
     (re.compile(r"(?:you\s+are|i\s+am)\s+now\s+(?:a|an|the)?\s*[\w-]{2,}", re.IGNORECASE), 0.30, "persona_hijack"),
-    (re.compile(r"pretend\s+(you\s+)?(are|to\s+be)\s+.*(no|without)\s+(restrictions|filters|rules)", re.IGNORECASE), 0.35, "jailbreak"),
+    (
+        re.compile(r"pretend\s+(you\s+)?(are|to\s+be)\s+.*(no|without)\s+(restrictions|filters|rules)", re.IGNORECASE),
+        0.35,
+        "jailbreak",
+    ),
     (re.compile(r"\bDAN\b|\bdeveloper mode\b|do\s+anything\s+now", re.IGNORECASE), 0.30, "jailbreak"),
     (re.compile(r"(api[_\s-]?key|secret|password|credential)s?\s*(=|:|are|is)", re.IGNORECASE), 0.20, "secret_probe"),
     (re.compile(r"</?(system|assistant)>", re.IGNORECASE), 0.30, "role_tag_injection"),
     (re.compile(r"\bsudo\b|\broot@|\$\(\s*", re.IGNORECASE), 0.10, "shell_like"),
     (re.compile(r"email|send|exfiltrat|forward\s+(this|the).{0,20}to\b", re.IGNORECASE), 0.15, "exfiltration_intent"),
-    (re.compile(r"(send|forward|post|upload|transmit)\b.{0,60}\b(\w+@\w+\.\w+|https?://)", re.IGNORECASE), 0.30, "exfil_channel"),
-    (re.compile(r"(show|print|reveal|give|list)\s+(me\s+)?(your\s+)?(api[\s_-]?keys?|secrets?|passwords?|credentials?|tokens?)", re.IGNORECASE), 0.35, "credential_probe"),
-    (re.compile(r"\b(say|says|saying|reply|respond|write|print|output)\w*\s+(that\s+)?[\"']?[A-Z][A-Z\s]{2,}", re.MULTILINE), 0.25, "output_command"),
+    (
+        re.compile(r"(send|forward|post|upload|transmit)\b.{0,60}\b(\w+@\w+\.\w+|https?://)", re.IGNORECASE),
+        0.30,
+        "exfil_channel",
+    ),
+    (
+        re.compile(
+            r"(show|print|reveal|give|list)\s+(me\s+)?(your\s+)?(api[\s_-]?keys?|secrets?|passwords?|credentials?|tokens?)",
+            re.IGNORECASE,
+        ),
+        0.35,
+        "credential_probe",
+    ),
+    (
+        re.compile(
+            r"\b(say|says|saying|reply|respond|write|print|output)\w*\s+(that\s+)?[\"']?[A-Z][A-Z\s]{2,}", re.MULTILINE
+        ),
+        0.25,
+        "output_command",
+    ),
     (re.compile(r"(rm\s+-rf|drop\s+table|;\s*delete\s+from)", re.IGNORECASE), 0.20, "destructive_payload"),
 ]
 
@@ -107,8 +153,11 @@ def scan(text: str) -> InjectionReport:
         # Decoded payload scanned above; presence alone adds risk because it hides intent.
         total_weight += 0.15
 
-    if any(p.search(normalized) for p in (_INVISIBLE_OVERRIDE,)) or \
-            "zero_width_chars_stripped" in notes or "bidirectional_override_chars" in notes:
+    if (
+        any(p.search(normalized) for p in (_INVISIBLE_OVERRIDE,))
+        or "zero_width_chars_stripped" in notes
+        or "bidirectional_override_chars" in notes
+    ):
         # Any invisible-character trick is an evasion attempt in itself.
         total_weight += 0.25
         labels_set.add("invisible_chars")

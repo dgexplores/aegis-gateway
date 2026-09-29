@@ -66,9 +66,17 @@ class Metrics:
         out: dict[str, dict[str, float]] = {}
 
         def slot(tenant: str) -> dict[str, float]:
-            return out.setdefault(tenant, {"requests": 0.0, "blocked": 0.0,
-                                           "soft_blocked": 0.0, "cost_usd": 0.0,
-                                           "rate_limited": 0.0, "tokens": 0.0})
+            return out.setdefault(
+                tenant,
+                {
+                    "requests": 0.0,
+                    "blocked": 0.0,
+                    "soft_blocked": 0.0,
+                    "cost_usd": 0.0,
+                    "rate_limited": 0.0,
+                    "tokens": 0.0,
+                },
+            )
 
         for key, value in self._counters.items():
             metric, labels = _parse_key(key)

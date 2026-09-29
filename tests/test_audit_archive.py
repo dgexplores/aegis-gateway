@@ -43,9 +43,13 @@ def test_s3_noop_without_bucket(tmp_path):
 
 def test_rotation_archives_best_effort(tmp_path, monkeypatch):
     import aegis.security.audit as mod
+
     called = {}
-    monkeypatch.setattr(mod, "archive_to_s3",
-                        lambda path, bucket, prefix="aegis-audit/": called.setdefault("uri", f"s3://{bucket}/x") or f"s3://{bucket}/x")
+    monkeypatch.setattr(
+        mod,
+        "archive_to_s3",
+        lambda path, bucket, prefix="aegis-audit/": called.setdefault("uri", f"s3://{bucket}/x") or f"s3://{bucket}/x",
+    )
     p = tmp_path / "audit.jsonl"
     chain = AuditChain("k", path=str(p), max_bytes=10, s3_bucket="bkt")
     chain.append("t", "e", {"a": 1})

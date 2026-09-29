@@ -83,14 +83,13 @@ def test_the_guard_and_the_app_agree_on_what_the_demo_password_is():
 
 # ------------------------------------------------------------- break glass --
 
+
 def test_the_demo_break_glass_secret_is_refused():
     """A known secret in front of the control that halts every tenant is worse
     than no break-glass at all."""
     from aegis.opscontrol import DEMO_BREAKGLASS_PASSWORD
 
-    guard._check_breakglass_credential(
-        {"AEGIS_BREAKGLASS_PASSWORD": DEMO_BREAKGLASS_PASSWORD}, "test"
-    )
+    guard._check_breakglass_credential({"AEGIS_BREAKGLASS_PASSWORD": DEMO_BREAKGLASS_PASSWORD}, "test")
     assert any("demo break-glass secret" in f for f in guard.failures), guard.failures
 
 
@@ -105,19 +104,21 @@ def test_an_unguarded_kill_switch_warns_rather_than_blocks():
 
 
 def test_a_chosen_break_glass_secret_passes():
-    guard._check_breakglass_credential(
-        {"AEGIS_BREAKGLASS_PASSWORD": "only-they-know"}, "test"
-    )
+    guard._check_breakglass_credential({"AEGIS_BREAKGLASS_PASSWORD": "only-they-know"}, "test")
     assert not guard.failures, guard.failures
 
 
 # ------------------------------------------------------------ placeholders --
 
-@pytest.mark.parametrize("value", [
-    "REPLACE_ME_your_operator_id",
-    "change-me-something",
-    "CHANGEME",
-])
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "REPLACE_ME_your_operator_id",
+        "change-me-something",
+        "CHANGEME",
+    ],
+)
 def test_a_placeholder_admin_password_is_a_failure_not_an_ok(value):
     """A shipped placeholder is *worse* than a missing one.
 
@@ -128,17 +129,13 @@ def test_a_placeholder_admin_password_is_a_failure_not_an_ok(value):
     as "ok — an operator-chosen id and password", which is the one thing a
     production guard must never get wrong.
     """
-    guard._check_admin_portal_credential(
-        {"AEGIS_ADMIN_USERNAME": "ops", "AEGIS_ADMIN_PASSWORD": value}, "test"
-    )
+    guard._check_admin_portal_credential({"AEGIS_ADMIN_USERNAME": "ops", "AEGIS_ADMIN_PASSWORD": value}, "test")
     assert guard.failures, f"placeholder {value!r} was accepted"
     assert any("placeholder" in f for f in guard.failures), guard.failures
 
 
 def test_a_placeholder_break_glass_secret_is_a_failure():
-    guard._check_breakglass_credential(
-        {"AEGIS_BREAKGLASS_PASSWORD": "REPLACE_ME_generate_with_openssl"}, "test"
-    )
+    guard._check_breakglass_credential({"AEGIS_BREAKGLASS_PASSWORD": "REPLACE_ME_generate_with_openssl"}, "test")
     assert any("placeholder" in f for f in guard.failures), guard.failures
 
 
@@ -154,12 +151,18 @@ def test_no_shipped_deploy_artifact_carries_a_placeholder_credential():
     """
     import yaml
 
-    CREDENTIALS = ("AEGIS_ADMIN_USERNAME", "AEGIS_ADMIN_PASSWORD",
-                   "AEGIS_ADMIN_SESSION_KEY", "AEGIS_BREAKGLASS_PASSWORD")
+    CREDENTIALS = (
+        "AEGIS_ADMIN_USERNAME",
+        "AEGIS_ADMIN_PASSWORD",
+        "AEGIS_ADMIN_SESSION_KEY",
+        "AEGIS_BREAKGLASS_PASSWORD",
+    )
 
-    secrets = [d for d in yaml.safe_load_all(
-        (ROOT / "deploy" / "k8s" / "security.yaml").read_text())
-        if d and d.get("kind") == "Secret" and "aegis" in d["metadata"]["name"]]
+    secrets = [
+        d
+        for d in yaml.safe_load_all((ROOT / "deploy" / "k8s" / "security.yaml").read_text())
+        if d and d.get("kind") == "Secret" and "aegis" in d["metadata"]["name"]
+    ]
     assert secrets, "no aegis Secret in deploy/k8s/security.yaml"
 
     for key in CREDENTIALS:
@@ -181,7 +184,5 @@ def test_the_guard_would_fail_if_a_placeholder_were_shipped():
     """The check has to be live, not just present. Without this, deleting the
     guard's placeholder branch would leave every other test still green while a
     published password sailed through."""
-    guard._check_admin_portal_credential(
-        {"AEGIS_ADMIN_USERNAME": "ops", "AEGIS_ADMIN_PASSWORD": "REPLACE_ME_x"}, "t"
-    )
+    guard._check_admin_portal_credential({"AEGIS_ADMIN_USERNAME": "ops", "AEGIS_ADMIN_PASSWORD": "REPLACE_ME_x"}, "t")
     assert guard.failures, "guard stopped catching placeholders"

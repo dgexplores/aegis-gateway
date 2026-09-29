@@ -144,12 +144,14 @@ class Settings(BaseSettings):
         from aegis.security.audit import payload_cipher_alg
 
         if self.audit_encrypt_key and payload_cipher_alg(self.audit_encrypt_key) != "fernet":
-            return [(
-                "AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not installed, so audit "
-                "payloads would be base64-encoded (readable to anyone with the file), not "
-                "encrypted. `cryptography` is a core dependency, so this means a broken "
-                "environment — reinstall it, or unset the key to store digests only."
-            )]
+            return [
+                (
+                    "AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not installed, so audit "
+                    "payloads would be base64-encoded (readable to anyone with the file), not "
+                    "encrypted. `cryptography` is a core dependency, so this means a broken "
+                    "environment — reinstall it, or unset the key to store digests only."
+                )
+            ]
         return []
 
     @staticmethod

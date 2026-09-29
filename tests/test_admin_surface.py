@@ -35,10 +35,7 @@ def _h(key: str) -> str:
 def _settings(**over) -> Settings:
     base = {
         "env": "test",
-        "tenants": (
-            f"acme:{_h(USER_KEY)}:chat+rag,"
-            f"root:{_h(ADMIN_KEY)}:chat+rag+admin"
-        ),
+        "tenants": (f"acme:{_h(USER_KEY)}:chat+rag,root:{_h(ADMIN_KEY)}:chat+rag+admin"),
         "providers": "echo",
         "rate_limit_per_min": 1000,
         "daily_token_budget": 10_000_000,
@@ -91,8 +88,7 @@ def test_both_surfaces_serve(client):
 def test_user_page_carries_no_fleet_markup(client):
     """The user surface answers one question. Fleet panels belong to /admin."""
     html = client.get("/dashboard").text
-    for absent in ("view-overview", "view-tenants", "view-attacks",
-                   "ovTiles", "tenBody", "atkBody", "auditBody"):
+    for absent in ("view-overview", "view-tenants", "view-attacks", "ovTiles", "tenBody", "atkBody", "auditBody"):
         assert absent not in html, f"fleet surface {absent} leaked into /dashboard"
     # and it still owns its own work
     for present in ("docsBody", "chatInput", "sendBtn"):
@@ -113,7 +109,7 @@ def test_user_page_has_no_tab_bar(client):
     html = client.get("/dashboard").text
     assert 'role="tablist"' not in html
     assert 'role="tabpanel"' not in html
-    assert 'data-view=' not in html
+    assert "data-view=" not in html
     # the documents list is a section of the page, not a panel to switch to
     assert 'id="docs-title"' in html
 
@@ -124,8 +120,16 @@ def test_admin_page_has_no_chat_thread(client):
     html = client.get("/admin").text
     for absent in ("chatInput", "sendBtn", "resetThread", "docsBody", "ragAskBtn"):
         assert absent not in html, f"chat surface {absent} leaked into /admin"
-    for present in ("view-overview", "view-tenants", "view-chain",
-                    "view-attacks", "ovTiles", "tenBody", "atkBody", "auditBody"):
+    for present in (
+        "view-overview",
+        "view-tenants",
+        "view-chain",
+        "view-attacks",
+        "ovTiles",
+        "tenBody",
+        "atkBody",
+        "auditBody",
+    ):
         assert present in html, f"/admin is missing {present}"
 
 
@@ -156,10 +160,8 @@ def test_overview_reports_its_own_window(client):
 
 
 def test_overview_counts_real_traffic_per_tenant(client):
-    client.post("/v1/chat", headers=_user(),
-                json={"messages": [{"role": "user", "content": "hello"}]})
-    client.post("/v1/chat", headers=_user(),
-                json={"messages": [{"role": "user", "content": ATTACK}]})
+    client.post("/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": "hello"}]})
+    client.post("/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": ATTACK}]})
     d = client.get("/admin/overview", headers=_admin()).json()
     assert d["requests"] == 1, d
     assert d["blocked_hard"] == 1
@@ -193,8 +195,7 @@ def test_tenants_shows_budget_burn_not_just_a_number(client):
 
 
 def test_tenant_documents_are_counted_per_tenant(client):
-    client.post("/v1/rag/ingest", headers=_user(),
-                json={"text": "Employees get 20 vacation days.", "source": "hr.md"})
+    client.post("/v1/rag/ingest", headers=_user(), json={"text": "Employees get 20 vacation days.", "source": "hr.md"})
     d = client.get("/admin/tenants", headers=_admin()).json()
     counts = {t["id"]: t["documents"] for t in d["tenants"]}
     assert counts["acme"] == 1
@@ -209,8 +210,7 @@ def test_band_is_read_from_the_signed_event_not_the_payload(client):
     the band holds on a chain written with payload copies off. Reading band out
     of the payload instead would make the most important column depend on an
     optional setting."""
-    client.post("/v1/chat", headers=_user(),
-                json={"messages": [{"role": "user", "content": ATTACK}]})
+    client.post("/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": ATTACK}]})
     d = client.get("/admin/attacks", headers=_admin()).json()
     assert d["hard_count"] == 1, d
     assert d["scores_available"] is False
@@ -222,8 +222,9 @@ def test_band_is_read_from_the_signed_event_not_the_payload(client):
 
 
 def test_soft_refusal_is_a_distinct_band(client):
-    client.post("/v1/chat", headers=_user(),
-                json={"messages": [{"role": "user", "content": "What is a system prompt?"}]})
+    client.post(
+        "/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": "What is a system prompt?"}]}
+    )
     d = client.get("/admin/attacks", headers=_admin()).json()
     assert d["soft_count"] == 1, d
     assert d["attacks"][0]["band"] == "soft"
@@ -236,15 +237,12 @@ def test_score_appears_when_payloads_are_retained(tmp_path, monkeypatch):
     import anyio
 
     async def boot():
-        STATE["gateway"] = await build_gateway(
-            _settings(audit_encrypt_key="evidence-key-for-tests")
-        )
+        STATE["gateway"] = await build_gateway(_settings(audit_encrypt_key="evidence-key-for-tests"))
 
     anyio.run(boot)
     STATE["authenticator"] = Authenticator(STATE["gateway"].settings)
     with TestClient(app) as c:
-        c.post("/v1/chat", headers=_user(),
-               json={"messages": [{"role": "user", "content": ATTACK}]})
+        c.post("/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": ATTACK}]})
         d = c.get("/admin/attacks", headers=_admin()).json()
     assert d["scores_available"] is True
     row = d["attacks"][0]
@@ -253,8 +251,7 @@ def test_score_appears_when_payloads_are_retained(tmp_path, monkeypatch):
 
 
 def test_attacks_are_tenant_attributed(client):
-    client.post("/v1/chat", headers=_user(),
-                json={"messages": [{"role": "user", "content": ATTACK}]})
+    client.post("/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": ATTACK}]})
     d = client.get("/admin/attacks", headers=_admin()).json()
     assert {a["tenant"] for a in d["attacks"]} == {"acme"}
     assert all(a["request_id"] for a in d["attacks"]), "an attack with no request id cannot be correlated"

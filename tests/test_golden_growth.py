@@ -11,10 +11,15 @@ from grow_golden import grow, slug, validate_miss
 
 
 def write_golden(path: Path, questions: list[str]) -> None:
-    path.write_text(yaml.safe_dump({
-        "version": 1,
-        "cases": [{"id": f"c{i}", "question": q} for i, q in enumerate(questions)],
-    }), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "cases": [{"id": f"c{i}", "question": q} for i, q in enumerate(questions)],
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_slug_stable_and_unique():
@@ -34,8 +39,12 @@ def test_grow_dedups_and_limits(tmp_path):
     write_golden(g, ["How many vacation days?"])
     misses = [
         {"question": "How many vacation days?"},  # dup question
-        {"question": "What is the refund window?", "must_contain": ["30"],
-         "expect_source": "policy.md", "requires_citation": True},
+        {
+            "question": "What is the refund window?",
+            "must_contain": ["30"],
+            "expect_source": "policy.md",
+            "requires_citation": True,
+        },
         {"question": ""},  # invalid
         {"question": "How do I reset my password?", "must_contain": ["portal"]},
     ]

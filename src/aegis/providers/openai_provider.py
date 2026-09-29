@@ -67,8 +67,7 @@ class OpenAIProvider(BaseProvider):
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-                async with client.stream("POST", API_URL, json=payload,
-                                         headers=headers) as resp:
+                async with client.stream("POST", API_URL, json=payload, headers=headers) as resp:
                     if resp.status_code != 200:
                         raise ProviderError(f"openai http {resp.status_code}")
                     if "text/event-stream" not in resp.headers.get("content-type", ""):
@@ -81,6 +80,7 @@ class OpenAIProvider(BaseProvider):
                             return
                         try:
                             import json as _json
+
                             obj = _json.loads(data)
                             delta = obj["choices"][0].get("delta", {}).get("content", "")
                             if delta:

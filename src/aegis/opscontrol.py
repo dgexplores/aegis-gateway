@@ -213,7 +213,7 @@ class OpsControl:
                     raw_key = key.decode() if isinstance(key, bytes) else str(key)
                     value = self._read(raw_key)
                     if value is not None and value != AUTO:
-                        out[raw_key[len(prefix):]] = value
+                        out[raw_key[len(prefix) :]] = value
                 return out
             except Exception as exc:  # noqa: BLE001 — degrade, do not fail the request
                 log.warning("control plane read failed, using the local view: %s", exc)

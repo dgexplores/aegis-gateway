@@ -59,8 +59,7 @@ def drill(source: Path, workdir: Path, expect_head: str | None = None) -> int:
         print(f"  source      {source}")
         print(f"  restored to {restored}")
         print(f"  load        FAILED — {exc}")
-        print("\n  RESTORE DRILL FAILED — the archive does not verify. Do not trust it.",
-              file=sys.stderr)
+        print("\n  RESTORE DRILL FAILED — the archive does not verify. Do not trust it.", file=sys.stderr)
         return 1
 
     ok, detail = chain.verify()
@@ -74,9 +73,11 @@ def drill(source: Path, workdir: Path, expect_head: str | None = None) -> int:
     read = chain.tail_records(limit=500)
     bad_sig = [r for r in read["records"] if not r.get("sig_ok")]
     bad_link = [r for r in read["records"] if r.get("link_ok") is False]
-    print(f"  read-back   {read['count']} records, "
-          f"{len(bad_sig)} bad signatures, {len(bad_link)} broken links, "
-          f"all_signatures_valid={read.get('all_signatures_valid')}")
+    print(
+        f"  read-back   {read['count']} records, "
+        f"{len(bad_sig)} bad signatures, {len(bad_link)} broken links, "
+        f"all_signatures_valid={read.get('all_signatures_valid')}"
+    )
 
     if not ok or bad_sig or bad_link:
         print("\n  RESTORE DRILL FAILED — do not trust this archive.", file=sys.stderr)
@@ -88,21 +89,24 @@ def drill(source: Path, workdir: Path, expect_head: str | None = None) -> int:
     # `head` in the /admin/audit response and the S3 archive are for. Say so
     # rather than letting a green drill imply full coverage.
     if expect_head and chain.head != expect_head:
-        print(f"\n  RESTORE DRILL FAILED — head is {chain.head!r}, expected {expect_head!r}. "
-              "The chain is internally consistent, so this is tail loss.")
+        print(
+            f"\n  RESTORE DRILL FAILED — head is {chain.head!r}, expected {expect_head!r}. "
+            "The chain is internally consistent, so this is tail loss."
+        )
         return 1
     if not expect_head:
-        print("\n  note: no --expect-head given, so tail loss is NOT covered by this run. "
-              "A file cannot detect its own truncation — pass the head you recorded when "
-              "the archive was written.")
+        print(
+            "\n  note: no --expect-head given, so tail loss is NOT covered by this run. "
+            "A file cannot detect its own truncation — pass the head you recorded when "
+            "the archive was written."
+        )
 
     print("\n  RESTORE DRILL PASSED — the archive is intact and readable.")
     return 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--from", dest="source", help="an existing audit.jsonl to drill")
     ap.add_argument("--records", type=int, default=500)
     ap.add_argument("--expect-head", help="the chain head you expect, to detect tail loss")

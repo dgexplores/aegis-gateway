@@ -18,9 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load_drill():
-    spec = importlib.util.spec_from_file_location(
-        "restore_drill", ROOT / "scripts" / "restore_drill.py"
-    )
+    spec = importlib.util.spec_from_file_location("restore_drill", ROOT / "scripts" / "restore_drill.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules["restore_drill"] = module
@@ -52,11 +50,14 @@ def test_an_untouched_archive_passes(chain_file, tmp_path, capsys):
     assert "RESTORE DRILL PASSED" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("field,value", [
-    ("event", "something_benign"),
-    ("tenant", "somebody-else"),
-    ("ts", 1.0),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("event", "something_benign"),
+        ("tenant", "somebody-else"),
+        ("ts", 1.0),
+    ],
+)
 def test_editing_a_signed_field_is_caught(chain_file, tmp_path, capsys, field, value):
     """The realistic attack: rewrite what the log says happened.
 
@@ -148,8 +149,7 @@ def test_a_chain_built_with_another_key_does_not_verify(chain_file, tmp_path, ca
     from aegis.security.audit import AuditError
 
     try:
-        other = AuditChain("a-completely-different-audit-hmac-key-32chars",
-                           path=str(restored))
+        other = AuditChain("a-completely-different-audit-hmac-key-32chars", path=str(restored))
         ok, _ = other.verify()
         assert ok is False, "a chain must not verify under a different HMAC key"
     except AuditError:

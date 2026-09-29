@@ -43,9 +43,7 @@ def extract_openai_text(data: dict, provider: str) -> str:
         content = choice.get("text", None)
 
     if isinstance(content, list):
-        content = "".join(
-            part.get("text", "") for part in content if isinstance(part, dict)
-        )
+        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
 
     if content is None:
         # No visible text. When the provider stopped because it ran out of
@@ -64,8 +62,7 @@ def extract_openai_text(data: dict, provider: str) -> str:
         else:
             detail = ""
         raise ProviderError(
-            f"{provider}: response had no assistant content "
-            f"(finish_reason={choice.get('finish_reason')!r}){detail}"
+            f"{provider}: response had no assistant content (finish_reason={choice.get('finish_reason')!r}){detail}"
         )
 
     return str(content)
@@ -75,8 +72,7 @@ class BaseProvider(ABC):
     name: str = "base"
 
     @abstractmethod
-    async def complete(self, messages: list[dict], model: str, max_tokens: int) -> Completion:
-        ...
+    async def complete(self, messages: list[dict], model: str, max_tokens: int) -> Completion: ...
 
     async def astream(self, messages: list[dict], model: str, max_tokens: int):  # type: ignore[no-untyped-def]
         """Yield text deltas word-by-word. Providers override with true SSE."""

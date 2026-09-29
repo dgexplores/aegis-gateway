@@ -31,6 +31,13 @@ gen-tenant:
 
 lint:
 	ruff check src tests scripts
+	ruff format --check src tests scripts
+
+# The repo is formatted, so the check above can block. Kept as its own target
+# because running it rewrites files and that should never be a side effect of
+# `make lint`.
+format:
+	ruff format src tests scripts
 
 type:
 	mypy src

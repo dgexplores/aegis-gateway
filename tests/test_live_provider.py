@@ -89,9 +89,14 @@ async def call(provider, messages, max_tokens, **kwargs):
             return await provider.complete(messages, MODEL, max_tokens, **kwargs)
         except ProviderError as exc:
             text = str(exc)
-            upstream = ("http 5" in text or "http 429" in text
-                        or "transport error" in text or "timeout" in text
-                        or "temporarily" in text or "rate" in text)
+            upstream = (
+                "http 5" in text
+                or "http 429" in text
+                or "transport error" in text
+                or "timeout" in text
+                or "temporarily" in text
+                or "rate" in text
+            )
             if not upstream:
                 raise
             last = exc
@@ -100,22 +105,20 @@ async def call(provider, messages, max_tokens, **kwargs):
 
 
 async def test_a_real_completion_returns_text(provider):
-    result = await call(
-        provider, [{"role": "user", "content": "Reply with exactly the word: OK"}], 64
-    )
+    result = await call(provider, [{"role": "user", "content": "Reply with exactly the word: OK"}], 64)
     assert isinstance(result, Completion)
     assert result.text.strip(), f"provider returned no text: {result.raw}"
     assert result.provider == "gmi"
-    print(f"\n  real latency: {result.latency_ms} ms  tokens: "
-          f"{result.input_tokens} in / {result.output_tokens} out  model: {result.model}")
+    print(
+        f"\n  real latency: {result.latency_ms} ms  tokens: "
+        f"{result.input_tokens} in / {result.output_tokens} out  model: {result.model}"
+    )
 
 
 async def test_token_accounting_is_populated(provider):
     """Cost accounting and the budget preflight both read these. A provider that
     returns zeros makes the budget meaningless without failing loudly."""
-    result = await call(
-        provider, [{"role": "user", "content": "Name three primary colours."}], 128
-    )
+    result = await call(provider, [{"role": "user", "content": "Name three primary colours."}], 128)
     assert result.input_tokens > 0, f"no prompt tokens reported: {result.raw}"
     assert result.output_tokens > 0, f"no completion tokens reported: {result.raw}"
 
@@ -124,9 +127,7 @@ async def test_a_tight_output_budget_is_reported_rather_than_silently_blank(prov
     """A reasoning model can burn the whole budget and emit nothing, returning
     HTTP 200. The caller must be told, not handed an empty answer."""
     try:
-        result = await call(
-            provider, [{"role": "user", "content": "Explain the theory of everything."}], 1
-        )
+        result = await call(provider, [{"role": "user", "content": "Explain the theory of everything."}], 1)
     except ProviderError as exc:
         assert "no assistant content" in str(exc), str(exc)
         return
@@ -140,9 +141,7 @@ async def test_a_tight_output_budget_is_reported_rather_than_silently_blank(prov
 async def test_a_refusal_is_not_an_error(provider):
     """Safety behaviour is the whole point of the gateway; it has to survive
     contact with a real model that has its own opinions."""
-    result = await call(
-        provider, [{"role": "user", "content": "What is the capital of France?"}], 64
-    )
+    result = await call(provider, [{"role": "user", "content": "What is the capital of France?"}], 64)
     assert result.text.strip()
 
 
@@ -160,9 +159,7 @@ async def test_the_live_response_shape_matches_the_parser(provider):
             resp = await client.post(
                 f"{BASE_URL}/chat/completions",
                 headers={"Authorization": f"Bearer {API_KEY}"},
-                json={"model": MODEL,
-                      "messages": [{"role": "user", "content": "hi"}],
-                      "max_tokens": 32},
+                json={"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 32},
             )
         # 429 like 5xx: the provider is saying "not now", which is not a
         # statement about our parsing.

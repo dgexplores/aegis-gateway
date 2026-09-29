@@ -9,6 +9,7 @@ Usage:
   python scripts/grow_golden.py --misses prod_misses.jsonl --limit 20
   python scripts/grow_golden.py --misses prod_misses.jsonl --dry-run
 """
+
 import argparse
 import hashlib
 import json
@@ -113,8 +114,7 @@ def main() -> int:
         for c in added:
             print(f"  + {c['id']}: {c['question'][:80]}")
         return 0
-    golden_path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True),
-                           encoding="utf-8")
+    golden_path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
     print(f"golden now {len(doc['cases'])} cases (+{len(added)}, skipped {skipped})")
     return 0
 

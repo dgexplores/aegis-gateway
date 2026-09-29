@@ -173,6 +173,7 @@ def test_streaming_path_honours_the_soft_band_waiver_too(gw):
 
 # --------------------------------------------------------------- breakers --
 
+
 def test_breaker_autopilot_is_untouched_when_no_override_is_set():
     breaker = CircuitBreaker("echo-economy")
     breaker.before_call()  # closed: no raise
@@ -206,6 +207,7 @@ def test_clearing_an_override_returns_the_breaker_to_autopilot():
 
 def test_a_broken_override_source_does_not_open_the_circuit():
     """A control-plane hiccup must fail toward serving traffic, not away."""
+
     def boom(_name):
         raise RuntimeError("control plane down")
 

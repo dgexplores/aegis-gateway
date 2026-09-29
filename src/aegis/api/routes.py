@@ -35,6 +35,7 @@ log = logging.getLogger("aegis.api")
 
 STATE: dict = {}
 
+
 def _login_redis():
     """Best-effort Redis handle for the login limiter.
 
@@ -62,6 +63,7 @@ def _client_key(request: Request) -> str:
     """
     return (request.client.host if request.client else "unknown") or "unknown"
 
+
 #: Credential-stuffing brake on `POST /admin/login`. The portal password is the
 #: one credential in this system that is a single shared secret with no scope
 #: and no lockout, so an unthrottled login form is a guessing oracle pointed at
@@ -69,6 +71,7 @@ def _client_key(request: Request) -> str:
 #: windows: the first stops one host spraying, the second stops one id being
 #: sprayed from a botnet. Redis-backed so the limit is fleet-wide, not per-pod.
 _LOGIN_LIMITER = SlidingWindowLimiter(limit_per_min=10, redis_client=_login_redis())
+
 
 def _settings() -> Settings:
     """The Settings the running gateway was actually built from.
@@ -121,9 +124,7 @@ async def lifespan(app: FastAPI):
         in_flight = drain.in_flight
         drained = await drain.wait_for_idle()
         if not drained:
-            log.warning(
-                "shutdown drain timed out with %d request(s) in flight", in_flight
-            )
+            log.warning("shutdown drain timed out with %d request(s) in flight", in_flight)
     try:
         await STATE["gateway"].aclose()
     except Exception:  # noqa: BLE001,S110
@@ -243,8 +244,10 @@ def _reject_client_system_prompt(gateway: Gateway, messages: list[Message]) -> N
     if any(m.role == "system" for m in messages):
         raise HTTPException(
             status_code=400,
-            detail=("client-supplied 'system' messages are disabled on this gateway "
-                    "(AEGIS_ALLOW_CLIENT_SYSTEM_PROMPT=false)"),
+            detail=(
+                "client-supplied 'system' messages are disabled on this gateway "
+                "(AEGIS_ALLOW_CLIENT_SYSTEM_PROMPT=false)"
+            ),
         )
 
 
@@ -281,9 +284,11 @@ async def chat(
             debug=_debug_enabled(gateway),
         )
     except RateLimitExceeded as exc:
-        raise HTTPException(status_code=429, detail=str(exc),
-                            headers={"Retry-After": str(exc.retry_after),
-                                     "X-RateLimit-Remaining": "0"}) from exc
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after), "X-RateLimit-Remaining": "0"},
+        ) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
@@ -325,12 +330,16 @@ async def rag_ingest(
     # and who added it" is exactly the question an auditor asks, and the answer
     # must be in the same tamper-evident chain as the answers themselves.
     result = await asyncio.to_thread(rag_service.ingest, body.text, body.source, tenant.id)
-    result["audit_seq"] = await gateway.audit_async(tenant.id, "doc_ingested", {
-        "source": body.source,
-        "chunks": result.get("chunks_indexed", 0),
-        "index_size": result.get("index_size", 0),
-        "chars": len(body.text),
-    })
+    result["audit_seq"] = await gateway.audit_async(
+        tenant.id,
+        "doc_ingested",
+        {
+            "source": body.source,
+            "chunks": result.get("chunks_indexed", 0),
+            "index_size": result.get("index_size", 0),
+            "chars": len(body.text),
+        },
+    )
     return result
 
 
@@ -362,11 +371,15 @@ async def rag_delete(
         # restart would expose by resurrecting the document.
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     metrics.inc("aegis_rag_deletes_total", tenant=tenant.id)
-    result["audit_seq"] = await gateway.audit_async(tenant.id, "doc_deleted", {
-        "source": body.source,
-        "chunks": result.get("chunks_removed", 0),
-        "index_size": result.get("index_size", 0),
-    })
+    result["audit_seq"] = await gateway.audit_async(
+        tenant.id,
+        "doc_deleted",
+        {
+            "source": body.source,
+            "chunks": result.get("chunks_removed", 0),
+            "index_size": result.get("index_size", 0),
+        },
+    )
     return result
 
 
@@ -392,9 +405,11 @@ async def rag_query(
             debug=_debug_enabled(gateway),
         )
     except RateLimitExceeded as exc:
-        raise HTTPException(status_code=429, detail=str(exc),
-                            headers={"Retry-After": str(exc.retry_after),
-                                     "X-RateLimit-Remaining": "0"}) from exc
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after), "X-RateLimit-Remaining": "0"},
+        ) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
@@ -450,10 +465,15 @@ async def chat_stream(
                 yield "data: [DONE]\n\n"
                 return
             if first.get("type") == "blocked":
-                yield sse({"blocked": True, "injection": first["injection"],
-                           "answer": first["answer"],
-                           "pii_masked": first.get("pii_masked", []),
-                           "outbound": first.get("outbound")})
+                yield sse(
+                    {
+                        "blocked": True,
+                        "injection": first["injection"],
+                        "answer": first["answer"],
+                        "pii_masked": first.get("pii_masked", []),
+                        "outbound": first.get("outbound"),
+                    }
+                )
                 yield "data: [DONE]\n\n"
                 return
             if first.get("type") == "delta":
@@ -462,8 +482,7 @@ async def chat_stream(
                     evt["ttft_ms"] = first["ttft_ms"]
                 yield sse(evt)
             elif first.get("type") == "done":
-                yield sse({"done": True,
-                           **{k: v for k, v in first.items() if k != "type"}})
+                yield sse({"done": True, **{k: v for k, v in first.items() if k != "type"}})
                 yield "data: [DONE]\n\n"
                 return
             async for ev2 in stream:  # type: ignore[union-attr]
@@ -473,19 +492,19 @@ async def chat_stream(
                         evt2["ttft_ms"] = ev2["ttft_ms"]
                     yield sse(evt2)
                 elif ev2.get("type") == "done":
-                    yield sse({"done": True,
-                               **{k: v for k, v in ev2.items() if k != "type"}})
+                    yield sse({"done": True, **{k: v for k, v in ev2.items() if k != "type"}})
                     yield "data: [DONE]\n\n"
                     return
                 elif ev2.get("type") == "blocked":
-                    yield sse({"blocked": True, "injection": ev2["injection"],
-                               "answer": ev2["answer"]})
+                    yield sse({"blocked": True, "injection": ev2["injection"], "answer": ev2["answer"]})
                     yield "data: [DONE]\n\n"
                     return
     except RateLimitExceeded as exc:
-        raise HTTPException(status_code=429, detail=str(exc),
-                            headers={"Retry-After": str(exc.retry_after),
-                                     "X-RateLimit-Remaining": "0"}) from exc
+        raise HTTPException(
+            status_code=429,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after), "X-RateLimit-Remaining": "0"},
+        ) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
 
@@ -624,9 +643,7 @@ async def admin_audit_export(
         raise HTTPException(status_code=403, detail="scope 'admin' required")
     limit = max(1, min(limit, 500))
     await _record_audit_read(gateway, caller, tenant, limit, event, with_payload=False)
-    data = await asyncio.to_thread(
-        gateway.audit.tail_records, limit=limit, tenant=tenant, event=event
-    )
+    data = await asyncio.to_thread(gateway.audit.tail_records, limit=limit, tenant=tenant, event=event)
     body = "\n".join(json.dumps(r, separators=(",", ":")) for r in data["records"])
     return Response(
         content=body + ("\n" if body else ""),
@@ -641,9 +658,7 @@ async def admin_audit_export(
 
 
 @app.get("/admin/status")
-async def admin_status(
-    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
-) -> dict:
+async def admin_status(tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)) -> dict:
     # Global ops view (all breakers, cache totals, chain length) — admin only.
     if "admin" not in tenant.scopes:
         raise HTTPException(status_code=403, detail="scope 'admin' required")
@@ -663,6 +678,7 @@ def _require_admin(tenant: Tenant) -> None:
 
 
 # --------------------------------------------------------- admin sessions --
+
 
 def _admin_creds(settings: Settings) -> tuple[str, str] | None:
     """The portal login, or ``None`` when only bearer tokens are accepted."""
@@ -693,9 +709,7 @@ def admin_session_credentials(settings: Settings) -> tuple[str, str | None]:
     """
     key = _admin_session_key(settings)
     creds = _admin_creds(settings)
-    fingerprint = (
-        admin_session.credential_fingerprint(creds[0], creds[1], key) if creds else None
-    )
+    fingerprint = admin_session.credential_fingerprint(creds[0], creds[1], key) if creds else None
     return key, fingerprint
 
 
@@ -787,13 +801,9 @@ async def admin_login(payload: AdminLogin, response: Response, request: Request)
             payload.username,
             session_key,
             settings.admin_session_ttl,
-            fingerprint=admin_session.credential_fingerprint(
-                payload.username, payload.password, session_key
-            ),
+            fingerprint=admin_session.credential_fingerprint(payload.username, payload.password, session_key),
         ),
-        **admin_session.cookie_kwargs(
-            secure=settings.env == "production", max_age=settings.admin_session_ttl
-        ),
+        **admin_session.cookie_kwargs(secure=settings.env == "production", max_age=settings.admin_session_ttl),
     )
     return {"authenticated": True, "user": payload.username}
 
@@ -801,9 +811,7 @@ async def admin_login(payload: AdminLogin, response: Response, request: Request)
 @app.post("/admin/logout")
 async def admin_logout(response: Response) -> dict:
     settings = _settings()
-    response.delete_cookie(**admin_session.delete_cookie_kwargs(
-        secure=settings.env == "production"
-    ))
+    response.delete_cookie(**admin_session.delete_cookie_kwargs(secure=settings.env == "production"))
     return {"authenticated": False}
 
 
@@ -813,11 +821,7 @@ async def admin_session_state(request: Request) -> dict:
     settings = _settings()
     creds = _admin_creds(settings)
     username = _verify_admin_session(request, settings)
-    demo = bool(
-        creds
-        and creds[0] == admin_session.DEMO_USERNAME
-        and creds[1] == admin_session.DEMO_PASSWORD
-    )
+    demo = bool(creds and creds[0] == admin_session.DEMO_USERNAME and creds[1] == admin_session.DEMO_PASSWORD)
     return {
         "authenticated": username is not None,
         "user": username,
@@ -829,9 +833,7 @@ async def admin_session_state(request: Request) -> dict:
 
 
 @app.get("/admin/overview")
-async def admin_overview(
-    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
-) -> dict:
+async def admin_overview(tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)) -> dict:
     """Fleet Overview: is anything wrong?
 
     Every counter here is in-process and per-pod, so the payload reports
@@ -861,16 +863,13 @@ async def admin_overview(
         "cost_usd": round(metrics.total("aegis_cost_usd_total"), 4),
         "cache": gateway.cache.stats(),
         "breakers": [b.snapshot() for _, b in gateway.registry.values()],
-        "audit_chain": {"intact": ok, "detail": chain_msg, "length": gateway.audit.seq,
-                        "head": gateway.audit.head},
+        "audit_chain": {"intact": ok, "detail": chain_msg, "length": gateway.audit.seq, "head": gateway.audit.head},
         "tenants": metrics.tenant_totals(),
     }
 
 
 @app.get("/admin/tenants")
-async def admin_tenants(
-    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
-) -> dict:
+async def admin_tenants(tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)) -> dict:
     """Every configured tenant: scopes, budget burn, document count, activity.
 
     Read-only by design. Key rotation stays in scripts/gen_tenant.py, where it
@@ -887,17 +886,19 @@ async def admin_tenants(
             docs = []
         activity = totals.get(tid, {})
         used, limit = usage["used"], max(1, usage["limit"])
-        rows.append({
-            "id": tid,
-            "scopes": sorted(scopes),
-            "requests": activity.get("requests", 0.0),
-            "blocked": activity.get("blocked", 0.0) + activity.get("soft_blocked", 0.0),
-            "cost_usd": round(activity.get("cost_usd", 0.0), 4),
-            "budget_used": used,
-            "budget_limit": usage["limit"],
-            "budget_pct": round(used / limit, 4),
-            "documents": len(docs),
-        })
+        rows.append(
+            {
+                "id": tid,
+                "scopes": sorted(scopes),
+                "requests": activity.get("requests", 0.0),
+                "blocked": activity.get("blocked", 0.0) + activity.get("soft_blocked", 0.0),
+                "cost_usd": round(activity.get("cost_usd", 0.0), 4),
+                "budget_used": used,
+                "budget_limit": usage["limit"],
+                "budget_pct": round(used / limit, 4),
+                "documents": len(docs),
+            }
+        )
     return {"tenants": rows, "count": len(rows)}
 
 
@@ -929,9 +930,7 @@ def _check_breakglass(presented: str, actor: str, settings: Settings) -> bool:
     window = now - 300.0
     attempts = [t for t in _breakglass_failures.get(actor, []) if t > window]
     locked = len(attempts) >= settings.breakglass_attempts
-    matches = secrets.compare_digest(
-        (presented or "").encode(), (settings.breakglass_password or "").encode()
-    )
+    matches = secrets.compare_digest((presented or "").encode(), (settings.breakglass_password or "").encode())
     if locked or not matches:
         attempts.append(now)
         _breakglass_failures[actor] = attempts
@@ -943,6 +942,7 @@ def _check_breakglass(presented: str, actor: str, settings: Settings) -> bool:
 def _reset_breakglass() -> None:
     """Test hook."""
     _breakglass_failures.clear()
+
 
 class KillSwitch(BaseModel):
     on: bool
@@ -974,14 +974,11 @@ def _known_provider(gateway: Gateway, name: str) -> str:
 
 
 def _audit_control(gateway: Gateway, actor: str, action: str, detail: dict) -> None:
-    gateway.audit.append("admin", f"control_{action}",
-                         {"actor": actor, "via": "admin-portal", **detail})
+    gateway.audit.append("admin", f"control_{action}", {"actor": actor, "via": "admin-portal", **detail})
 
 
 @app.get("/admin/controls")
-async def admin_controls(
-    gateway: Gateway = Depends(get_gateway), actor: str = Depends(require_admin_portal)
-) -> dict:
+async def admin_controls(gateway: Gateway = Depends(get_gateway), actor: str = Depends(require_admin_portal)) -> dict:
     """The whole control plane, plus which tenants it can be aimed at."""
     snapshot = gateway.ops.snapshot()
     settings = _settings()
@@ -998,7 +995,8 @@ async def admin_controls(
 
 @app.post("/admin/controls/kill")
 async def admin_kill(
-    payload: KillSwitch, gateway: Gateway = Depends(get_gateway),
+    payload: KillSwitch,
+    gateway: Gateway = Depends(get_gateway),
     actor: str = Depends(require_admin_portal),
 ) -> dict:
     """Refuse everything, for everyone. The panic button.
@@ -1016,8 +1014,7 @@ async def admin_kill(
     if payload.on and settings.breakglass_password:
         ok_attempt = _check_breakglass(payload.breakglass, actor, settings)
         if not ok_attempt:
-            _audit_control(gateway, actor, "kill_refused_breakglass",
-                           {"reason": "bad or missing break-glass secret"})
+            _audit_control(gateway, actor, "kill_refused_breakglass", {"reason": "bad or missing break-glass secret"})
             raise HTTPException(
                 status_code=403,
                 detail="the break-glass secret is required to refuse all traffic",
@@ -1031,7 +1028,8 @@ async def admin_kill(
 
 @app.post("/admin/controls/tenant/{tenant_id}/pause")
 async def admin_pause_tenant(
-    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    tenant_id: str,
+    gateway: Gateway = Depends(get_gateway),
     actor: str = Depends(require_admin_portal),
 ) -> dict:
     _known_tenant(gateway, tenant_id)
@@ -1042,7 +1040,8 @@ async def admin_pause_tenant(
 
 @app.post("/admin/controls/tenant/{tenant_id}/resume")
 async def admin_resume_tenant(
-    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    tenant_id: str,
+    gateway: Gateway = Depends(get_gateway),
     actor: str = Depends(require_admin_portal),
 ) -> dict:
     _known_tenant(gateway, tenant_id)
@@ -1053,7 +1052,8 @@ async def admin_resume_tenant(
 
 @app.post("/admin/controls/tenant/{tenant_id}/allow")
 async def admin_allow_tenant(
-    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    tenant_id: str,
+    gateway: Gateway = Depends(get_gateway),
     actor: str = Depends(require_admin_portal),
 ) -> dict:
     """Waive the soft band for one tenant.
@@ -1071,32 +1071,32 @@ async def admin_allow_tenant(
 
 @app.post("/admin/controls/tenant/{tenant_id}/deny")
 async def admin_deny_tenant(
-    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    tenant_id: str,
+    gateway: Gateway = Depends(get_gateway),
     actor: str = Depends(require_admin_portal),
 ) -> dict:
     _known_tenant(gateway, tenant_id)
     had = gateway.ops.deny(tenant_id)
-    _audit_control(gateway, actor, "tenant_softband_waiver_revoked",
-                   {"tenant": tenant_id, "had_waiver": had})
+    _audit_control(gateway, actor, "tenant_softband_waiver_revoked", {"tenant": tenant_id, "had_waiver": had})
     return {**gateway.ops.snapshot(), "revoked": had}
 
 
 @app.post("/admin/controls/breaker/{name}")
 async def admin_breaker(
-    name: str, payload: BreakerState, gateway: Gateway = Depends(get_gateway),
+    name: str,
+    payload: BreakerState,
+    gateway: Gateway = Depends(get_gateway),
     actor: str = Depends(require_admin_portal),
 ) -> dict:
     """Hold a provider's circuit, or hand it back to the automatic threshold."""
     _known_provider(gateway, name)
     gateway.ops.set_breaker(name, payload.state)
-    _audit_control(gateway, actor, "breaker_override",
-                   {"provider": name, "state": payload.state})
+    _audit_control(gateway, actor, "breaker_override", {"provider": name, "state": payload.state})
     return gateway.ops.snapshot()
 
 
 @app.get("/admin/attacks")
-async def admin_attacks(    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
-) -> dict:
+async def admin_attacks(tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)) -> dict:
     """Blocked and soft-refused requests, newest first.
 
     The band is derived from the signed *event name*, not from the payload. That
@@ -1118,18 +1118,20 @@ async def admin_attacks(    tenant: Tenant = Depends(get_tenant), gateway: Gatew
         window = gateway.audit.tail_records(limit=500, event=event, with_payload=True)
         for rec in window["records"]:
             payload = rec.get("payload") or {}
-            rows.append({
-                "seq": rec["seq"],
-                "ts": rec["ts"],
-                "tenant": rec["tenant"],
-                "request_id": rec["request_id"],
-                "event": event,
-                "band": band,
-                "score": payload.get("score"),
-                "labels": payload.get("labels") or [],
-                "sig_ok": rec["sig_ok"],
-                "payload_ok": rec["payload_ok"],
-            })
+            rows.append(
+                {
+                    "seq": rec["seq"],
+                    "ts": rec["ts"],
+                    "tenant": rec["tenant"],
+                    "request_id": rec["request_id"],
+                    "event": event,
+                    "band": band,
+                    "score": payload.get("score"),
+                    "labels": payload.get("labels") or [],
+                    "sig_ok": rec["sig_ok"],
+                    "payload_ok": rec["payload_ok"],
+                }
+            )
     rows.sort(key=lambda r: r["ts"], reverse=True)
     hard = [r for r in rows if r["band"] == "hard"]
     soft = [r for r in rows if r["band"] == "soft"]

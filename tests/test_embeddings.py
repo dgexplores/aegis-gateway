@@ -63,8 +63,7 @@ def test_save_load_embedding_roundtrip():
                 if len(params or []) == 6:
                     self.saved[params[3]] = params[5]
             if sql.startswith("SELECT") and "embedding" in sql:
-                self.rows = [("acme", "p.md", 0, cid, "Refund window 30 days", js)
-                             for cid, js in self.saved.items()]
+                self.rows = [("acme", "p.md", 0, cid, "Refund window 30 days", js) for cid, js in self.saved.items()]
             return self
 
         def fetchall(self):

@@ -18,8 +18,7 @@ def _pod_with_rotation(tmp_path, name, n, max_bytes=300):
     chain = AuditChain(KEY, path=str(path), max_bytes=max_bytes)
     for i in range(n):
         chain.append("t1", "ev", {"i": i})
-    files = sorted(p for p in tmp_path.glob(name + "*")
-                   if p.is_file() and p.suffix != ".lock")
+    files = sorted(p for p in tmp_path.glob(name + "*") if p.is_file() and p.suffix != ".lock")
     return [str(p) for p in files]
 
 

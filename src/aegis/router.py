@@ -58,7 +58,7 @@ def route(messages: list[dict], allowed: set[str] | None = None) -> tuple[RouteT
     """Returns (tier, reason). `allowed` restricts tier names/models per tenant."""
     tier_name = classify_complexity(messages)
     tier = TIERS[tier_name]
-    reason = f"rules: complexity={tier_name}, length={sum(len(str(m.get('content',''))) for m in messages)}"
+    reason = f"rules: complexity={tier_name}, length={sum(len(str(m.get('content', ''))) for m in messages)}"
     if allowed:
         key = tier.model if tier.model in allowed else tier_name if tier_name in allowed else None
         if key is None:

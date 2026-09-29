@@ -18,16 +18,9 @@ class GMIProvider(BaseProvider):
         self, api_key: str | None = None, base_url: str | None = None, default_model: str | None = None
     ) -> None:
         # Accept explicit key (from Settings) or fall back to either env var name
-        self.api_key = (
-            api_key
-            or os.environ.get("GMI_API_KEY", "")
-            or os.environ.get("AEGIS_GMI_API_KEY", "")
-        )
+        self.api_key = api_key or os.environ.get("GMI_API_KEY", "") or os.environ.get("AEGIS_GMI_API_KEY", "")
         base = (
-            base_url
-            or os.environ.get("GMI_BASE_URL", "")
-            or os.environ.get("AEGIS_GMI_BASE_URL", "")
-            or DEFAULT_BASE
+            base_url or os.environ.get("GMI_BASE_URL", "") or os.environ.get("AEGIS_GMI_BASE_URL", "") or DEFAULT_BASE
         ).rstrip("/")
         self.api_url = f"{base}/chat/completions"
         # Model precedence: explicit Settings value > env > built-in default.
@@ -86,13 +79,17 @@ class GMIProvider(BaseProvider):
             raise ProviderError("GMI_API_KEY not set")
         if model.startswith("echo-"):
             model = self.default_model
-        payload = {"model": model, "messages": messages, "max_tokens": max_tokens,
-                   "user": "aegis-gateway", "stream": True}
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "user": "aegis-gateway",
+            "stream": True,
+        }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-                async with client.stream("POST", self.api_url, json=payload,
-                                         headers=headers) as resp:
+                async with client.stream("POST", self.api_url, json=payload, headers=headers) as resp:
                     if resp.status_code == 402:
                         raise ProviderError("gmi insufficient balance")
                     if resp.status_code != 200:
@@ -110,6 +107,7 @@ class GMIProvider(BaseProvider):
                                 return
                             try:
                                 import json as _json
+
                                 obj = _json.loads(data)
                                 delta = obj["choices"][0].get("delta", {}).get("content", "")
                                 if delta:
