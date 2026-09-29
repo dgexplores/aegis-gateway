@@ -8,6 +8,11 @@
 Self-hosted and open source. Your policies and employee data stay on your
 infrastructure. The only thing that leaves is the model call you asked for.
 
+**If you're here to evaluate this,** read on — everything is in plain language
+and every claim has a screenshot. **If you need to run it,** the setup is under
+[Run it yourself](#run-it-yourself) and the full engineering detail is in
+[`docs/REFERENCE.md`](docs/REFERENCE.md). You can skip everything in between.
+
 ---
 
 ## Screenshots, and what you're looking at
@@ -234,20 +239,68 @@ what is done and what is not. Please read it before promising this to anyone.
 
 ---
 
-## For your IT team
+---
 
-That is the entire product. **Nothing above requires you to read anything
-technical.**
+# Running it
 
-If you are the engineer who will actually run it, the full detail is here:
-**[`docs/REFERENCE.md`](docs/REFERENCE.md)** — request lifecycle, architecture,
-what the audit chain stores and doesn't, recovery objectives, performance
-numbers, deployment, and the security model.
+Everything above is the whole product, and **none of it required you to read
+anything technical**. This part is for whoever deploys and maintains it.
 
-The short version of the technical essentials is below.
+Deeper detail — request lifecycle, architecture, what the audit chain stores
+and doesn't, recovery objectives, performance, deployment, the security model —
+is in **[`docs/REFERENCE.md`](docs/REFERENCE.md)**.
 
-<details>
-<summary><b>How a question is handled</b></summary>
+## Run it yourself
+
+```bash
+git clone https://github.com/dgexplores/aegis-gateway && cd aegis-gateway
+bash scripts/setup.sh          # virtualenv, dependencies, .env, verification
+make run                       # http://localhost:8080
+```
+
+Your applications change one line — the address they send to:
+
+```python
+client = OpenAI(base_url="http://localhost:8080/v1", api_key=your_key)
+```
+
+`client.chat.completions.create(...)` stays exactly as it is.
+
+Load a document and ask about it:
+
+```bash
+KEY=demo-sk-aegis-2024
+curl -s localhost:8080/v1/rag/ingest -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"hr-policy.md","text":"Full-time staff receive 20 vacation days each year."}'
+
+curl -s localhost:8080/v1/rag/query -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"How many vacation days?"}'
+# → an answer, plus citations: [{source:"hr-policy.md", chunk:0, score:..., matched_by:"bm25+vector"}]
+```
+
+`make verify` runs every gate described above — lint, types, 407 tests,
+red-team, eval regression, retrieval drift, PII, the deployment guard and a
+documentation check.
+
+**Verification in one command:**
+
+```bash
+make verify            # the full gate, what CI runs
+make prod-guard        # deployment manifests are safe to ship
+make loadtest          # throughput and p99, hermetic on the echo provider
+make restore-drill     # prove an archived audit log still verifies
+```
+
+Containers and Kubernetes:
+
+```bash
+docker compose up -d            # gateway + redis + postgres, reads .env
+kubectl apply -f deploy/k8s/    # 3 replicas + HPA, non-root, read-only root filesystem
+```
+
+## How a question is handled
 
 Six steps, each one recorded: **check who is asking** and their limits →
 **check rate and budget** → **screen the question and any document text for
@@ -258,10 +311,8 @@ The screening step runs on everything, not just what a person typed. A request
 can be allowed, refused-but-safely-patched, or stopped entirely, and the record
 says which.
 
-</details>
 
-<details>
-<summary><b>Every endpoint</b></summary>
+## Every endpoint
 
 | Method | Path | Access | What it does |
 |---|---|---|---|
@@ -283,35 +334,30 @@ says which.
 | `POST` | `/admin/controls/breaker/{name}` | admin or session | Override a provider's circuit |
 | `GET` | `/admin/audit` | own records | The log, re-verified as it is read |
 
-</details>
 
-<details>
-<summary><b>Try it in a minute</b></summary>
 
-```bash
-git clone https://github.com/dgexplores/aegis-gateway && cd aegis-gateway
-bash scripts/setup.sh
-make run          # http://localhost:8080
-```
-
-Your apps change one line — the address they send to:
-
-```python
-client = OpenAI(base_url="http://localhost:8080/v1", api_key=your_key)
-```
-
-No other code changes. `make verify` runs every check described above.
-
-</details>
-
-<details>
-<summary><b>What it is built with</b></summary>
+## What it is built with
 
 Python 3.11–3.14 · FastAPI · Redis (required in production) · PostgreSQL
-optional, recommended for keeping documents across restarts · Docker and
-Kubernetes manifests included · MIT licensed.
+optional, recommended so documents survive a restart · Docker and Kubernetes
+manifests included · MIT licensed.
 
-</details>
+---
+
+## Show it to someone who isn't technical
+
+Once it's running, `http://localhost:8080/` is a plain-language page built for
+exactly that conversation. It answers the same three questions in one screen —
+*what did we send, why was it allowed, can you prove it later* — next to real
+screenshots of a real run.
+
+Send a stakeholder that link, not this file. A README is a good thing to send an
+IT team; it is a strange thing to hand to someone who does not write software.
+
+`make evidence` goes one step further and renders the whole capability story
+into a single self-contained HTML file — no internet needed, nothing hand-written
+in it, every value read from a live run. It is the version to hand to an auditor
+or to print.
 
 ## Licence
 
