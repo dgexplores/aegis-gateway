@@ -25,6 +25,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -145,8 +146,17 @@ def archive_to_s3(path: Path, bucket: str, prefix: str = "aegis-audit/") -> str 
 
 class AuditChain:
     def __init__(self, hmac_key: str, path: str = "audit.jsonl", max_bytes: int = 10_000_000,
-                 encrypt_key: str = "", s3_bucket: str = "", s3_prefix: str = "aegis-audit/") -> None:
-        self._key = hmac_key.encode()
+                 encrypt_key: str = "", s3_bucket: str = "", s3_prefix: str = "aegis-audit/",
+                 hmac_previous_keys: Sequence[str] = ()) -> None:
+        # The signing key is `_keys[0]`. The rest are *accepted* for verification
+        # only, and exist so a rotation does not invalidate the records the old
+        # key signed. See `hmac_previous_keys` on the module for the rotation
+        # procedure and what dropping a key costs.
+        self._keys: list[bytes] = [hmac_key.encode()]
+        for extra in hmac_previous_keys:
+            if extra and extra != hmac_key and extra.encode() not in self._keys:
+                self._keys.append(extra.encode())
+        self._key = self._keys[0]
         self.path = Path(path)
         self.max_bytes = max_bytes
         self.encrypt_key = encrypt_key
@@ -221,6 +231,35 @@ class AuditChain:
             material = f"{material}|{request_id}"
         return hmac.new(self._key, material.encode(), hashlib.sha256).hexdigest()
 
+    def _entry_hash_under(self, key: bytes, seq: int, ts: float, tenant: str,
+                          event: str, payload_sha256: str, prev_hash: str,
+                          request_id: str = "") -> str:
+        material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
+        if request_id:
+            material = f"{material}|{request_id}"
+        return hmac.new(key, material.encode(), hashlib.sha256).hexdigest()
+
+    def _verify_entry(self, rec: "AuditRecord") -> tuple[bool, int]:
+        """Does this record's signature match under any accepted key?
+
+        Returns ``(ok, key_slot)``. The slot is 0 for the current key and 1..n
+        for the previous keys, so a caller can report *which* key a record was
+        signed under — which is what tells an operator whether a rotation window
+        is still open.
+
+        Every candidate is compared even after a match, so the time does not
+        depend on which key matched. With one key this is identical work to
+        before, which matters because this is on the boot path.
+        """
+        matched = -1
+        for slot, key in enumerate(self._keys):
+            expected = self._entry_hash_under(key, rec.seq, rec.ts, rec.tenant,
+                                              rec.event, rec.payload_sha256,
+                                              rec.prev_hash, rec.request_id)
+            if hmac.compare_digest(expected, rec.entry_hash):
+                matched = slot
+        return (matched >= 0), matched
+
     def _load(self) -> None:
         if not self.path.exists():
             return
@@ -236,9 +275,8 @@ class AuditChain:
                 raw.setdefault("payload_alg", "none")
                 raw.setdefault("request_id", "")
                 rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
-                expected = self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                            rec.payload_sha256, rec.prev_hash, rec.request_id)
-                if not hmac.compare_digest(expected, rec.entry_hash):
+                ok, _slot = self._verify_entry(rec)
+                if not ok:
                     raise AuditError(f"audit chain corrupt at seq={rec.seq}")
                 if last is not None and rec.prev_hash != last.entry_hash:
                     raise AuditError(f"audit chain broken linkage at seq={rec.seq}")
@@ -325,10 +363,8 @@ class AuditChain:
                 tail = self._read_tail()
                 if tail is None:
                     return True, "chain empty, ready"
-                expected = self._entry_hash(tail.seq, tail.ts, tail.tenant,
-                                            tail.event, tail.payload_sha256,
-                                            tail.prev_hash, tail.request_id)
-                if not hmac.compare_digest(expected, tail.entry_hash):
+                ok, _slot = self._verify_entry(tail)
+                if not ok:
                     return False, f"audit tail corrupt at seq={tail.seq}"
                 return True, f"tail ok, head={tail.entry_hash[:12]}…, length={tail.seq}"
         except (OSError, AuditError) as exc:
@@ -415,11 +451,7 @@ class AuditChain:
         rows: list[dict] = []
         prev: AuditRecord | None = None
         for rec in parsed:
-            sig_ok = hmac.compare_digest(
-                rec.entry_hash,
-                self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                 rec.payload_sha256, rec.prev_hash, rec.request_id),
-            )
+            sig_ok, key_slot = self._verify_entry(rec)
             if prev is None:
                 link_ok: bool | None = rec.prev_hash == "GENESIS" if reached_start else None
             else:
@@ -446,6 +478,7 @@ class AuditChain:
                 "entry_hash": rec.entry_hash,
                 "prev_hash": rec.prev_hash,
                 "sig_ok": sig_ok,
+                "signed_with": "current" if key_slot == 0 else f"previous:{key_slot - 1}",
                 "link_ok": link_ok,
                 "payload": payload,
                 "payload_ok": payload_ok,
@@ -478,7 +511,8 @@ class AuditChain:
         }
 
 
-def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
+def load_verified_records(path: str | Path, hmac_key: str,
+                          hmac_previous_keys: Sequence[str] = ()) -> list[AuditRecord]:
     """Parse one segment file, verifying every signature and link.
 
     Same checks as AuditChain._load, but standalone so reconcile can name
@@ -486,7 +520,15 @@ def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
     """
     p = Path(path)
     verifier = AuditChain.__new__(AuditChain)
-    verifier._key = hmac_key.encode()
+    # Mirror AuditChain.__init__'s keyring. This deliberately bypasses
+    # __init__ (there is no file to adopt a head from), so the keyring has to
+    # be built here too -- and if a rotation makes segments unreadable, this is
+    # where it would show up.
+    verifier._keys = [hmac_key.encode()] + [
+        k.encode() for k in hmac_previous_keys
+        if k and k != hmac_key and k.encode() != hmac_key.encode()
+    ]
+    verifier._key = verifier._keys[0]
     records: list[AuditRecord] = []
     last: AuditRecord | None = None
     with p.open("r", encoding="utf-8") as fh:
@@ -499,10 +541,8 @@ def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
             raw.setdefault("payload_alg", "none")
             raw.setdefault("request_id", "")
             rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
-            expected = verifier._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                            rec.payload_sha256, rec.prev_hash,
-                                            rec.request_id)
-            if not hmac.compare_digest(expected, rec.entry_hash):
+            ok, _slot = verifier._verify_entry(rec)
+            if not ok:
                 raise AuditError(f"{p}: chain corrupt at seq={rec.seq}")
             if last is not None and rec.prev_hash != last.entry_hash:
                 raise AuditError(f"{p}: broken linkage at seq={rec.seq}")
@@ -511,7 +551,8 @@ def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
     return records
 
 
-def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
+def reconcile_segments(paths: list[str | Path], hmac_key: str,
+                       hmac_previous_keys: Sequence[str] = ()) -> dict:
     """Order per-pod audit segments by head linkage (M12).
 
     Verifies every segment, then chains them: segment B follows A when B's
@@ -527,7 +568,7 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
         if name in verified or name in errors:
             continue
         try:
-            verified[name] = load_verified_records(name, hmac_key)
+            verified[name] = load_verified_records(name, hmac_key, hmac_previous_keys)
         except (AuditError, OSError, ValueError, KeyError) as exc:
             errors[name] = str(exc)
     firsts = {n: recs[0].prev_hash for n, recs in verified.items() if recs}

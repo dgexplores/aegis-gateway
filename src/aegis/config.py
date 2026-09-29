@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     port: int = 8080
 
     audit_hmac_key: str = "dev-audit-key-not-for-production-usage!"
+    #: Retired signing keys, comma separated, accepted for *verification only*.
+    #: See the rotation procedure in docs/PRODUCTION-READINESS.md item 1.3.
+    audit_hmac_key_previous: str = ""
     vault_hmac_key: str = "dev-vault-key-not-for-production-usage!"
 
     # No built-in tenant. A gateway with no configured tenant authenticates
