@@ -104,8 +104,8 @@ async def lifespan(app: FastAPI):
             STATE["settings"] = STATE["gateway"].settings
 
     # A starting process is not draining. See DrainMiddleware.end_drain.
-    if current_drain() is not None:
-        current_drain().end_drain()
+    if (starting_drain := current_drain()) is not None:
+        starting_drain.end_drain()
 
     yield
 
