@@ -56,7 +56,7 @@ def client(tmp_path, monkeypatch):
         audit_hmac_key="test-audit-key-32-chars-minimum!!",
         vault_hmac_key="test-vault-key-32-chars-minimum!!!",
         admin_username="operator",
-        admin_password="unit-test-admin-password",
+        admin_password="unit-test-admin-password",  # noqa: S106 — test fixture credential
         admin_session_key="test-admin-session-key-32-chars-lol",
     )
     STATE["settings"] = settings
