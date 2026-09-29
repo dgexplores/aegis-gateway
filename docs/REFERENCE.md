@@ -197,17 +197,17 @@ curl -s localhost:8080/healthz
 
 # chat
 curl -s localhost:8080/v1/chat \
-  -H "Authorization: Bearer demo-sk-aegis-2024" \
+  -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"hello"}]}' | python -m json.tool
 
 # RAG — ingest, then ask
 curl -s localhost:8080/v1/rag/ingest \
-  -H "Authorization: Bearer demo-sk-aegis-2024" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"text":"Employees get 20 vacation days per year.","source":"hr.md"}' >/dev/null
 
 curl -s localhost:8080/v1/rag/query \
-  -H "Authorization: Bearer demo-sk-aegis-2024" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"question":"How many vacation days?"}' | python -m json.tool
 # → answer + citations: [{source:"hr.md", chunk:0, score:..., matched_by:"bm25+vector"}]
 ```

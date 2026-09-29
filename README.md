@@ -269,7 +269,8 @@ client = OpenAI(base_url="http://localhost:8080/v1", api_key=your_key)
 Load a document and ask about it:
 
 ```bash
-KEY=demo-sk-aegis-2024
+# `setup.sh` writes a demo key into .env; read it rather than pasting it
+KEY=$(grep -oE 'AEGIS_DEMO_API_KEY=.*' .env | cut -d= -f2-)
 curl -s localhost:8080/v1/rag/ingest -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d '{"source":"hr-policy.md","text":"Full-time staff receive 20 vacation days each year."}'
