@@ -6,6 +6,9 @@ will know, and what is blocked on something other than work.
 `ROADMAP.md` covers where the product should go. `STATUS.md` records what is
 true today. This file is the gap between the two.
 
+Already written: **[`RUNBOOK.md`](RUNBOOK.md)** — what to do when something is
+wrong, and specifically what makes it worse.
+
 **The rule, unchanged from the rest of the repo: a claim is only made if a gate
 measures it.** Every item below names the gate that closes it. Anything without
 a gate is an intention, and intentions are not progress.
