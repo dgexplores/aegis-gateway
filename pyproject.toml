@@ -72,6 +72,11 @@ ignore = [
 "src/aegis/api/routes.py" = ["BLE001", "S110"]
 # KB_PASSWORD_RESET is sample documentation text, not a credential
 "scripts/eval_gate.py" = ["S105"]
+# The screenshot capture starts its own gateway on loopback and shells out to a
+# fixed `sips` argv with no shell. That is the entire purpose of the file, and
+# the alternative -- eight noqa comments -- is worse, because the formatter
+# reflows these calls and slides the suppressions off the lines they explain.
+"scripts/capture_shots.py" = ["S603", "S310", "S607"]
 
 [tool.mypy]
 python_version = "3.11"

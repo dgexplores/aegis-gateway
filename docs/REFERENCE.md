@@ -95,7 +95,7 @@ can see. There is deliberately no upload form and no delete button: loading a
 corpus is corpus *administration*, and an employee asking about vacation days
 should not be the person who uploads the HR policy.
 
-![Ask: one box, a plain-language answer, and the evidence one click away](../src/aegis/static/shots/ask-answered.png)
+![Ask: one box, a plain-language answer, and the evidence one click away](../src/aegis/static/shots/ask-answered.jpg)
 
 ### 4. You can act during an incident — no shell
 
@@ -118,7 +118,7 @@ control that stops every tenant at once. Restoring traffic never needs it (an
 incident must not end with a gateway nobody can switch back on), attempts are
 rate-limited per actor, and both the attempt *and* its refusal are audited.
 
-![Admin controls: kill switch, per-tenant pause, soft-band waivers, breaker overrides](../src/aegis/static/shots/admin-controls.png)
+![Admin controls: kill switch, per-tenant pause, soft-band waivers, breaker overrides](../src/aegis/static/shots/admin-controls.jpg)
 
 ### 5. Evidence that survives scrutiny
 
@@ -148,16 +148,16 @@ p99 122ms**, with audit durability costing 0.097ms per append — ~14% of a
 ## The rest of the console
 
 <p align="center">
-  <img src="src/aegis/static/shots/admin-login.png" width="49%" alt="Admin sign-in: an id and a password, with the key path kept as a fallback">
-  <img src="src/aegis/static/shots/admin-overview.png" width="49%" alt="Admin overview: fleet counters, breaker health, top tenants">
+  <img src="src/aegis/static/shots/admin-login.jpg" width="49%" alt="Admin sign-in: an id and a password, with the key path kept as a fallback">
+  <img src="src/aegis/static/shots/admin-overview.jpg" width="49%" alt="Admin overview: fleet counters, breaker health, top tenants">
 </p>
 <p align="center">
-  <img src="src/aegis/static/shots/admin-tenants.png" width="49%" alt="Admin tenants: scopes, budget burn, document counts">
-  <img src="src/aegis/static/shots/admin-attacks.png" width="49%" alt="Admin attacks: every blocked and refused request, band read from the signed event">
+  <img src="src/aegis/static/shots/admin-tenants.jpg" width="49%" alt="Admin tenants: scopes, budget burn, document counts">
+  <img src="src/aegis/static/shots/admin-attacks.jpg" width="49%" alt="Admin attacks: every blocked and refused request, band read from the signed event">
 </p>
 <p align="center">
-  <img src="src/aegis/static/shots/admin-chain.png" width="49%" alt="Audit chain on the admin surface: every row re-verified on read">
-  <img src="src/aegis/static/shots/ask-documents.png" width="49%" alt="Your documents: a read-only inventory, no upload form">
+  <img src="src/aegis/static/shots/admin-chain.jpg" width="49%" alt="Audit chain on the admin surface: every row re-verified on read">
+  <img src="src/aegis/static/shots/ask-documents.jpg" width="49%" alt="Your documents: a read-only inventory, no upload form">
 </p>
 
 **Sign in** with an id and a password, or an `admin`-scoped bearer token — both

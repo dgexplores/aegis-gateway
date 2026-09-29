@@ -20,7 +20,7 @@ and every claim has a screenshot. **If you need to run it,** the setup is under
 Everything below is the real product, running. Nothing is a mock-up.
 
 <p align="center">
-  <img src="src/aegis/static/shots/ask-answered.png" width="100%" alt="An employee asks how many vacation days they get. The assistant answers from hr-policy.md and expenses.md, and says which documents it used.">
+  <img src="src/aegis/static/shots/ask-answered.jpg" width="100%" alt="An employee asks how many vacation days they get. The assistant answers from hr-policy.md and expenses.md, and says which documents it used.">
 </p>
 
 **An employee asks a normal question.** *"How many vacation days do I get?"*
@@ -38,7 +38,7 @@ anything personal was hidden, sent, then put back for you."* The assistant
 never quietly edits what a person asked.
 
 <p align="center">
-  <img src="src/aegis/static/shots/ask-documents.png" width="49%" alt="A read-only list of the documents the assistant can answer from: expenses.md and hr-policy.md, with their opening lines.">
+  <img src="src/aegis/static/shots/ask-documents.jpg" width="49%" alt="A read-only list of the documents the assistant can answer from: expenses.md and hr-policy.md, with their opening lines.">
 </p>
 
 **Staff can see exactly what the assistant knows.** The list of documents, with
@@ -131,7 +131,7 @@ re-checks a log from years ago.
 ## When something goes wrong, HR can act — no IT ticket
 
 <p align="center">
-  <img src="src/aegis/static/shots/admin-controls.png" width="100%" alt="The Controls tab: a global kill switch, a per-tenant pause, a soft-band waiver, and breaker overrides.">
+  <img src="src/aegis/static/shots/admin-controls.jpg" width="100%" alt="The Controls tab: a global kill switch, a per-tenant pause, a soft-band waiver, and breaker overrides.">
 </p>
 
 Most security dashboards tell you there is a problem. This one has the buttons.
@@ -163,8 +163,8 @@ from a hijacked account doesn't look like you.
 ## What else is in the box
 
 <p align="center">
-  <img src="src/aegis/static/shots/admin-overview.png" width="49%" alt="Overview: requests, blocked, cost, tokens, cache, chain status, and provider health.">
-  <img src="src/aegis/static/shots/admin-tenants.png" width="49%" alt="Tenants: which department has which permissions, how much of its budget it has used, and how many documents it holds.">
+  <img src="src/aegis/static/shots/admin-overview.jpg" width="49%" alt="Overview: requests, blocked, cost, tokens, cache, chain status, and provider health.">
+  <img src="src/aegis/static/shots/admin-tenants.jpg" width="49%" alt="Tenants: which department has which permissions, how much of its budget it has used, and how many documents it holds.">
 </p>
 
 **See what it's doing and what it costs.** Requests, questions blocked, spend,
@@ -173,8 +173,8 @@ department, so you can see which team is using it and how much of its allowance
 is gone. Nobody gets a surprise bill.
 
 <p align="center">
-  <img src="src/aegis/static/shots/admin-attacks.png" width="49%" alt="Attacks: every blocked and refused request, with the reason taken from the signed record.">
-  <img src="src/aegis/static/shots/admin-chain.png" width="49%" alt="The audit chain, with every row re-verified as it is displayed.">
+  <img src="src/aegis/static/shots/admin-attacks.jpg" width="49%" alt="Attacks: every blocked and refused request, with the reason taken from the signed record.">
+  <img src="src/aegis/static/shots/admin-chain.jpg" width="49%" alt="The audit chain, with every row re-verified as it is displayed.">
 </p>
 
 **See what people are trying.** Every blocked and refused request in one place,
@@ -187,7 +187,7 @@ recomputed, chain link matched. The oldest entry in a partial window says
 *"unknown"* rather than quietly claiming to be fine.
 
 <p align="center">
-  <img src="src/aegis/static/shots/admin-login.png" width="49%" alt="Administrator sign-in: an id and a password.">
+  <img src="src/aegis/static/shots/admin-login.jpg" width="49%" alt="Administrator sign-in: an id and a password.">
 </p>
 
 **Only your administrators get in.** Sign in with an id and password. Every
