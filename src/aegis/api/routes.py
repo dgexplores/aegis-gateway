@@ -20,13 +20,47 @@ from aegis.gateway import Gateway, build_gateway
 from aegis.metrics import metrics
 from aegis.providers.registry import AllProvidersDown
 from aegis.rag.service import RagPersistError, rag_service
-from aegis.ratelimit import RateLimitExceeded
+from aegis.ratelimit import RateLimitExceeded, SlidingWindowLimiter
 from aegis.security import admin_session
 from aegis.security.admin_session import AdminAuthError
 from aegis.security.auth import Authenticator, Tenant
 
 STATE: dict = {}
 
+def _login_redis():
+    """Best-effort Redis handle for the login limiter.
+
+    Returns ``None`` on any failure, which downgrades the limiter to
+    per-process. That is a real weakening, so it is surfaced in the response and
+    the health of it is asserted in tests rather than assumed.
+    """
+    try:
+        import redis as _redis
+
+        from aegis.config import get_settings as _gs
+
+        url = _gs().redis_url
+        return _redis.from_url(url, socket_connect_timeout=1) if url else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _client_key(request: Request) -> str:
+    """A best-effort source address for rate limiting.
+
+    Only meaningful behind a proxy that sets X-Forwarded-For, and
+    ``proxy_headers`` is deliberately not trusted by default, so this is a
+    limiter, not an authentication control.
+    """
+    return (request.client.host if request.client else "unknown") or "unknown"
+
+#: Credential-stuffing brake on `POST /admin/login`. The portal password is the
+#: one credential in this system that is a single shared secret with no scope
+#: and no lockout, so an unthrottled login form is a guessing oracle pointed at
+#: the controls that can pause every tenant. Per-source and per-(source, id)
+#: windows: the first stops one host spraying, the second stops one id being
+#: sprayed from a botnet. Redis-backed so the limit is fleet-wide, not per-pod.
+_LOGIN_LIMITER = SlidingWindowLimiter(limit_per_min=10, redis_client=_login_redis())
 
 def _settings() -> Settings:
     """The Settings the running gateway was actually built from.
@@ -469,6 +503,40 @@ async def prometheus_metrics(tenant: Tenant = Depends(get_tenant)):
     return Response(content=body, media_type="text/plain; version=0.0.4")
 
 
+async def _record_audit_read(
+    gateway: Gateway,
+    caller: Tenant,
+    scope_filter: str,
+    limit: int,
+    event: str,
+    with_payload: bool,
+) -> None:
+    """Record the fact that the audit trail was read.
+
+    A log nobody can see is not evidence, and a log only an operator reads is not
+    a control either: reading the chain is an access to everything in it, and the
+    one question a compliance reviewer asks about a tamper-evident store is who
+    looked. A failed read is not recorded — it did not disclose anything.
+
+    The payload records the *shape* of the read (whose records, how many, with
+    or without payloads) and never the records themselves, so reading the log
+    cannot balloon it.
+    """
+    cross_tenant = bool(scope_filter) and scope_filter != caller.id
+    await asyncio.to_thread(
+        gateway.audit.append,
+        caller.id,
+        "admin_audit_read",
+        {
+            "scope": scope_filter or "(whole gateway)",
+            "cross_tenant": cross_tenant,
+            "limit": limit,
+            "event_filter": event or None,
+            "with_payload": bool(with_payload),
+        },
+    )
+
+
 @app.get("/admin/audit")
 async def admin_audit(
     limit: int = 50,
@@ -498,6 +566,7 @@ async def admin_audit(
         scope_filter = caller.id
 
     limit = max(1, min(limit, 500))
+    await _record_audit_read(gateway, caller, scope_filter, limit, event, include_payload)
     data = await asyncio.to_thread(
         gateway.audit.tail_records,
         limit=limit,
@@ -522,6 +591,7 @@ async def admin_audit_export(
     if "admin" not in caller.scopes:
         raise HTTPException(status_code=403, detail="scope 'admin' required")
     limit = max(1, min(limit, 500))
+    await _record_audit_read(gateway, caller, tenant, limit, event, with_payload=False)
     data = await asyncio.to_thread(
         gateway.audit.tail_records, limit=limit, tenant=tenant, event=event
     )
@@ -569,6 +639,34 @@ def _admin_creds(settings: Settings) -> tuple[str, str] | None:
     return settings.admin_username, settings.admin_password
 
 
+def _verify_admin_session(request: Request, settings: Settings) -> str | None:
+    """The signed-in username for this request, or ``None``.
+
+    Always passes the credential fingerprint, so a password change ends every
+    live session. A caller that forgets the fingerprint would silently make the
+    binding decorative, so there is one function and both call sites use it.
+    """
+    token = request.cookies.get(admin_session.COOKIE)
+    if not token:
+        return None
+    key, fingerprint = admin_session_credentials(settings)
+    return admin_session.verify(token, key, fingerprint=fingerprint)
+
+
+def admin_session_credentials(settings: Settings) -> tuple[str, str | None]:
+    """The session key plus the fingerprint the current credential implies.
+
+    Verifying a cookie without the fingerprint would make the binding
+    decorative, so every verification path goes through here.
+    """
+    key = _admin_session_key(settings)
+    creds = _admin_creds(settings)
+    fingerprint = (
+        admin_session.credential_fingerprint(creds[0], creds[1], key) if creds else None
+    )
+    return key, fingerprint
+
+
 def _admin_session_key(settings: Settings) -> str:
     # Fall back to the audit key so a deployment that has not set the dedicated
     # one still gets working, signed sessions rather than a silent no-op.
@@ -589,7 +687,7 @@ def require_admin_portal(request: Request) -> str:
         return "bearer"
 
     token = request.cookies.get(admin_session.COOKIE)
-    username = admin_session.verify(token, _admin_session_key(settings)) if token else None
+    username = _verify_admin_session(request, settings)
     if username:
         return username
 
@@ -612,8 +710,14 @@ class AdminLogin(BaseModel):
 
 
 @app.post("/admin/login")
-async def admin_login(payload: AdminLogin, response: Response) -> dict:
-    """Exchange an id and password for a signed session cookie."""
+async def admin_login(payload: AdminLogin, response: Response, request: Request) -> dict:
+    """Exchange an id and password for a signed session cookie.
+
+    Rate limited per source and per (source, id). A wrong guess is counted, a
+    correct one clears the window — so a genuine operator who fumbles their
+    password twice is not the one who gets locked out, while a spray of guesses
+    from anywhere runs out of budget quickly.
+    """
     settings = _settings()
     creds = _admin_creds(settings)
     if creds is None:
@@ -621,6 +725,19 @@ async def admin_login(payload: AdminLogin, response: Response) -> dict:
             status_code=404,
             detail="portal login is not configured; use an admin-scoped bearer token",
         )
+
+    source = _client_key(request)
+    windows = (f"admin-login:{source}", f"admin-login:{source}:{payload.username[:64]}")
+    for window in windows:
+        verdict = _LOGIN_LIMITER.check(window)
+        if not verdict.allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="too many login attempts; try again shortly",
+                headers={"Retry-After": str(verdict.retry_after)},
+            )
+
+    session_key, _ = admin_session_credentials(settings)
     try:
         admin_session.check_credentials(payload.username, payload.password, *creds)
     except AdminAuthError:
@@ -628,9 +745,20 @@ async def admin_login(payload: AdminLogin, response: Response) -> dict:
         # username: a failed login is not evidence, and logging the guess would
         # turn the audit chain into a password oracle.
         raise HTTPException(status_code=401, detail="invalid id or password") from None
+
+    # A correct login clears the window, or a typo would slowly spend an
+    # operator's budget for them.
+    for window in windows:
+        _LOGIN_LIMITER.reset(window)
+
     response.set_cookie(
         value=admin_session.sign(
-            payload.username, _admin_session_key(settings), settings.admin_session_ttl
+            payload.username,
+            session_key,
+            settings.admin_session_ttl,
+            fingerprint=admin_session.credential_fingerprint(
+                payload.username, payload.password, session_key
+            ),
         ),
         **admin_session.cookie_kwargs(
             secure=settings.env == "production", max_age=settings.admin_session_ttl
@@ -654,7 +782,7 @@ async def admin_session_state(request: Request) -> dict:
     settings = _settings()
     creds = _admin_creds(settings)
     token = request.cookies.get(admin_session.COOKIE)
-    username = admin_session.verify(token, _admin_session_key(settings)) if token else None
+    username = _verify_admin_session(request, settings)
     demo = bool(
         creds
         and creds[0] == admin_session.DEMO_USERNAME
