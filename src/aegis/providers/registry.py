@@ -13,7 +13,7 @@ class AllProvidersDown(Exception):
     pass
 
 
-def build_registry(settings: Settings) -> dict[str, tuple[BaseProvider, CircuitBreaker]]:
+def build_registry(settings: Settings, breaker_override_source=None) -> dict[str, tuple[BaseProvider, CircuitBreaker]]:
     """Returns ordered failover chain: configured providers, echo always last."""
     wanted = [p.strip().lower() for p in settings.providers.split(",") if p.strip()]
     chain: list[BaseProvider] = []
@@ -33,7 +33,7 @@ def build_registry(settings: Settings) -> dict[str, tuple[BaseProvider, CircuitB
 
     registry: dict[str, tuple[BaseProvider, CircuitBreaker]] = {}
     for provider in chain:
-        breaker = CircuitBreaker(provider.name)
+        breaker = CircuitBreaker(provider.name, override_source=breaker_override_source)
         registry[provider.name] = (provider, breaker)
     return registry
 

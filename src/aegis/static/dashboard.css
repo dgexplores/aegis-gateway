@@ -114,6 +114,17 @@
    ============================================================ */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* `hidden` has to beat the layout classes.
+ *
+ * The browser's own `[hidden] { display: none }` lives in the UA stylesheet, so
+ * *any* author rule that sets `display` on the same element silently wins —
+ * `.row { display: flex }` included. An element with `hidden` and a display
+ * class was therefore fully visible while reporting `el.hidden === true`, which
+ * is the worst kind of bug: the DOM says one thing, the screen says another.
+ * Only `.view[hidden]` was ever handled, so the admin key editor and the portal
+ * login box were the visible casualties. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background-color: var(--paper);
@@ -177,7 +188,6 @@ p { margin: 0; }
 .spacer { flex: 1 1 auto; }
 .flex-1 { flex: 1 1 12rem; min-width: 0; }
 .w-auto { width: auto; }
-.w-170 { width: 11rem; }
 .min-h-64 { min-height: 16rem; }
 .mt-10 { margin-top: 0.625rem; }
 .mt-12 { margin-top: 0.75rem; }
@@ -252,6 +262,25 @@ p { margin: 0; }
 }
 .card-body { padding: 1.25rem; }
 
+/* Section divider inside a card body. Same dashed ink rule as every other
+   divider in the system, so a card that grew three sections still reads as one
+   card rather than three stacked ones. */
+.rule {
+  border: 0;
+  border-top: 2px dashed color-mix(in srgb, var(--ink) 28%, transparent);
+  margin: 1.1rem 0;
+}
+
+/* A warning that has to be read, not decoration. Marked on the left edge rather
+ * than boxed, so it reads as an annotation on the control above it. Lives here
+ * because the CSP forbids inline styles, and the production guard enforces that
+ * — which is exactly how the first attempt at this got caught. */
+.callout-danger {
+  border-left: 3px solid var(--red);
+  padding-left: 0.7rem;
+  color: var(--ink-2);
+}
+
 /* ============================================================
    FIRST RUN — the demo entry point
    The first thing anyone sees when the thread is empty is a blank box,
@@ -301,6 +330,13 @@ input[type=text], input[type=password], input[type=number], select, textarea {
   border-radius: 12px 8px 13px 9px / 9px 13px 8px 12px;
 }
 input.mono, textarea.mono { font-family: var(--font-mono); font-size: 0.875rem; }
+
+/* Opt out of the full-width input rule above.
+ * `input[type=text]` is (0,1,1) and beats a bare `.w-170` at (0,1,0) no matter
+ * where it sits in the file, so this has to be qualified and placed after it.
+ * Without the flex floor the control also stretches to fill the wrapped row it
+ * is the last item in, and the filters stop reading as a group. */
+input.w-170, select.w-170 { width: 11rem; flex: 0 0 auto; }
 textarea { resize: vertical; min-height: 6rem; }
 label.field {
   display: block; margin-bottom: 0.35rem;
@@ -566,7 +602,10 @@ section:first-of-type { padding-top: 0; }
   border-color: var(--ink); box-shadow: var(--shadow-sm);
   transform: rotate(0deg) translateY(-2px);
 }
-.view[hidden] { display: none; }
+/* A tab panel is not a page section. The global `section` padding is a
+ * full-bleed rhythm for standalone bands; under the sticky tab bar it stacks
+ * with the bar's own margin and opens a ~116px hole above the first card. */
+.view { padding: 0.5rem 0 2.5rem; }
 
 /* ============================================================
    TABLES
@@ -607,7 +646,16 @@ td.wrap-cell { white-space: normal; max-width: 22rem; }
   padding: 0.6rem 0.9rem; cursor: pointer; background: var(--paper-2);
 }
 .evidence-head:hover { background: var(--paper-3); }
-.evidence-head .chev { margin-left: auto; color: var(--ink-2); }
+.evidence-head .chev { margin-left: auto; color: var(--ink-2); white-space: nowrap; }
+/* The plain-language answer to "what happened to my question?". It leads the
+ * disclosure; the operator vocabulary is one click behind it. */
+.evidence-head .said {
+  margin: 0; flex: 1 1 16rem; font-family: var(--font-body);
+  font-size: 0.9375rem; color: var(--ink-2);
+}
+/* Hidden until the reader asks for the numbers. */
+.evidence .chips { display: none; flex-wrap: wrap; gap: 0.35rem; padding: 0.6rem 0.9rem; background: var(--paper-2); }
+.evidence .chips:not([hidden]) { display: flex; }
 .evidence-body { display: none; padding: 0 0.9rem 0.9rem; border-top: 2px dashed color-mix(in srgb, var(--ink) 30%, transparent); }
 .evidence[data-open="true"] .evidence-body { display: block; animation: pop-in 180ms var(--ease); }
 
@@ -697,6 +745,11 @@ td.wrap-cell { white-space: normal; max-width: 22rem; }
 .tag.ok { color: var(--green); }
 .tag.bad { color: var(--red); }
 .tag.warn { color: var(--amber); }
+
+/* A numeric cell. Tabular figures stop digits from shifting column width as
+ * values change, which is what makes a counters table readable while it
+ * refreshes. */
+td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .spin {
   display: inline-block; width: 0.9em; height: 0.9em;

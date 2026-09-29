@@ -5,7 +5,7 @@ import time
 
 import httpx
 
-from aegis.providers.base import BaseProvider, Completion, ProviderError
+from aegis.providers.base import BaseProvider, Completion, ProviderError, extract_openai_text
 
 DEFAULT_BASE = "https://api.gmi-serving.com/v1"
 TIMEOUT = 30.0
@@ -67,10 +67,7 @@ class GMIProvider(BaseProvider):
 
         data = resp.json()
         choice = data["choices"][0]
-        # OpenAI-compatible: content may be string or structured
-        content = choice["message"]["content"] if "message" in choice else choice.get("text", "")
-        if isinstance(content, list):
-            content = "".join(part.get("text", "") for part in content)
+        content = extract_openai_text(data, self.name)
         usage = data.get("usage", {})
         latency = (time.perf_counter() - start) * 1000
         return Completion(

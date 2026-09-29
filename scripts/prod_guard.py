@@ -25,8 +25,22 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+# Imported rather than copied, so the guard and the application can never
+# disagree about what "the demo password" is. A guard checking a stale literal
+# is worse than no guard at all.
+from aegis.opscontrol import DEMO_BREAKGLASS_PASSWORD
+from aegis.security.admin_session import DEMO_PASSWORD as DEMO_ADMIN_PASSWORD
+from aegis.security.admin_session import DEMO_USERNAME as DEMO_ADMIN_USER
+
 ROOT = Path(__file__).resolve().parent.parent
+
 failures: list[str] = []
+
+# Every operator-facing HTML surface. Each ships only local assets and must stay
+# renderable on a network with no outbound internet.
+CONSOLE_SHELLS = ("dashboard.html", "admin.html")
 
 
 def fail(msg: str) -> None:
@@ -156,6 +170,97 @@ def check_k8s_secret(docs: list[dict]) -> None:
     else:
         ok("k8s Secret carries no known demo credential")
 
+    _check_admin_portal_credential(data, "k8s Secret")
+
+
+def _is_placeholder(value: str) -> bool:
+    """A value the operator is meant to overwrite, not a secret.
+
+    Both spellings appear in the shipped manifests, and both are published, so
+    neither can be treated as a configured credential.
+    """
+    lowered = value.lower()
+    return "replace_me" in lowered or "change-me" in lowered or "changeme" in lowered
+
+
+def _check_admin_portal_credential(data: dict, where: str) -> None:
+    """The admin portal must not be published with the demo password.
+
+    A bearer key is a scoped secret an operator copies deliberately. The portal
+    login is a *username and password* on a login form, and the demo pair is
+    published in the README and the source. Shipping it to production would put
+    a known credential in front of the controls that can pause every tenant and
+    pull the kill switch — so this blocks rather than warns.
+
+    Deliberately not blocked: leaving the portal login unset entirely. That is
+    the pre-existing behaviour (admin-scoped bearer tokens only), and refusing to
+    ship it would break deployments that never wanted a login form.
+
+    The break-glass secret is a *separate* credential guarding a *separate*
+    control, so it is checked on its own below rather than from inside the
+    branches here — otherwise "no portal login configured" would silently skip it,
+    which is precisely the configuration it exists to protect.
+    """
+    _check_breakglass_credential(data, where)
+
+    user = str(data.get("AEGIS_ADMIN_USERNAME", "")).strip()
+    password = str(data.get("AEGIS_ADMIN_PASSWORD", "")).strip()
+
+    # A shipped placeholder is *worse* than a missing one. Missing disables the
+    # portal login and the gateway falls back to admin-scoped bearer tokens, which
+    # is safe. A placeholder leaves a login form in front of the controls that
+    # can pause every tenant, protected by a string printed in the manifest, the
+    # source and this file. It used to be reported as "ok — an operator-chosen
+    # credential", which is precisely the false pass that must not exist.
+    for label, value in (("AEGIS_ADMIN_USERNAME", user), ("AEGIS_ADMIN_PASSWORD", password)):
+        if value and _is_placeholder(value):
+            fail(f"{where} ships the {label} placeholder {value!r} — that is a published "
+                 "password, not a missing one. Replace it, or remove the key to fall "
+                 "back to bearer-only auth")
+            return
+
+    if not user and not password:
+        ok(f"{where}: admin portal login unset — admin-scoped bearer tokens only")
+        return
+    if not user or not password:
+        fail(f"{where}: AEGIS_ADMIN_USERNAME and AEGIS_ADMIN_PASSWORD must be set together "
+             "(half a login is an open door with no way in)")
+        return
+    if password == DEMO_ADMIN_PASSWORD:
+        fail(f"{where} ships the published demo admin password — anyone who has read the "
+             "README can pause tenants and pull the kill switch")
+        return
+    if user == DEMO_ADMIN_USER:
+        fail(f"{where} ships the demo admin id with a different password — pick your own id")
+        return
+    ok(f"{where}: admin portal login is set to an operator-chosen id and password")
+
+
+def _check_breakglass_credential(data: dict, where: str) -> None:
+    """The kill switch should need a second secret, and it must not be a known one.
+
+    Unset is a *warning*, not a failure: the kill switch then works with nothing
+    but a portal session, which is a weaker posture but a working one, and
+    refusing to ship would break the deploy for an operator who has not got round
+    to choosing a secret yet. Shipping a known one is a failure — it is the same
+    argument as the admin password, and the kill switch is the more damaging of
+    the two controls.
+    """
+    password = str(data.get("AEGIS_BREAKGLASS_PASSWORD", "")).strip()
+    if password and _is_placeholder(password):
+        fail(f"{where} ships the AEGIS_BREAKGLASS_PASSWORD placeholder {password!r} — "
+             "that is a published secret, so the kill switch is guarded by nothing")
+        return
+    if not password:
+        warn(f"{where}: AEGIS_BREAKGLASS_PASSWORD is unset — the kill switch is reachable "
+             "with a portal session alone. Set it to require a second secret.")
+        return
+    if password == DEMO_BREAKGLASS_PASSWORD:
+        fail(f"{where} ships the published demo break-glass secret — anyone who has read the "
+             "README can refuse all traffic")
+        return
+    ok(f"{where}: the kill switch requires a break-glass secret")
+
 
 def check_dockerfile() -> None:
     text = (ROOT / "Dockerfile").read_text()
@@ -170,10 +275,10 @@ def check_dockerfile() -> None:
 
 
 def check_console_surface() -> None:
-    """The console must stay self-contained and the CSP must stay strict.
+    """Both console surfaces must stay self-contained and the CSP must stay strict.
 
     These two properties are coupled: the CSP can only drop `unsafe-inline` and
-    remote origins *because* the dashboard ships its own CSS/JS from /static.
+    remote origins *because* the console ships its own CSS/JS from /static.
     Re-adding a CDN `<link>`, a web font, or an inline `<script>` would silently
     re-open the policy, and nothing else in the pipeline would notice — the page
     would still render. So it is gated here.
@@ -181,36 +286,42 @@ def check_console_surface() -> None:
     An air-gapped deployment also depends on this: a dashboard that loses its
     styling on a network with no outbound internet is worse than one that never
     had any.
+
+    There are two shells now — dashboard.html (a user's requests) and admin.html
+    (the fleet) — so both are checked. A new surface is added to CONSOLE_SHELLS
+    and inherits every rule below; nothing here is per-page.
     """
     static = ROOT / "src" / "aegis" / "static"
     before = len(failures)
-    for asset in ("dashboard.css", "dashboard.js"):
+    for asset in ("dashboard.css", "dashboard.js", "theme.js"):
         if not (static / asset).exists():
-            fail(f"console: src/aegis/static/{asset} is missing (dashboard would 404 its assets)")
-    template = ROOT / "src" / "aegis" / "templates" / "dashboard.html"
-    if not template.exists():
-        fail("console: src/aegis/templates/dashboard.html is missing")
-        return
+            fail(f"console: src/aegis/static/{asset} is missing (a console would 404 its assets)")
 
-    html = template.read_text()
-    # Check for inline styles
-    if 'style="' in html:
-        fail("console: dashboard.html contains inline style attribute (CSP forbids it; move it to dashboard.css)")
-    # Check for remote scripts
-    if 'src="http' in html:
-        fail("console: dashboard.html contains remote script/style source (breaks air-gapped deployments)")
-    # Check for remote stylesheets - only flag <link> with https:// href, not local /static/ ones
-    import re
-    for _match in re.finditer(r'<link[^>]*href="https://[^"]*"', html):
-        fail("console: dashboard.html contains remote stylesheet source (breaks air-gapped deployments)")
-    # Check for remote url() in CSS
-    if 'url(http' in html:
-        fail("console: dashboard.html contains remote url() in CSS/markup")
-    # An inline <script> with no src= would need `unsafe-inline`.
-    if "<script" in html and "<script src=" not in html:
-        fail("console: dashboard.html has an inline <script> (CSP forbids it)")
-    if 'src="/static/' not in html:
-        fail("console: dashboard.html does not load its assets from /static")
+    for name in CONSOLE_SHELLS:
+        template = ROOT / "src" / "aegis" / "templates" / name
+        if not template.exists():
+            fail(f"console: src/aegis/templates/{name} is missing")
+            continue
+
+        html = template.read_text()
+        # Check for inline styles
+        if 'style="' in html:
+            fail(f"console: {name} contains inline style attribute (CSP forbids it; move it to dashboard.css)")
+        # Check for remote scripts
+        if 'src="http' in html:
+            fail(f"console: {name} contains remote script/style source (breaks air-gapped deployments)")
+        # Check for remote stylesheets - only flag <link> with https:// href, not local /static/ ones
+        import re
+        for _match in re.finditer(r'<link[^>]*href="https://[^"]*"', html):
+            fail(f"console: {name} contains remote stylesheet source (breaks air-gapped deployments)")
+        # Check for remote url() in CSS
+        if 'url(http' in html:
+            fail(f"console: {name} contains remote url() in CSS/markup")
+        # An inline <script> with no src= would need `unsafe-inline`.
+        if "<script" in html and "<script src=" not in html:
+            fail(f"console: {name} has an inline <script> (CSP forbids it)")
+        if 'src="/static/' not in html:
+            fail(f"console: {name} does not load its assets from /static")
 
     csp_src = (ROOT / "src" / "aegis" / "api" / "middleware.py").read_text()
     # Match the quoted directive form only — the module docstring legitimately
@@ -312,6 +423,7 @@ def check_compose() -> None:
     for key in ("AEGIS_AUDIT_HMAC_KEY", "AEGIS_VAULT_HMAC_KEY", "AEGIS_TENANTS"):
         if key + ":${" + key + ":?" not in raw.replace(" ", ""):
             fail(f"compose: {key} must be required (:? syntax) so boot fails loudly without .env")
+    _check_admin_portal_credential(env, "compose")
     if not any(f.startswith("compose:") for f in failures):
         ok("compose enforces production env + required secrets + redis")
 

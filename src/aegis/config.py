@@ -78,6 +78,30 @@ class Settings(BaseSettings):
     # because /dashboard is unauthenticated and would otherwise serve a working
     # credential to anyone who can reach the port.
     demo_api_key: str = ""
+    # Admin portal login. An operator signing in during an incident should not
+    # have to find a scoped key and paste it into a form, so /admin also accepts
+    # an id and password and hands back a signed session cookie. Empty means
+    # "fall back to the bearer token only" — the pre-existing behaviour, which
+    # is what keeps monitoring scripts working.
+    admin_username: str = ""
+    admin_password: str = ""
+    # Signs the admin session cookie. Kept separate from the audit HMAC key so
+    # rotating one does not invalidate evidence written under the other.
+    admin_session_key: str = ""
+    # Session lifetime. Short on purpose: it bounds the damage of a cookie that
+    # leaks out of a shared screen or a screenshot.
+    admin_session_ttl: int = 28800
+    # Break-glass: a second secret required *in the moment* to pull the kill
+    # switch, on top of an existing portal session. The kill switch is the only
+    # control that stops every tenant at once, so it gets a second factor that
+    # is not the admin password — otherwise compromising the portal is
+    # compromising the ability to halt the whole gateway. Unset leaves the kill
+    # switch working exactly as before, and the admin UI says it is unguarded
+    # rather than implying a protection that is not there.
+    breakglass_password: str = ""
+    # Failed step-up attempts allowed per actor before the endpoint starts
+    # refusing regardless of the password.
+    breakglass_attempts: int = 5
     # Audit evidence: encrypted payload copies + S3 archive on rotation.
     # Empty encrypt key disables payload copies (hash-only, current behavior).
     audit_encrypt_key: str = ""
@@ -139,6 +163,18 @@ class Settings(BaseSettings):
                 "(mint one with: python scripts/gen_tenant.py --id acme --scopes chat+rag)"
             )
             return problems
+        # One key, two tenants. The Authenticator refuses to start on this, so
+        # this check is about the *message* an operator gets rather than whether
+        # the problem is caught.
+        by_digest: dict[str, str] = {}
+        for tid, (key_hash, _scopes) in tenants.items():
+            claimed_by = by_digest.setdefault(key_hash.lower(), tid)
+            if claimed_by != tid:
+                problems.append(
+                    f"AEGIS_TENANTS: tenants '{claimed_by}' and '{tid}' share one API key hash "
+                    "— the second would silently inherit the first one's access; mint a key each "
+                    "with scripts/gen_tenant.py"
+                )
         for tid, (key_hash, _scopes) in tenants.items():
             if key_hash.lower() == EMPTY_KEY_HASH:
                 problems.append(

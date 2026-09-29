@@ -17,6 +17,7 @@ from aegis.cache import TTLCache
 from aegis.config import Settings
 from aegis.context import request_id_ctx
 from aegis.metrics import metrics
+from aegis.opscontrol import OpsControl
 from aegis.providers.registry import AllProvidersDown, build_registry, complete_with_failover
 from aegis.ratelimit import RateLimitExceeded, SlidingWindowLimiter
 from aegis.router import estimate_cost_usd
@@ -117,6 +118,7 @@ class Gateway:
             settings.rate_limit_per_min, redis_client=shared_redis
         )
         self.budget = TokenBudget(settings.daily_token_budget, redis_client=shared_redis)
+        self.ops = OpsControl(redis_client=shared_redis)
         self.cache = TTLCache(settings.cache_ttl_seconds)
         self.audit = AuditChain(
             settings.audit_hmac_key,
@@ -128,7 +130,43 @@ class Gateway:
         )
         self._vault_key = settings.vault_hmac_key
         self._vaults: dict[str, Any] = {}
-        self.registry = build_registry(settings)
+        self.registry = build_registry(settings, breaker_override_source=self.ops.breaker_override)
+
+    def _operator_gate(self, tenant: str) -> dict | None:
+        """Refuse a request an operator has switched off, or ``None`` to proceed.
+
+        Checked before the rate limiter so a paused tenant cannot burn its own
+        quota, and before the scan so nothing is scored or logged as if it were
+        normal traffic. Refusals are audited like any other, because "the admin
+        paused this" is a fact somebody will need to explain later.
+        """
+        killed = self.ops.killed()
+        paused = self.ops.is_paused(tenant)
+        if not (killed or paused):
+            return None
+        state = "killed" if killed else "paused"
+        reason = ("AEGIS is not accepting requests right now." if killed
+                  else f"AEGIS access for '{tenant}' is paused by an administrator.")
+        _log_event("operator_refusal", tenant, state=state)
+        return {
+            "blocked": True,
+            "injection": None,
+            "answer": reason,
+            "completion": None,
+            "citations": [],
+            "pii_masked": [],
+            "outbound": None,
+            "rate_limit": None,
+            "operator": {"state": state, "tenant": tenant},
+        }
+
+    def _soft_band_waived(self, tenant: str) -> bool:
+        """True when this tenant's soft-band refusals are waived by an operator.
+
+        The hard band is checked before this and is never waivable: an allowlist
+        entry must not be able to switch off injection detection.
+        """
+        return self.ops.is_allowed(tenant)
 
     def _vault_for(self, tenant: str):
         # per-tenant vault isolation: same HMAC key, separate maps.
@@ -194,6 +232,13 @@ class Gateway:
         """
         tenant = tenant_id
 
+        # 0. operator control plane — a pause or the kill switch outranks
+        #    everything below, including the rate limiter.
+        gated = self._operator_gate(tenant)
+        if gated is not None:
+            await self.audit_async(tenant, "operator_refusal", gated["operator"])
+            return gated
+
         # 1. rate limit
         rl = self.limiter.check(f"{tenant}:chat")
         if not rl.allowed:
@@ -225,7 +270,19 @@ class Gateway:
                 "outbound": None,  # nothing was sent: the provider was never called
                 "rate_limit": quota,
             }
-        if report.score >= self.settings.injection_soft_threshold:
+        soft_refusal = report.score >= self.settings.injection_soft_threshold
+        if soft_refusal and self._soft_band_waived(tenant):
+            # An operator allowlisted this tenant: the middle band is waived.
+            # The hard band above already returned, so this cannot become a way
+            # to switch injection detection off. It is audited, because a
+            # request that would have been refused going through is exactly the
+            # thing somebody needs to be able to find later.
+            soft_refusal = False
+            report.notes = [*report.notes, "soft_band_waived_by_operator_allowlist"]
+            await self.audit_async(tenant, "soft_refusal_waived",
+                                   {"score": report.score, "labels": report.labels, "band": "soft"})
+            metrics.inc("aegis_injection_softband_waived_total", tenant=tenant)
+        if soft_refusal:
             report.blocked = True
             report.notes = [*report.notes, "soft_refusal_provider_shielded"]
             await self.audit_async(tenant, "injection_flagged",
@@ -342,6 +399,12 @@ class Gateway:
         tenant = tenant_id
         t0 = time.perf_counter()
 
+        gated = self._operator_gate(tenant)
+        if gated is not None:
+            await self.audit_async(tenant, "operator_refusal", gated["operator"])
+            yield {"type": "blocked", **gated}
+            return
+
         rl = self.limiter.check(f"{tenant}:chat")
         if not rl.allowed:
             metrics.inc("aegis_rate_limited_total", tenant=tenant)
@@ -360,7 +423,19 @@ class Gateway:
                    "injection": report.__dict__, "pii_masked": [], "outbound": None,
                    "rate_limit": quota}
             return
-        if report.score >= self.settings.injection_soft_threshold:
+        soft_refusal = report.score >= self.settings.injection_soft_threshold
+        if soft_refusal and self._soft_band_waived(tenant):
+            # An operator allowlisted this tenant: the middle band is waived.
+            # The hard band above already returned, so this cannot become a way
+            # to switch injection detection off. It is audited, because a
+            # request that would have been refused going through is exactly the
+            # thing somebody needs to be able to find later.
+            soft_refusal = False
+            report.notes = [*report.notes, "soft_band_waived_by_operator_allowlist"]
+            await self.audit_async(tenant, "soft_refusal_waived",
+                                   {"score": report.score, "labels": report.labels, "band": "soft"})
+            metrics.inc("aegis_injection_softband_waived_total", tenant=tenant)
+        if soft_refusal:
             report.blocked = True
             report.notes = [*report.notes, "soft_refusal_provider_shielded"]
             await self.audit_async(tenant, "injection_flagged",

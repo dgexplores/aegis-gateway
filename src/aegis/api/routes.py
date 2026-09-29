@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Callable
@@ -19,9 +21,26 @@ from aegis.metrics import metrics
 from aegis.providers.registry import AllProvidersDown
 from aegis.rag.service import RagPersistError, rag_service
 from aegis.ratelimit import RateLimitExceeded
+from aegis.security import admin_session
+from aegis.security.admin_session import AdminAuthError
 from aegis.security.auth import Authenticator, Tenant
 
 STATE: dict = {}
+
+
+def _settings() -> Settings:
+    """The Settings the running gateway was actually built from.
+
+    `get_settings()` is lru_cached and re-reads the environment, so calling it
+    here could hand the routes a *different* Settings than the gateway has —
+    and a different admin session key means a cookie the routes refuse to
+    verify, with no error anywhere to explain it.
+    """
+    settings = STATE.get("settings")
+    if settings is None:
+        settings = get_settings()
+        STATE["settings"] = settings
+    return settings
 
 
 @asynccontextmanager
@@ -30,6 +49,7 @@ async def lifespan(app: FastAPI):
         settings: Settings = get_settings()
         gateway = await build_gateway(settings)
         STATE["gateway"] = gateway
+        STATE["settings"] = settings
         STATE["authenticator"] = Authenticator(settings)
         rag_service.configure(settings.database_url)
         try:
@@ -38,7 +58,8 @@ async def lifespan(app: FastAPI):
             pass
     else:
         # reuse test-injected gateway (pytest fixtures)
-        pass
+        if "settings" not in STATE:
+            STATE["settings"] = STATE["gateway"].settings
     yield
     try:
         await STATE["gateway"].aclose()
@@ -217,6 +238,11 @@ async def chat(
         "pii_masked": result.get("pii_masked", []),
         "cached": result.get("cached", False),
         "outbound": result.get("outbound"),
+        # Present only when an operator paused the tenant or pulled the kill
+        # switch. It is what lets a client tell "an administrator stopped this"
+        # apart from "AEGIS blocked this for safety" — two very different things
+        # to tell a user, and the second must never be phrased as the first.
+        "operator": result.get("operator"),
     }
 
 
@@ -320,6 +346,7 @@ async def rag_query(
         "audit_seq": result.get("audit_seq"),
         "pii_masked": result.get("pii_masked", []),
         "outbound": result.get("outbound"),
+        "operator": result.get("operator"),
     }
 
 
@@ -528,6 +555,441 @@ async def admin_status(
     }
 
 
+def _require_admin(tenant: Tenant) -> None:
+    if "admin" not in tenant.scopes:
+        raise HTTPException(status_code=403, detail="scope 'admin' required")
+
+
+# --------------------------------------------------------- admin sessions --
+
+def _admin_creds(settings: Settings) -> tuple[str, str] | None:
+    """The portal login, or ``None`` when only bearer tokens are accepted."""
+    if not settings.admin_username or not settings.admin_password:
+        return None
+    return settings.admin_username, settings.admin_password
+
+
+def _admin_session_key(settings: Settings) -> str:
+    # Fall back to the audit key so a deployment that has not set the dedicated
+    # one still gets working, signed sessions rather than a silent no-op.
+    return settings.admin_session_key or settings.audit_hmac_key or "aegis-admin-dev"
+
+
+def require_admin_portal(request: Request) -> str:
+    """Authorize an admin call from either credential, and say which was used.
+
+    A browser sends the session cookie; a script sends the scoped bearer token.
+    Both are accepted on the same routes so monitoring does not need a cookie
+    jar, and so turning the portal login on cannot break an existing scraper.
+    """
+    settings = _settings()
+    if _admin_creds(settings) is None:
+        # No portal login configured: fall back to the pre-existing behaviour.
+        _require_admin(get_tenant(request))
+        return "bearer"
+
+    token = request.cookies.get(admin_session.COOKIE)
+    username = admin_session.verify(token, _admin_session_key(settings)) if token else None
+    if username:
+        return username
+
+    # No valid session. Fall through to a bearer token if one was supplied, so a
+    # script is not forced to log in.
+    if request.headers.get("authorization"):
+        _require_admin(get_tenant(request))
+        return "bearer"
+
+    raise HTTPException(
+        status_code=401,
+        detail="admin session required",
+        headers={"WWW-Authenticate": "Cookie"},
+    )
+
+
+class AdminLogin(BaseModel):
+    username: str = Field(default="", max_length=200)
+    password: str = Field(default="", max_length=400)
+
+
+@app.post("/admin/login")
+async def admin_login(payload: AdminLogin, response: Response) -> dict:
+    """Exchange an id and password for a signed session cookie."""
+    settings = _settings()
+    creds = _admin_creds(settings)
+    if creds is None:
+        raise HTTPException(
+            status_code=404,
+            detail="portal login is not configured; use an admin-scoped bearer token",
+        )
+    try:
+        admin_session.check_credentials(payload.username, payload.password, *creds)
+    except AdminAuthError:
+        # Deliberately vague, and deliberately not audited with the attempted
+        # username: a failed login is not evidence, and logging the guess would
+        # turn the audit chain into a password oracle.
+        raise HTTPException(status_code=401, detail="invalid id or password") from None
+    response.set_cookie(
+        value=admin_session.sign(
+            payload.username, _admin_session_key(settings), settings.admin_session_ttl
+        ),
+        **admin_session.cookie_kwargs(
+            secure=settings.env == "production", max_age=settings.admin_session_ttl
+        ),
+    )
+    return {"authenticated": True, "user": payload.username}
+
+
+@app.post("/admin/logout")
+async def admin_logout(response: Response) -> dict:
+    settings = _settings()
+    response.delete_cookie(**admin_session.delete_cookie_kwargs(
+        secure=settings.env == "production"
+    ))
+    return {"authenticated": False}
+
+
+@app.get("/admin/session")
+async def admin_session_state(request: Request) -> dict:
+    """Who the portal thinks you are, and whether a login is even available."""
+    settings = _settings()
+    creds = _admin_creds(settings)
+    token = request.cookies.get(admin_session.COOKIE)
+    username = admin_session.verify(token, _admin_session_key(settings)) if token else None
+    demo = bool(
+        creds
+        and creds[0] == admin_session.DEMO_USERNAME
+        and creds[1] == admin_session.DEMO_PASSWORD
+    )
+    return {
+        "authenticated": username is not None,
+        "user": username,
+        "login_available": creds is not None,
+        # The portal says so in the UI rather than letting an operator believe a
+        # published default is a real credential.
+        "demo_credentials": demo,
+    }
+
+
+@app.get("/admin/overview")
+async def admin_overview(
+    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
+) -> dict:
+    """Fleet Overview: is anything wrong?
+
+    Every counter here is in-process and per-pod, so the payload reports
+    `counters_since` (the boot timestamp) alongside the numbers. A view that
+    drew these as a 24-hour chart would be inventing history it does not have —
+    the honest presentation is "cumulative since boot", labelled as such.
+    """
+    _require_admin(tenant)
+    ok, chain_msg = gateway.audit.verify()
+    requests = metrics.total("aegis_requests_total")
+    blocked = metrics.total("aegis_injection_blocked_total")
+    soft = metrics.total("aegis_injection_softblocked_total")
+    return {
+        "generated_at": time.time(),
+        # The window every counter below describes. The admin view shows it.
+        "counters_since": time.time() - metrics.uptime_seconds(),
+        "uptime_seconds": metrics.uptime_seconds(),
+        "counters_cumulative": True,
+        "requests": requests,
+        "blocked_hard": blocked,
+        "blocked_soft": soft,
+        "blocked_total": blocked + soft,
+        "block_rate": round((blocked + soft) / requests, 4) if requests else 0.0,
+        "rate_limited": metrics.total("aegis_rate_limited_total"),
+        "provider_failures": metrics.total("aegis_provider_failures_total"),
+        "tokens": metrics.total("aegis_tokens_total"),
+        "cost_usd": round(metrics.total("aegis_cost_usd_total"), 4),
+        "cache": gateway.cache.stats(),
+        "breakers": [b.snapshot() for _, b in gateway.registry.values()],
+        "audit_chain": {"intact": ok, "detail": chain_msg, "length": gateway.audit.seq,
+                        "head": gateway.audit.head},
+        "tenants": metrics.tenant_totals(),
+    }
+
+
+@app.get("/admin/tenants")
+async def admin_tenants(
+    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
+) -> dict:
+    """Every configured tenant: scopes, budget burn, document count, activity.
+
+    Read-only by design. Key rotation stays in scripts/gen_tenant.py, where it
+    is auditable in a shell history and cannot be CSRF'd from a browser.
+    """
+    _require_admin(tenant)
+    totals = metrics.tenant_totals()
+    rows: list[dict] = []
+    for tid, (_key_hash, scopes) in sorted(gateway.settings.tenant_map().items()):
+        usage = gateway.budget.usage(tid)
+        try:
+            docs = rag_service.list_documents(tid).get("documents", [])
+        except Exception:  # noqa: BLE001 — a per-tenant store error must not blank the fleet view
+            docs = []
+        activity = totals.get(tid, {})
+        used, limit = usage["used"], max(1, usage["limit"])
+        rows.append({
+            "id": tid,
+            "scopes": sorted(scopes),
+            "requests": activity.get("requests", 0.0),
+            "blocked": activity.get("blocked", 0.0) + activity.get("soft_blocked", 0.0),
+            "cost_usd": round(activity.get("cost_usd", 0.0), 4),
+            "budget_used": used,
+            "budget_limit": usage["limit"],
+            "budget_pct": round(used / limit, 4),
+            "documents": len(docs),
+        })
+    return {"tenants": rows, "count": len(rows)}
+
+
+# ------------------------------------------------------- operator controls --
+#
+# The admin portal is meant to be self-sufficient: pausing a noisy tenant or
+# holding a broken provider open during an incident should not require a shell,
+# a kubectl exec, or a Redis CLI. Every action below is one HTTP call the portal
+# makes, and every one of them is written into the same signed audit chain as
+# ordinary traffic — because "who paused what, and when" is a fact the product
+# will be asked for.
+
+#: Failed break-glass attempts per actor, and when each was first seen. Bounded
+#: and in-process on purpose: a step-up secret is worth little against a script
+#: that can try a thousand passwords a second, and this refuses the *endpoint*
+#: rather than merely slowing a guess.
+_breakglass_failures: dict[str, list[float]] = {}
+
+
+def _check_breakglass(presented: str, actor: str, settings: Settings) -> bool:
+    """True when the break-glass secret is correct and not rate-limited out.
+
+    Both halves are computed, never short-circuited, so a wrong secret and a
+    right one take the same time. The limiter is checked first and its failure
+    also costs a constant-time comparison, so "you are locked out" and "wrong
+    password" are not distinguishable by timing either.
+    """
+    now = time.time()
+    window = now - 300.0
+    attempts = [t for t in _breakglass_failures.get(actor, []) if t > window]
+    locked = len(attempts) >= settings.breakglass_attempts
+    matches = secrets.compare_digest(
+        (presented or "").encode(), (settings.breakglass_password or "").encode()
+    )
+    if locked or not matches:
+        attempts.append(now)
+        _breakglass_failures[actor] = attempts
+        return False
+    _breakglass_failures.pop(actor, None)
+    return True
+
+
+def _reset_breakglass() -> None:
+    """Test hook."""
+    _breakglass_failures.clear()
+
+class KillSwitch(BaseModel):
+    on: bool
+    # Presented when the deployment configures a break-glass secret. Required
+    # only to switch traffic *off*; turning it back on must never be the harder
+    # operation, or an incident ends with a gateway nobody can restart.
+    breakglass: str = ""
+
+
+class BreakerState(BaseModel):
+    state: str = Field(pattern="^(open|closed|auto)$")
+
+
+def _known_tenant(gateway: Gateway, tenant_id: str) -> str:
+    """Refuse to act on a tenant that does not exist.
+
+    Without this, a typo silently creates a pause for a tenant nobody has, and
+    the operator believes they have contained an incident.
+    """
+    if tenant_id not in gateway.settings.tenant_map():
+        raise HTTPException(status_code=404, detail=f"unknown tenant {tenant_id!r}")
+    return tenant_id
+
+
+def _known_provider(gateway: Gateway, name: str) -> str:
+    if name not in gateway.registry:
+        raise HTTPException(status_code=404, detail=f"unknown provider {name!r}")
+    return name
+
+
+def _audit_control(gateway: Gateway, actor: str, action: str, detail: dict) -> None:
+    gateway.audit.append("admin", f"control_{action}",
+                         {"actor": actor, "via": "admin-portal", **detail})
+
+
+@app.get("/admin/controls")
+async def admin_controls(
+    gateway: Gateway = Depends(get_gateway), actor: str = Depends(require_admin_portal)
+) -> dict:
+    """The whole control plane, plus which tenants it can be aimed at."""
+    snapshot = gateway.ops.snapshot()
+    settings = _settings()
+    return {
+        **snapshot,
+        "actor": actor,
+        "tenants": sorted(gateway.settings.tenant_map()),
+        "providers": sorted(gateway.registry),
+        # So the UI can say whether pulling the kill switch needs a second
+        # secret, rather than discovering it with a 403 mid-incident.
+        "breakglass_required": bool(settings.breakglass_password),
+    }
+
+
+@app.post("/admin/controls/kill")
+async def admin_kill(
+    payload: KillSwitch, gateway: Gateway = Depends(get_gateway),
+    actor: str = Depends(require_admin_portal),
+) -> dict:
+    """Refuse everything, for everyone. The panic button.
+
+    Stopping traffic needs the break-glass secret *in the moment*, on top of the
+    portal session, so that holding a working session is not the same thing as
+    being able to halt every tenant. Restoring traffic never needs it: an
+    incident must not end with a gateway nobody can switch back on.
+
+    Both the attempt and its refusal are audited. An operator reaching for the
+    kill switch and a stranger doing the same from a hijacked session are very
+    different events and only one of them is the one you want in the record.
+    """
+    settings = _settings()
+    if payload.on and settings.breakglass_password:
+        ok_attempt = _check_breakglass(payload.breakglass, actor, settings)
+        if not ok_attempt:
+            _audit_control(gateway, actor, "kill_refused_breakglass",
+                           {"reason": "bad or missing break-glass secret"})
+            raise HTTPException(
+                status_code=403,
+                detail="the break-glass secret is required to refuse all traffic",
+            )
+        _audit_control(gateway, actor, "kill_on_breakglass", {})
+    else:
+        _audit_control(gateway, actor, "kill_on" if payload.on else "kill_off", {})
+    gateway.ops.set_kill(payload.on)
+    return gateway.ops.snapshot()
+
+
+@app.post("/admin/controls/tenant/{tenant_id}/pause")
+async def admin_pause_tenant(
+    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    actor: str = Depends(require_admin_portal),
+) -> dict:
+    _known_tenant(gateway, tenant_id)
+    gateway.ops.pause(tenant_id)
+    _audit_control(gateway, actor, "tenant_paused", {"tenant": tenant_id})
+    return gateway.ops.snapshot()
+
+
+@app.post("/admin/controls/tenant/{tenant_id}/resume")
+async def admin_resume_tenant(
+    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    actor: str = Depends(require_admin_portal),
+) -> dict:
+    _known_tenant(gateway, tenant_id)
+    gateway.ops.resume(tenant_id)
+    _audit_control(gateway, actor, "tenant_resumed", {"tenant": tenant_id})
+    return gateway.ops.snapshot()
+
+
+@app.post("/admin/controls/tenant/{tenant_id}/allow")
+async def admin_allow_tenant(
+    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    actor: str = Depends(require_admin_portal),
+) -> dict:
+    """Waive the soft band for one tenant.
+
+    The hard band is not waivable and there is deliberately no endpoint that
+    could waive it. This is the whole reason an allowlist is safe to hand to an
+    operator: it can stop a known-noisy caller being refused, and it cannot
+    become a switch that turns injection detection off.
+    """
+    _known_tenant(gateway, tenant_id)
+    gateway.ops.allow(tenant_id)
+    _audit_control(gateway, actor, "tenant_softband_allowed", {"tenant": tenant_id})
+    return gateway.ops.snapshot()
+
+
+@app.post("/admin/controls/tenant/{tenant_id}/deny")
+async def admin_deny_tenant(
+    tenant_id: str, gateway: Gateway = Depends(get_gateway),
+    actor: str = Depends(require_admin_portal),
+) -> dict:
+    _known_tenant(gateway, tenant_id)
+    had = gateway.ops.deny(tenant_id)
+    _audit_control(gateway, actor, "tenant_softband_waiver_revoked",
+                   {"tenant": tenant_id, "had_waiver": had})
+    return {**gateway.ops.snapshot(), "revoked": had}
+
+
+@app.post("/admin/controls/breaker/{name}")
+async def admin_breaker(
+    name: str, payload: BreakerState, gateway: Gateway = Depends(get_gateway),
+    actor: str = Depends(require_admin_portal),
+) -> dict:
+    """Hold a provider's circuit, or hand it back to the automatic threshold."""
+    _known_provider(gateway, name)
+    gateway.ops.set_breaker(name, payload.state)
+    _audit_control(gateway, actor, "breaker_override",
+                   {"provider": name, "state": payload.state})
+    return gateway.ops.snapshot()
+
+
+@app.get("/admin/attacks")
+async def admin_attacks(    tenant: Tenant = Depends(get_tenant), gateway: Gateway = Depends(get_gateway)
+) -> dict:
+    """Blocked and soft-refused requests, newest first.
+
+    The band is derived from the signed *event name*, not from the payload. That
+    is deliberate: `injection_blocked` and `injection_flagged` are both inside
+    the HMAC, so "a hard block happened here" stays provable on a chain written
+    with payload copies switched off. Reading `band` out of the payload instead
+    would make the most important column depend on an optional setting.
+
+    Score and labels come from the payload, so they are present only when
+    AEGIS_AUDIT_ENCRYPT_KEY is set. The response says which case you are in
+    instead of rendering an empty score as though it were 0.0.
+
+    There is no "add to blocklist" action on purpose: a rule written from a
+    payload nobody reviewed is how you refuse a legitimate customer.
+    """
+    _require_admin(tenant)
+    rows: list[dict] = []
+    for event, band in (("injection_blocked", "hard"), ("injection_flagged", "soft")):
+        window = gateway.audit.tail_records(limit=500, event=event, with_payload=True)
+        for rec in window["records"]:
+            payload = rec.get("payload") or {}
+            rows.append({
+                "seq": rec["seq"],
+                "ts": rec["ts"],
+                "tenant": rec["tenant"],
+                "request_id": rec["request_id"],
+                "event": event,
+                "band": band,
+                "score": payload.get("score"),
+                "labels": payload.get("labels") or [],
+                "sig_ok": rec["sig_ok"],
+                "payload_ok": rec["payload_ok"],
+            })
+    rows.sort(key=lambda r: r["ts"], reverse=True)
+    hard = [r for r in rows if r["band"] == "hard"]
+    soft = [r for r in rows if r["band"] == "soft"]
+    return {
+        "attacks": rows[:200],
+        "count": len(rows),
+        "hard_count": len(hard),
+        "soft_count": len(soft),
+        "scores_available": bool(gateway.audit.encrypt_key),
+        "window_records": 500,
+        "window_note": (
+            "Band is read from the signed event name, so it holds even without "
+            "payload copies. Score and labels need AEGIS_AUDIT_ENCRYPT_KEY. "
+            "Window is the last 500 records per event; older attempts need an export."
+        ),
+    }
+
+
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 
@@ -574,3 +1036,16 @@ def _render_dashboard(html: str) -> str:
 @app.get("/dashboard", include_in_schema=False)
 async def dashboard():
     return _serve_template("dashboard.html", _render_dashboard)
+
+
+@app.get("/admin", include_in_schema=False)
+async def admin_console():
+    """The fleet surface: Overview, Tenants, Chain, Attacks, Tour.
+
+    The page shell is a static template like `/dashboard` — no tenant data, no
+    chain contents, nothing rendered from a request. Every number on this page
+    arrives from an `admin`-scoped JSON endpoint, so an unauthenticated visitor
+    gets empty tables rather than a partial view of someone else's fleet. The
+    split that matters is enforced server-side by scope, not by hiding tabs.
+    """
+    return _serve_template("admin.html", _render_dashboard)

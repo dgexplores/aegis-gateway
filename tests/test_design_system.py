@@ -47,6 +47,12 @@ def _template(name: str = "dashboard.html") -> str:
     return (_templates() / name).read_text(encoding="utf-8")
 
 
+# Every operator-facing surface. dashboard.html answers "what happened to my
+# request?"; admin.html answers "is the fleet healthy?". Both ship local assets
+# only, so these rules are checked across the whole set rather than per page.
+CONSOLE_SHELLS = ("dashboard.html", "admin.html")
+
+
 def _stylesheet() -> str:
     return (_static() / "dashboard.css").read_text(encoding="utf-8")
 
@@ -96,6 +102,28 @@ def test_bundled_font_files_are_valid_woff2():
         path = _static() / "fonts" / name
         assert path.is_file(), f"missing bundled font: {name}"
         assert path.read_bytes()[:4] == b"wOF2", f"{name} is not a woff2"
+
+
+def test_hidden_actually_hides():
+    """`hidden` has to beat the layout classes, and it did not.
+
+    The browser's `[hidden] { display: none }` is a UA-stylesheet rule, so any
+    author rule setting `display` on the same element wins — `.row
+    { display: flex }` among them. Only `.view[hidden]` was ever handled, so the
+    admin key editor sat permanently on screen while `el.hidden` reported
+    `true`: the DOM and the screen disagreed, and no test could see it.
+
+    `!important` is the standard remedy and is load-bearing here, not laziness.
+    """
+    css = _stylesheet()
+    # Anchored, or the match lands on the explanation in the comment above it.
+    rule = re.search(r"^\[hidden\]\s*\{([^}]*)\}", css, re.MULTILINE)
+    assert rule, "no [hidden] rule — the UA default loses to every display class"
+    assert "display: none" in rule.group(1)
+    assert "important" in rule.group(1), (
+        "the [hidden] rule needs !important or any .row/.grid-*/.flex-1 element "
+        "renders while claiming to be hidden"
+    )
 
 
 def test_shadows_are_hard_offset_not_blurred():
@@ -191,8 +219,8 @@ def test_every_class_the_console_generates_is_defined_in_the_stylesheet():
     assert not undefined, f"classes the script generates with no CSS rule: {undefined}"
 
 
-def test_every_element_the_console_looks_up_exists_in_the_template():
-    """Every `$('#id')` must resolve, and every `id="..."` in the template must
+def test_every_element_the_console_looks_up_exists_in_a_template():
+    """Every `$('#id')` must resolve, and every `id="..."` in a template must
     be reachable from script.
 
     The redesign that preceded this one rewrote the markup and left the script
@@ -202,18 +230,62 @@ def test_every_element_the_console_looks_up_exists_in_the_template():
     and every pill sat on its placeholder. Nothing caught it, because the tests
     only asserted that the endpoints *exist*, not that the console could reach
     them. Ids the script injects itself are exempt.
+
+    There are two shells — dashboard.html (a user) and admin.html (the fleet) —
+    so the union of their ids is what the script is allowed to reach. Each
+    binding is still guarded on the element existing, so a shared id missing
+    from one page degrades that page's surface rather than breaking the other.
     """
-    html, js = _template(), (_static() / "dashboard.js").read_text(encoding="utf-8")
+    html = "\n".join(_template(name) for name in CONSOLE_SHELLS)
+    js = (_static() / "dashboard.js").read_text(encoding="utf-8")
 
     template_ids = set(re.findall(r'id="([^"]+)"', html))
     script_generated = set(re.findall(r'id="([A-Za-z0-9_-]+)"', js))
-    looked_up = set(re.findall(r"\$\$?\('#([A-Za-z0-9_-]+)'", js))
+    looked_up = (
+        set(re.findall(r"\$\$?\('#([A-Za-z0-9_-]+)'", js))
+        # `on('id', ...)` is the guarded-binding form the shells use, so its
+        # literal ids count as lookups too.
+        | set(re.findall(r"\bon\(\s*'([A-Za-z0-9_-]+)'", js))
+    )
 
     missing = sorted(looked_up - template_ids - script_generated)
     assert not missing, (
-        f"the console looks up ids the markup does not define: {missing} — "
+        f"the console looks up ids no markup defines: {missing} — "
         "each one throws and aborts the rest of the initialisation"
     )
+
+
+def test_user_surface_offers_no_document_input():
+    """The user page is a question box, not a document manager.
+
+    It shipped with an "Add a document" card — a name field, a paste area and
+    three seed buttons — because the demo had no other way to give itself a
+    corpus. That is corpus *administration*: an employee asking about vacation
+    days should not be the person who uploads the HR policy. It also made the
+    page require input before it could do anything, which is the opposite of the
+    chat surface it claims to be, and the two demo seed buttons duplicated
+    scenarios the admin Capability Tour already drives against the real API.
+
+    The corpus is still listed, read-only, because knowing what the assistant
+    can see is the trust story. What is banned is the user *writing* to it: no
+    upload form, and no per-row delete either, since retiring a company policy
+    is the operator's call, not the reader's.
+
+    The guard is on the markup, not on the script: `dashboard.js` is shared, and
+    it legitimately keeps `ingest()` for the admin Capability Tour, which is
+    `admin`-scoped. What must not exist is a control on the *user* shell that
+    reaches one of those calls — and `test_interactive_controls_in_the_template_
+    are_wired` plus the missing-id test already fail if such a control is
+    invented without a handler or the script is left pointing at a deleted node.
+    """
+    html = _template("dashboard.html")
+
+    for banned in ('id="ragSource"', 'id="ragText"', 'id="ingestBtn"',
+                   "data-seed", "data-delete", "Add a document"):
+        assert banned not in html, (
+            f"the user surface offers document input again ({banned!r}); corpus "
+            "management belongs to the operator, not to the person asking questions"
+        )
 
 
 def test_interactive_controls_in_the_template_are_wired():
@@ -231,20 +303,25 @@ def test_interactive_controls_in_the_template_are_wired():
 
     def is_wired(element_id: str) -> bool:
         """An id counts as handled if it appears in any binding form the
-        scripts actually use: the `$` helper, a querySelector, or
-        getElementById. Matching only one spelling reports false failures."""
+        scripts actually use: the `$` helper, a querySelector,
+        getElementById, or the guarded `on('id', ...)` wrapper both shells
+        bind through. Matching only one spelling reports false failures —
+        and a missed binding is worse than a noisy test, because a control
+        that looks actionable but does nothing is a defect the a11y tree
+        cannot reveal."""
         ident = re.escape(element_id)
         return bool(
             re.search(rf"\$\$?\(\s*['\"]#{ident}['\"]", js)
             or re.search(rf"querySelector\w*\(\s*['\"]#{ident}['\"]", js)
             or re.search(rf"getElementById\(\s*['\"]{ident}['\"]", js)
+            or re.search(rf"\bon\(\s*['\"]{ident}['\"]", js)
         )
 
-    for template in ("dashboard.html", "landing.html"):
+    for template in (*CONSOLE_SHELLS, "landing.html"):
         html = _templates() / template
         text = html.read_text(encoding="utf-8")
         buttons = set(re.findall(r'<button\b[^>]*\bid="([A-Za-z0-9_-]+)"', text))
-        if template == "dashboard.html":
+        if template in CONSOLE_SHELLS:
             assert buttons, "no buttons found in the template — the selector is wrong"
         unwired = sorted(b for b in buttons if not is_wired(b))
         assert not unwired, f"{template}: buttons with no handler: {unwired}"

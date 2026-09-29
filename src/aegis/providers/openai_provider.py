@@ -5,7 +5,7 @@ import time
 
 import httpx
 
-from aegis.providers.base import BaseProvider, Completion, ProviderError
+from aegis.providers.base import BaseProvider, Completion, ProviderError, extract_openai_text
 
 API_URL = "https://api.openai.com/v1/chat/completions"
 TIMEOUT = 30.0
@@ -45,7 +45,7 @@ class OpenAIProvider(BaseProvider):
         usage = data.get("usage", {})
         latency = (time.perf_counter() - start) * 1000
         return Completion(
-            text=data["choices"][0]["message"]["content"],
+            text=extract_openai_text(data, self.name),
             model=data.get("model", model),
             provider=self.name,
             input_tokens=usage.get("prompt_tokens", 0),

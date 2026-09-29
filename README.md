@@ -4,7 +4,7 @@
 > Put your apps behind AEGIS — it checks, scrubs, and logs everything before any model sees it, then answers from your own docs with citations.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`260 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
+`407 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `p95 0.6ms`
 
 > **Where the project stands:** see [`STATUS.md`](STATUS.md) for what has been done,
 > what is verified, what is still open, and how to deploy.
@@ -278,50 +278,179 @@ Endpoints:
 | `POST` | `/v1/rag/query` | `rag` | Retrieve + grounded answer + citations |
 | `GET` | `/v1/rag/documents` | `rag` | What this tenant can answer from — source, chunks, tokens, preview |
 | `POST` | `/v1/rag/delete` | `rag` | Remove a document from the durable store and the live index; audited as `doc_deleted` |
-| `GET` | `/dashboard` | — | The capability console (see below) |
+| `GET` | `/dashboard` | — | The user console: your requests, your documents (see below) |
+| `GET` | `/admin` | — | The fleet surface: overview, tenants, chain, attacks, tour (see below) |
 | `GET` | `/healthz` | — | Liveness |
 | `GET` | `/readyz` | — | Readiness (audit verified + providers up) |
 | `GET` | `/metrics` | any tenant | Prometheus text (incl. per-call cost) — auth required, series carry tenant labels |
 | `GET` | `/admin/status` | `admin` | Chain verify, cache stats, breakers, budget (mint via `gen_tenant.py --scopes chat+rag+admin`) |
+| `GET` | `/admin/overview` | `admin` | Fleet counters, breakers, cache, chain, per-tenant totals. States its own window — counters are in-process and per-pod |
+| `GET` | `/admin/tenants` | `admin` | Every configured tenant: scopes, budget burn, document count. Read-only |
+| `POST` | `/admin/login` | id + password | Exchange an operator id and password for a signed HttpOnly session cookie. 404 when the portal login is not configured |
+| `POST` | `/admin/logout` | session | Clear the session cookie |
+| `GET` | `/admin/session` | — | Whether a login is available, whether this browser is signed in, and whether the deployment is on the published demo credential |
+| `GET` | `/admin/controls` | `admin` or session | The whole control plane: kill switch, paused tenants, soft-band waivers, breaker overrides, and whether they are shared across pods |
+| `POST` | `/admin/controls/kill` | `admin` or session | Refuse (`{"on":true}`, plus `breakglass` when configured) or admit (`{"on":false}`, never gated) every tenant's traffic |
+| `POST` | `/admin/controls/tenant/{id}/pause` \| `/resume` | `admin` or session | Refuse one tenant's traffic, or put it back. 404 on an unknown tenant |
+| `POST` | `/admin/controls/tenant/{id}/allow` \| `/deny` | `admin` or session | Waive (or revoke) the **soft** band for one tenant. There is no hard-band equivalent |
+| `POST` | `/admin/controls/breaker/{name}` | `admin` or session | Override a provider's circuit: `{"state":"open"\|"closed"\|"auto"}` |
+| `GET` | `/admin/attacks` | `admin` | Every blocked and soft-refused request. Band read from the signed event name, so it holds without payload copies |
 | `GET` | `/admin/audit` | own records | Read the audit trail back: every row re-verified (HMAC recomputed, chain link checked) with its payload decrypted. Cross-tenant reads need `admin` |
 | `GET` | `/admin/audit/export` | `admin` | The verified window as downloadable NDJSON, for an auditor's own tooling |
 
 ---
 
-## The capability console (`/dashboard`)
-
-![The AEGIS console](src/aegis/static/shots/console.png)
+## The user surface (`/dashboard`)
 
 The backend has always supported multi-turn conversations, a reversible PII vault,
 a tamper-evident audit chain and per-tenant document management. The console is
 what makes that *visible*, because a capability nobody can see is a capability
 nobody will buy.
 
-Five views:
+Two sections, and the only input on the page is a question:
 
-- **Console** — a real multi-turn thread. Every answer carries an evidence strip:
-  the verdict and score, what PII was masked, which provider and cost tier served
-  it, its proof id, latency and cache state. Expand it for the seven-stage
-  pipeline trace and — the part that matters — **"what the model received"**,
-  showing the sanitized payload with vault pseudonyms highlighted.
-- **Knowledge** — the tenant's document inventory with previews and delete, plus
-  one-click cases that plant a *poisoned* policy and a *PII-bearing* document so
-  you can watch both get caught at retrieval time.
-- **Evidence** — the audit chain read back row by row: signature valid, chain link
-  valid, payload digest match. Filter by event, click any row for the full
-  record, export the window as NDJSON.
+- **Ask** — a real multi-turn thread. Each answer opens with a plain sentence
+  about what happened to it (*"Answered from 2 of your documents"*, *"This was
+  stopped before it was sent to the AI"*), and the sidebar repeats it in prose.
+  Behind **show details** sits everything a sceptic needs: the verdict and score,
+  what PII was masked, which provider and cost tier served it, its proof id,
+  latency, cache state, the seven-stage pipeline trace and — the part that
+  matters — **"what the model received"**, showing the sanitized payload with
+  vault pseudonyms highlighted.
+- **Your documents** — the read-only inventory of what the assistant can see, so
+  the answer's "from *hr-policy.md*" claim is checkable rather than a promise.
 
-  ![Audit chain: every row re-verified on read](src/aegis/static/shots/audit-chain.png)
-- **Ops** — chain state, cache, budget, breaker states, raw Prometheus.
-- **Capability tour** — ten checks that drive the real API and grade what they
-  observe against what the gateway claims. Nothing is simulated.
+That is the whole user surface, and it is one flow, not a set of tabs. It is a
+chat surface, and it stays one: there is no document-input form, no per-row
+delete, and not even a tab bar. Loading a corpus is corpus *administration* — an
+employee asking about vacation days should not be the person who uploads the HR
+policy — so it happens over the API or by the operator, not in the reader's face:
+
+```bash
+curl -s http://localhost:8080/v1/rag/ingest \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"source":"hr-policy.md","text":"Full-time staff receive 20 vacation days each year."}'
+```
+
+The one-click *poisoned policy* and *PII-bearing document* cases are not missing,
+they moved: they are scenarios in the admin **Capability Tour**, which drives the
+real API and prints expected-vs-observed instead of leaving a document lying
+around in your corpus. Chain internals, fleet counters and breaker states moved to
+`/admin` too.
+
+  ![Ask: one box, a plain-language answer, and the evidence one click away](src/aegis/static/shots/ask-answered.png)
+
+  ![Your documents: a read-only inventory, no upload form](src/aegis/static/shots/ask-documents.png)
+
+
+### The fleet surface (`/admin`)
+
+Sign in with an id and a password, or present an `admin`-scoped bearer token
+(`python scripts/gen_tenant.py --id ops --scopes chat+rag+admin`). Both are
+accepted on every route below, so turning the portal login on cannot break a
+monitoring script that was already scraping `/admin/overview`.
+
+The login is there because an operator in the middle of an incident should not
+have to find a scoped key in a config file and paste it into a form. It answers
+with a signed, **HttpOnly, SameSite=Strict** session cookie — not readable from
+JavaScript, so an XSS on the page does not hand over the session — and a failed
+attempt is not written to the audit chain, because a failed login is not
+evidence and logging the guess would turn the chain into an oracle for hunting
+valid ids. Leaving the login unset is valid and blocks nothing: admin-scoped
+bearer tokens keep working exactly as before.
+
+![Admin sign-in: an id and a password, with the key path kept as a fallback](src/aegis/static/shots/admin-login.png)
+
+Six tabs, one question each:
+
+- **Overview** — is anything wrong? Requests, blocks, spend, cache, chain, and
+  every provider's breaker state. The counter window is stated in the header
+  rather than implied: these counters live in the process, so they reset on
+  restart and are per-replica. A chart implying 24h of history they do not have
+  would be a lie in a page whose job is to be trusted.
+
+  ![Admin overview: fleet counters, breaker health, top tenants](src/aegis/static/shots/admin-overview.png)
+- **Tenants** — who needs attention? Scopes, budget burn against the daily cap,
+  document counts, and per-tenant activity. **Read-only by design**: key
+  rotation stays in `scripts/gen_tenant.py`, where it is auditable in a shell
+  history and cannot be triggered from a browser.
+
+  ![Admin tenants: scopes, budget burn, document counts](src/aegis/static/shots/admin-tenants.png)
+- **Chain** — can I prove it? The audit window re-verified on read, cross-tenant,
+  exportable as NDJSON. The oldest row in a truncated window reports `link_ok`
+  as *unknown* rather than passing.
+- **Attacks** — what are people trying? Every hard block and soft refusal, with
+  the band read from the **signed event name**, so it holds even on a chain
+  written without payload copies. Score and labels appear when
+  `AEGIS_AUDIT_ENCRYPT_KEY` is set, and read *not retained* when it is not.
+  There is deliberately no "add to blocklist" button: a rule written from a
+  payload nobody reviewed is how you refuse a paying customer.
+
+  ![Admin attacks: every blocked and refused request, band from the signed event](src/aegis/static/shots/admin-attacks.png)
+- **Controls** — can I act from here, or do I need a shell? Everything on this
+  page, no `kubectl` and no `redis-cli`:
+
+  | control | what it does | what it cannot do |
+  | --- | --- | --- |
+  | **Kill switch** | refuses every request from every tenant, before the rate limiter and before any scan | — |
+  | **Pause a tenant** | refuses that tenant's traffic; documents, history and budget untouched | it does not delete anything |
+  | **Waive the soft band** | stops a known-noisy caller being refused for *suspicious* input | it **cannot** waive a hard injection block — there is no endpoint that could |
+  | **Hold a provider open / closed** | stops a broken upstream being retried, or puts a fixed one back in service without waiting out the threshold | — |
+
+  Pausing a tenant that does not exist returns `404` rather than a cheerful 200,
+  so a typo cannot look like a successful containment. Every action is written
+  into the same signed audit chain as ordinary traffic, with the operator's id
+  on it — *who paused what, and when* is a fact this product will be asked for.
+
+  **The kill switch has its own second factor.** It is the only control that
+  stops every tenant at once, so when `AEGIS_BREAKGLASS_PASSWORD` is set,
+  pulling it requires presenting that secret *in the moment*, on top of the
+  portal session. It is deliberately not the admin password: otherwise
+  compromising the portal is the same as being able to halt the whole gateway.
+  Four properties that matter:
+
+  - **Restoring traffic never needs it.** An incident must not end with a
+    gateway nobody can switch back on, so `{"on": false}` is ungated.
+  - **It is rate limited** per actor — a step-up worth nothing under a thousand
+    guesses a second is theatre. The limiter refuses the *caller*, so it also
+    expires.
+  - **Both the attempt and its refusal are audited**, as
+    `control_kill_on_breakglass` and `control_kill_refused_breakglass`. A stranger
+    reaching for this from a hijacked session should not look like the operator
+    who was asked to.
+  - **Unset is a warning, not a failure.** The switch then works with a session
+    alone, which is weaker but working; refusing to ship would break the deploy
+    for an operator who has not chosen a secret yet. The admin UI says so in as
+    many words rather than implying a protection that is not there. Shipping the
+    *demo* secret **fails the production guard**.
+
+  Decisions live in Redis, so they reach every replica and survive a restart.
+  Without Redis they fall back to this process only, and the tab says **this pod
+  only** rather than implying otherwise — with more than one replica a pause
+  would apply to just that one.
+
+  ![Admin controls: kill switch, per-tenant pause, soft-band waivers, breaker overrides](src/aegis/static/shots/admin-controls.png)
+- **Capability tour** — the same ten checks, aimed at the person you are
+  convincing. Nothing is simulated.
+
+The split is enforced by scope **on the server**: every fleet endpoint returns
+`403` to a key without `admin`. Hiding a tab in the browser is a convenience,
+not a control, and `tests/test_admin_surface.py` asserts the boundary both ways —
+the user page carries no fleet markup, the admin page carries no chat thread.
+
+Both pages load the same `dashboard.js`. Adding a view means adding markup to one
+shell plus a guarded binding; the renderers are not forked.
+
+  ![Audit chain on the admin surface: every row re-verified on read](src/aegis/static/shots/admin-chain.png)
 
 Two things worth knowing about how it is built:
 
 - **It is self-contained.** No CDN, no web fonts, no framework. A gateway sold
   into regulated and air-gapped environments cannot assume the operator's browser
   has outbound internet, and a dashboard that loses its styling on a locked-down
-  network is worse than one that never had it.
+  network is worse than one that never had it. Both surfaces are gated by
+  `make prod-guard`, which fails the build if either re-gains a CDN reference or
+  an inline style.
 - **It is why the CSP is strict.** Because the CSS and JS ship from `/static`,
   the policy forbids inline script and style outright — no `unsafe-inline`
   anywhere, and no remote origins at all.
@@ -386,7 +515,7 @@ res = await gw.handle_chat("demo", [{"role":"user","content":"hi"}], max_tokens=
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 260 tests
+make test       # 407 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -400,7 +529,7 @@ RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
 RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
 PII-EVAL   all must-recall masked (EMAIL/SSN/CARD/IP/PHONE + AADHAAR/PAN/PASSPORT/UPI)
-PYTEST     260 passed
+PYTEST     402 passed, 5 live skipped
 ```
 
 `make smoke` additionally probes `/admin/status`, which needs the `admin` scope.
@@ -442,9 +571,127 @@ firewall.
   only**. `/dashboard` is unauthenticated, so the route substitutes it solely
   when `AEGIS_ENV != production`; in production the field arrives empty and you
   paste your own key.
+- **The admin portal login is opt-in, and shipping the demo password blocks.**
+  `AEGIS_ADMIN_USERNAME` + `AEGIS_ADMIN_PASSWORD` (together — half a login is an
+  open door with no way in) turn on the id/password form;
+  `AEGIS_ADMIN_SESSION_KEY` signs its cookie and `AEGIS_ADMIN_SESSION_TTL` (8h) bounds it.
+  Unset means admin-scoped bearer tokens only, which is the pre-existing
+  behaviour. The production guard **fails the build** if either deploy artifact
+  carries the published demo pair, because that pair is in this file and in the
+  source, and it sits in front of the controls that can pause every tenant and
+  pull the kill switch. `demo_credentials: true` from `/admin/session` is how the
+  portal tells an operator they are on the default.
+- **Operator decisions need Redis to be real.** Pause, kill, soft-band waivers and
+  breaker overrides are stored in `AEGIS_REDIS_URL`. Production already requires
+  Redis to boot, so this adds no new dependency. Without it they degrade to
+  per-process state and `/admin/controls` reports `shared: false`, which the
+  Controls tab surfaces as **this pod only** — because with more than one replica
+  a pause would apply to just that one and vanish on restart.
 - `.env` is never copied into the image and never tracked by git. The GMI key in
   the README examples is a placeholder — add credits at
   https://console.gmicloud.ai before production use.
+
+### Recovering the audit chain
+
+`make restore-drill` proves an archived chain still verifies: it copies the
+archive to its operational path and reads it back through the same
+`verify()` and `tail_records()` an `/admin/audit` request uses. Against a real
+archive: `python scripts/restore_drill.py --from /backup/audit.jsonl`.
+
+The drill reports **two things it does not cover**, because a drill that only
+names what it checked is the only kind worth running:
+
+- **Tail loss is undetectable from the file alone.** A chain with its last ten
+  records deleted is still a perfectly valid, shorter chain — every hash
+  recomputes, every link matches. Detecting it needs an anchor recorded when the
+  records were written, which is what `head` in the `/admin/audit` response and
+  the S3 archive are for. Pass `--expect-head` to close that gap; without it the
+  drill says so out loud.
+- **Without `AEGIS_AUDIT_ENCRYPT_KEY` the chain attests to what was logged, not
+  to the contents of the logged payload.** Only `payload_sha256` is stored, so
+  there is no stored payload to alter. Setting the encrypt key is what makes
+  `payload_ok` a real check.
+
+Recovery objectives, stated as what they are today rather than as an aspiration:
+
+| | today | notes |
+| --- | --- | --- |
+| **RPO** (audit) | 0 on single-replica; per-pod on multi-replica | each pod owns a per-pod PVC, so cross-pod continuity depends on the S3 archive, which is not built |
+| **RTO** (audit) | minutes | restore a file and re-read it; `make restore-drill` exercises exactly this |
+| **RPO/RTO** (RAG corpus) | **none** | in-memory unless Postgres is configured — documents are lost on restart, and there is no backup path yet |
+| **RPO/RTO** (Redis) | none | rate-limit and budget counters rebuild empty; the audit chain does not depend on it |
+
+The two rows with *none* are the honest answer to "is this production ready":
+the corpus and the counters have no recovery story at all, and neither does the
+unbuilt S3 archive.
+
+### What it does under load
+
+`make loadtest` boots a gateway on a scratch port with the `echo` provider and
+drives it, so it is free and hermetic. It reports percentiles rather than a mean,
+because a mean hides the tail and the tail is what a rate limiter, a breaker and
+a client timeout care about. Measured on an M-series laptop, `echo`, local:
+
+| concurrency | throughput | p50 | p99 |
+| --- | --- | --- | --- |
+| 1 | 751 rps | — | — |
+| 10 | 1,031 rps | — | — |
+| 50 | **1,419 rps** | 26 ms | 122 ms |
+| 100 | 1,404 rps | — | — |
+
+Three honest notes on that table:
+
+- **~1,400 rps per process is the single-process ceiling, and it is not one hot
+  spot.** It was tempting to blame the audit chain, which `fsync`s on every
+  record. Measured directly: an append costs **0.097 ms** (10,325/s), the
+  `fsync` inside it **0.019 ms**, and the HMAC **0.73 µs**. Durability is
+  ~14% of a 0.7 ms request, so the plateau is the Python GIL and the whole
+  stack, not the log. Removing the `fsync` would buy ~20% throughput and give up
+  the guarantee the product is selling — not a trade to make quietly.
+- **`authenticate()` is O(tenants) per request** — it compares the presented
+  hash against every stored hash, deliberately, for timing safety. Measured from
+  1 to 100 tenants the p50 does not move (24.3 → 28.3 ms, inside the noise).
+  SHA-256 comparisons are ~microseconds; there is no reason to give up the
+  timing-safe scan. If a deployment ever reaches thousands of tenants, re-run
+  `--sweep-tenants` before assuming it still holds.
+- **None of this includes provider latency.** Against a real model, a request
+  took 3–8 s, so ~0.7 ms of gateway overhead is noise. The ceiling that matters
+  is *concurrent in-flight requests*, not requests per second — and that is what
+  the HPA in `deploy/k8s` is for.
+
+### Testing against a real provider
+
+Every other test runs against the `echo` mock, which always answers instantly
+and always populates the fields the parsers read. That is not a neutral choice:
+a real provider returned **HTTP 200 with no `content` key at all** — a thinking
+model that spent its whole output budget — and `data["choices"][0]["message"]
+["content"]` raised `KeyError` on it, in *two* providers. A 500 to the caller,
+from a request the provider considered successful, on an ordinary input.
+
+`tests/test_live_provider.py` talks to a real OpenAI-compatible endpoint and is
+skipped unless you point it at one:
+
+```bash
+AEGIS_LIVE_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
+AEGIS_LIVE_API_KEY=... \
+AEGIS_LIVE_MODEL=gemini-3.8-flash \
+pytest tests/test_live_provider.py -v
+```
+
+It is a smoke test, not a benchmark. Two behaviours worth knowing, both measured
+rather than assumed:
+
+- **A real provider says no.** 503s appear intermittently and 429s as soon as
+  you call quickly. Both are what the circuit breaker and the failover to `echo`
+  exist for, so the suite **skips with a reason** instead of reporting Google's
+  bad minute as a gateway defect. A test that cries wolf gets ignored.
+- **It is rate-limit aware.** Gemini's free tier allows 20 requests a minute, and
+  a 5-test × 4-retry suite exhausted that budget against itself and reported 429
+  for six minutes. It is sized to cost about 5 of those 20.
+
+Also worth knowing if you point it at Gemini: `gemini-2.5-flash` now 404s for new
+users with a pointer to `gemini-3.8-flash`, and reasoning models can return an
+empty completion on a tight `max_tokens`.
 
 ### What the audit log stores
 

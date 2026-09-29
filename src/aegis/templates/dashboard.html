@@ -24,6 +24,7 @@
       <span id="healthPill" class="pill" role="status" aria-live="polite"><span class="dot"></span>checking…</span>
       <span id="chainPill" class="pill" title="Tamper-evident audit chain">chain —</span>
       <button id="themeBtn" class="btn sm" type="button" aria-label="Switch colour theme">Theme</button>
+      <a class="btn sm" href="/admin" title="Fleet overview, tenants, chain, attacks">Admin →</a>
       <a class="btn sm" href="/" title="Back to the pitch">Overview</a>
       <a class="btn sm" href="/docs" target="_blank" rel="noopener">API docs</a>
     </div>
@@ -32,60 +33,60 @@
 
 <main id="main">
 
-<!-- HERO: Editorial Split — wide left copy, right visual -->
-<section class="console-section" aria-labelledby="console-title">
+<!-- The user surface answers one question: "ask something, get a trustworthy
+     answer." It leads with the task. Every capability term the gateway is
+     proud of — scores, bands, vaults, breakers — lives one disclosure deeper,
+     under "Show details", for the person who asks. -->
+<section class="console-section" aria-labelledby="ask-title">
   <div class="section-inner">
     <header class="section-head">
-      <h2 id="console-title" class="section-title">Console</h2>
-      <p class="section-sub">Multi-turn conversation with per-turn evidence trace</p>
+      <h2 id="ask-title" class="section-title">Ask</h2>
+      <p class="section-sub">Ask about leave, pay, expenses or any policy. Answers come from your own documents, and you can see which one.</p>
     </header>
     <div class="console-grid">
       <div class="console-main">
-        <div class="card console-thread" id="console-thread" role="log" aria-live="polite" aria-label="Conversation">
-          <div class="card-head">
-            <div class="grow">
-              <h3>Conversation</h3>
-              <p class="small muted">Every turn passes the full pipeline. Every answer carries its evidence.</p>
+        <div class="card composer-card">
+          <div class="card-body composer">
+            <label class="sr-only" for="chatInput">Your question</label>
+            <textarea id="chatInput" rows="3" placeholder="How many vacation days do I get?"></textarea>
+            <div class="quick" id="quickActions">
+              <button class="btn sm primary" id="sendBtn" type="button">Send</button>
+              <label class="chk tiny"><input id="streamToggle" type="checkbox"/> show typing</label>
+              <span class="spacer"></span>
+              <span class="tiny muted">Enter sends · Shift+Enter adds a line</span>
             </div>
-            <button id="resetThread" class="btn sm" type="button">Reset</button>
-          </div>
-          <div class="card-body">
-            <div id="thread" class="thread">
-              <p class="small muted" id="threadEmpty">Send something to begin. Quick actions below fire specific capabilities.</p>
+            <div class="quick" id="starterRow">
+              <span class="tiny muted">Try:</span>
+              <button class="btn sm ghost" data-ask="How many vacation days do I get?">Vacation days</button>
+              <button class="btn sm ghost" data-ask="What do I need for an expense claim?">Expense claims</button>
+              <button class="btn sm ghost" data-ask="How do I reset my password?">Reset my password</button>
             </div>
           </div>
         </div>
-        <div class="card composer-card">
+        <div class="card console-thread" id="console-thread" role="log" aria-live="polite" aria-label="Your questions and answers">
           <div class="card-head">
-            <div class="grow"><h3>Compose</h3></div>
-            <label class="chk"><input id="streamToggle" type="checkbox"/> stream tokens</label>
+            <div class="grow"><h3>Your answers</h3></div>
+            <button id="resetThread" class="btn sm" type="button">Clear</button>
           </div>
-          <div class="card-body composer">
-            <label class="field" for="chatInput">Message</label>
-            <textarea id="chatInput" placeholder="Ask anything — or paste something you would not trust an AI with.">Hello — what can you do?</textarea>
-            <div class="quick" id="quickActions">
-              <button class="btn sm primary" id="sendBtn" type="button">Send</button>
-              <button class="btn sm" data-demo="attack" type="button">Block an attack</button>
-              <button class="btn sm" data-demo="soft" type="button">Soft refusal</button>
-              <button class="btn sm" data-demo="pii" type="button">Mask PII</button>
-              <button class="btn sm" data-demo="memory" type="button">Two-turn memory</button>
+          <div class="card-body">
+            <div id="thread" class="thread">
+              <p class="small muted" id="threadEmpty">Pick a question above, or type your own. Answers cite the document they came from.</p>
             </div>
-            <p class="tiny muted" id="composerHint">Enter sends · Shift+Enter adds line. Quick actions run on a fresh thread, so each one is reproducible.</p>
           </div>
         </div>
       </div>
       <aside class="console-sidebar">
-        <div class="card evidence-sidebar" id="evidenceSidebar" aria-label="Latest evidence">
+        <div class="card evidence-sidebar" id="evidenceSidebar" aria-label="About the last answer">
           <div class="card-head">
-            <h3>Latest Evidence</h3>
+            <h3>About your last answer</h3>
             <span id="evidencePill" class="pill">—</span>
           </div>
           <div class="card-body" id="evidenceBody">
-            <p class="small muted">Send a message to see per-turn evidence here.</p>
+            <p class="small muted">Send a question and this explains what happened to it.</p>
           </div>
         </div>
         <div class="card key-card" id="keyCard">
-          <div class="card-head"><h3>API Key</h3></div>
+          <div class="card-head"><h3>Your access</h3></div>
           <div class="card-body">
             <div class="row">
               <span id="keyPill" class="pill accent"><span class="dot"></span>Demo key ready</span>
@@ -98,6 +99,7 @@
               <button id="keyReveal" class="btn sm" type="button">Show</button>
               <button id="keySave" class="btn sm primary" type="button">Use key</button>
             </div>
+            <p class="tiny muted mt-10">Your key is used for this visit only and is never stored.</p>
           </div>
         </div>
       </aside>
@@ -105,161 +107,34 @@
   </div>
 </section>
 
-<!-- Knowledge & Evidence tabs (progressive disclosure) -->
-<section class="tabs-section" aria-labelledby="tabs-title">
+<!-- What the assistant can see. This used to be a "tab" that sat under the
+     question box, but a one-item tablist is decoration: the Ask surface was
+     never a tab, so the pair pretended to be a peer of it. It is a section of
+     the same page, below the answer, and the page has exactly one input — a
+     question. -->
+<section class="console-section" aria-labelledby="docs-title">
   <div class="section-inner">
-    <nav class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab" role="tab" data-view="knowledge" aria-selected="true">Knowledge</button>
-      <button class="tab" role="tab" data-view="evidence" aria-selected="false">Evidence</button>
-      <button class="tab" role="tab" data-view="ops" aria-selected="false">Ops</button>
-      <button class="tab" role="tab" data-view="tour" aria-selected="false">Capability Tour</button>
-    </nav>
-
-    <!-- KNOWLEDGE -->
-    <section class="view" id="view-knowledge" role="tabpanel">
-      <div class="card">
-        <div class="card-head">
-          <div class="grow"><h3>Documents this tenant can answer from</h3></div>
-          <span id="ragBackendPill" class="pill">backend —</span>
-          <button id="docsRefresh" class="btn sm" type="button">Refresh</button>
+    <div class="card">
+      <div class="card-head">
+        <div class="grow">
+          <h3 id="docs-title">Your documents</h3>
+          <p class="small muted">Answers above are written from these, and cite which one.</p>
         </div>
-        <div class="card-body">
-          <div class="table-scroll">
-            <table>
-              <thead><tr><th>Source</th><th>Chunks</th><th>Tokens</th><th>Vectors</th><th>Preview</th><th></th></tr></thead>
-              <tbody id="docsBody"><tr><td colspan="6" class="muted small">Loading…</td></tr></tbody>
-            </table>
-          </div>
-          <p class="small muted mt-12" id="docsSummary" role="status"></p>
-        </div>
+        <span id="ragBackendPill" class="pill">—</span>
+        <button id="docsRefresh" class="btn sm" type="button">Refresh</button>
       </div>
-      <div class="card">
-        <div class="card-head"><h3>Add a document</h3></div>
-        <div class="card-body">
-          <div class="row mt-10">
-            <button class="btn sm" data-seed="company" type="button">Load sample company</button>
-            <button class="btn sm danger" data-seed="poisoned" type="button">Ingest poisoned policy</button>
-            <button class="btn sm" data-seed="pii" type="button">Ingest doc with PII</button>
-          </div>
-          <div class="grid-2">
-            <div>
-              <label class="field" for="ragSource">Source name</label>
-              <input id="ragSource" type="text" value="holiday-policy.md"/>
-              <label class="field mt-10" for="ragText">Document text</label>
-              <textarea id="ragText" rows="7">Full-time staff receive 20 vacation days each year. Unused days roll over once. Requests are booked in the HR portal.</textarea>
-              <button id="ingestBtn" class="btn primary mt-10" type="button">Save document</button>
-              <p class="tiny muted" id="ingestMsg" role="status"></p>
-            </div>
-            <div>
-              <label class="field" for="ragQ">Ask a question against these documents</label>
-              <input id="ragQ" type="text" value="How many vacation days do we get?"/>
-              <button id="ragAskBtn" class="btn primary mt-10" type="button">Ask</button>
-              <div id="ragAnswer" class="payload min-h-64" role="status">Answer with citations appears here.</div>
-              <div id="ragMeta" class="small muted"></div>
-              <div id="ragEvidence"></div>
-            </div>
-          </div>
+      <div class="card-body">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Name</th><th>First lines</th></tr></thead>
+            <tbody id="docsBody"><tr><td colspan="2" class="muted small">Loading…</td></tr></tbody>
+          </table>
         </div>
+        <p class="small muted mt-12" id="docsSummary" role="status"></p>
       </div>
-    </section>
-
-    <!-- EVIDENCE -->
-    <section class="view" id="view-evidence" role="tabpanel" hidden>
-      <div class="card">
-        <div class="card-head">
-          <div class="grow"><h3>Audit Chain</h3></div>
-          <label class="chk"><input id="auditAuto" type="checkbox" checked/> auto-refresh</label>
-          <button id="auditRefresh" class="btn sm" type="button">Refresh</button>
-          <button id="auditExport" class="btn sm" type="button">Export NDJSON</button>
-        </div>
-        <div class="card-body">
-          <div class="row mt-10">
-            <label class="small muted" for="auditLimit">Rows</label>
-            <select id="auditLimit" class="w-auto"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>250</option><option>500</option></select>
-            <label class="small muted" for="auditEvent">Event</label>
-            <select id="auditEvent" class="w-auto"><option value="">all</option></select>
-            <label class="small muted" for="auditTenant">Tenant</label>
-            <input id="auditTenant" type="text" placeholder="all (needs admin)" class="w-170"/>
-            <span class="spacer"></span>
-            <span id="auditVerdict" class="pill">—</span>
-          </div>
-          <p class="small muted mt-10" id="auditMsg" role="status"></p>
-          <div class="grid-4" id="auditTiles"></div>
-          <div class="table-scroll mt-12">
-            <table>
-              <thead><tr><th>Seq</th><th>When</th><th>Event</th><th>Tenant</th><th>Request id</th><th>Signature</th><th>Link</th><th>Payload</th><th></th></tr></thead>
-              <tbody id="auditBody"><tr><td colspan="9" class="muted small">Loading…</td></tr></tbody>
-            </table>
-          </div>
-          <div id="auditDetail"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- OPS -->
-    <section class="view" id="view-ops" role="tabpanel" hidden>
-      <div class="card">
-        <div class="card-head">
-          <div class="grow"><h3>Runtime state</h3></div>
-          <button id="opsRefresh" class="btn sm" type="button">Refresh</button>
-        </div>
-        <div class="card-body">
-          <div class="grid-4" id="opsTiles"><p class="small muted">Loading…</p></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h2>How a request flows</h2></div>
-        <div class="card-body">
-          <div class="pipe">
-            <div class="pipe-step"><b>Auth</b><span>hashed key + scopes</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Rate limit</b><span>per-tenant window</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Injection scan</b><span>every turn, worst wins</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>PII vault</b><span>pseudonyms out</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Budget</b><span>preflight + actuals</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Cache</b><span>tenant-scoped</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Route</b><span>cost tier</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Failover</b><span>breakers, echo last</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Restore</b><span>PII back for caller</span></div><span class="pipe-arrow">→</span>
-            <div class="pipe-step"><b>Audit</b><span>hash-chained record</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- TOUR -->
-    <section class="view" id="view-tour" role="tabpanel" hidden>
-      <div class="card">
-        <div class="card-head">
-          <div class="grow"><h3>Capability Tour</h3></div>
-          <span id="tourSummary" class="pill">not run</span>
-          <button id="tourRunAll" class="btn sm primary" type="button">Run all</button>
-        </div>
-        <div class="card-body"><div id="tourList"></div></div>
-      </div>
-    </section>
+    </div>
   </div>
 </section>
-
-<!-- ACTION: Footer CTA -->
-<footer class="footer" role="contentinfo">
-  <div class="footer-inner">
-    <div class="footer-copy">
-      <h2>Ready to secure your AI calls?</h2>
-      <p>Deploy in minutes. Audit forever. One secure door for every model.</p>
-    </div>
-    <div class="footer-ctas">
-      <a class="btn primary lg" id="footer-deploy" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">Deploy AEGIS</a>
-      <a class="btn ghost lg" href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">View on GitHub</a>
-    </div>
-    <nav class="footer-links" aria-label="Footer links">
-      <a href="https://github.com/dgexplores/aegis-gateway" target="_blank" rel="noopener">GitHub</a>
-      <a href="/docs" target="_blank" rel="noopener">API docs</a>
-      <a href="https://github.com/dgexplores/aegis-gateway/issues" target="_blank" rel="noopener">Issues</a>
-      <a href="https://github.com/dgexplores/aegis-gateway/releases" target="_blank" rel="noopener">Releases</a>
-    </nav>
-    <p class="footer-note">Injection scan · HMAC PII vault · Hash-chained audit · Hybrid RAG · Budgets, breakers, eval gates — all behind one door.</p>
-  </div>
-</footer>
 
 </main>
 
