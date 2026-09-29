@@ -1,0 +1,26 @@
+# Gitleaks findings that are known and accepted, by fingerprint.
+#
+# Every entry here is the published demo tenant key `demo-sk-aegis-2024`,
+# caught in commits where a curl example used it literally. The examples now
+# read the key from the environment; these are the historical lines, and
+# gitleaks scans history (fetch-depth: 0) so they keep coming back.
+#
+# Scoped by fingerprint, not by path or rule: any *other* token-shaped string
+# in any file still fails the scan. The value itself is protected by a
+# stronger control -- `make prod-guard` fails the build if either deploy
+# artifact ships it, which looks at where a credential would actually be used
+# rather than where it is mentioned.
+#
+# Delete this file once the branch is merged and the history is squashed.
+
+17ccbb518bb57fddc7c3ea9a69f5776082bd0c63:Makefile:curl-auth-header:16
+17ccbb518bb57fddc7c3ea9a69f5776082bd0c63:Makefile:curl-auth-header:20
+960e601cc8980ad4d303b824b6588f1e67c4fe4a:README.md:curl-auth-header:184
+960e601cc8980ad4d303b824b6588f1e67c4fe4a:README.md:curl-auth-header:193
+960e601cc8980ad4d303b824b6588f1e67c4fe4a:README.md:curl-auth-header:197
+97dae104a1f718329f278927f5522a5985fb041c:README.md:curl-auth-header:186
+97dae104a1f718329f278927f5522a5985fb041c:README.md:curl-auth-header:192
+97dae104a1f718329f278927f5522a5985fb041c:README.md:curl-auth-header:196
+e1c895831814fd235167c3e388c21508fdd5cee1:docs/REFERENCE.md:curl-auth-header:196
+e1c895831814fd235167c3e388c21508fdd5cee1:docs/REFERENCE.md:curl-auth-header:205
+e1c895831814fd235167c3e388c21508fdd5cee1:docs/REFERENCE.md:curl-auth-header:209
