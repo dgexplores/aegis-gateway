@@ -16,14 +16,14 @@
 <!-- Navigation: Floating glass pill -->
 <nav class="nav" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
-    <a class="nav-brand" href="/" aria-label="AEGIS home">
+    <a class="nav-brand" href="/">
       <span class="nav-mark" aria-hidden="true">Æ</span>
       <span class="nav-name">AEGIS</span>
     </a>
     <div class="nav-actions">
       <span id="healthPill" class="pill" role="status" aria-live="polite"><span class="dot"></span>checking…</span>
       <span id="chainPill" class="pill" title="Tamper-evident audit chain">chain —</span>
-      <button id="themeBtn" class="btn sm" type="button" aria-label="Switch colour theme">Theme</button>
+      <button id="themeBtn" class="btn sm" type="button" title="Switch the colour theme">Theme</button>
       <a class="btn sm" href="/admin" title="Fleet overview, tenants, chain, attacks">Admin →</a>
       <a class="btn sm" href="/" title="Back to the pitch">Overview</a>
       <a class="btn sm" href="/docs" target="_blank" rel="noopener">API docs</a>
@@ -59,7 +59,7 @@
               <span class="tiny muted">Try:</span>
               <button class="btn sm ghost" data-ask="How many vacation days do I get?">Vacation days</button>
               <button class="btn sm ghost" data-ask="What do I need for an expense claim?">Expense claims</button>
-              <button class="btn sm ghost" data-ask="How do I reset my password?">Reset my password</button>
+              <button class="btn sm ghost" data-ask="What is the notice period?">Notice period</button>
             </div>
           </div>
         </div>
@@ -89,7 +89,7 @@
           <div class="card-head"><h3>Your access</h3></div>
           <div class="card-body">
             <div class="row">
-              <span id="keyPill" class="pill accent"><span class="dot"></span>Demo key ready</span>
+              <span id="keyPill" class="pill bad"><span class="dot"></span>No key loaded — paste yours</span>
               <span class="spacer"></span>
               <button id="keyToggle" class="btn sm ghost" type="button">Change</button>
             </div>

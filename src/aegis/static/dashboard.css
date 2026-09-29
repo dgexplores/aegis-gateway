@@ -35,10 +35,20 @@
   --ink: #2d2d2d;
   --ink-2: #6b6459;
   --ink-3: #9a9186;
-  --red: #ff4d4d;
+  /* Deeper than the dark theme's red on purpose: this one has to work as
+     *text* on the cream paper, not just as a dot and a border. */
+  --red: #b3261e;
   --blue: #2d5da1;
   --green: #3f7d3f;
   --amber: #c07a12;
+  /* Status-pill text. Deliberately separate from the palette above: those hues
+     are picked to read as a 9px dot and a 2px border, and at 14px on a tint they
+     fall under 4.5:1. These are the same hues taken down to where they pass
+     as text, and are only used by .pill.*. */
+  --pill-ok: #2e6b30;
+  --pill-warn: #7d5006;
+  --pill-bad: #a8231b;
+  --pill-info: #2d5da1;
   --tape: rgba(255, 205, 120, 0.55);
   --wash: rgba(45, 45, 45, 0.05);
 
@@ -90,6 +100,13 @@
   --blue: #7ba7e0;
   --green: #7fc47f;
   --amber: #e5b25c;
+  /* The dark theme's palette already clears 4.5:1 as text on a dark tint, so
+     these are the same hues. Re-declared so the pill rules can reference one
+     set of names in both themes. */
+  --pill-ok: #7fc47f;
+  --pill-warn: #e5b25c;
+  --pill-bad: #ff8b8b;
+  --pill-info: #7ba7e0;
   --tape: rgba(255, 205, 120, 0.28);
   --wash: rgba(255, 255, 255, 0.06);
   --shadow-sm: 3px 3px 0 #0d0b09;
@@ -236,11 +253,11 @@ p { margin: 0; }
   border-radius: 12px 8px 13px 9px / 9px 13px 8px 12px;
 }
 .pill .dot { width: 9px; height: 9px; flex: none; border-radius: 999px; background: currentColor; }
-.pill.ok { color: var(--green); background: color-mix(in srgb, var(--green) 12%, var(--paper)); }
-.pill.warn { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--paper)); }
-.pill.bad { color: var(--red); background: color-mix(in srgb, var(--red) 12%, var(--paper)); }
-.pill.info { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, var(--paper)); }
-.pill.accent { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, var(--paper)); }
+.pill.ok { color: var(--pill-ok); background: color-mix(in srgb, var(--green) 12%, var(--paper)); }
+.pill.warn { color: var(--pill-warn); background: color-mix(in srgb, var(--amber) 14%, var(--paper)); }
+.pill.bad { color: var(--pill-bad); background: color-mix(in srgb, var(--red) 12%, var(--paper)); }
+.pill.info { color: var(--pill-info); background: color-mix(in srgb, var(--blue) 12%, var(--paper)); }
+.pill.accent { color: var(--pill-info); background: color-mix(in srgb, var(--blue) 10%, var(--paper)); }
 
 /* ============================================================
    CARDS
@@ -742,9 +759,9 @@ td.wrap-cell { white-space: normal; max-width: 22rem; }
   border: 2px solid var(--ink);
   border-radius: 8px 5px 9px 6px / 6px 9px 5px 8px;
 }
-.tag.ok { color: var(--green); }
-.tag.bad { color: var(--red); }
-.tag.warn { color: var(--amber); }
+.tag.ok { color: var(--pill-ok); }
+.tag.bad { color: var(--pill-bad); }
+.tag.warn { color: var(--pill-warn); }
 
 /* A numeric cell. Tabular figures stop digits from shifting column width as
  * values change, which is what makes a counters table readable while it

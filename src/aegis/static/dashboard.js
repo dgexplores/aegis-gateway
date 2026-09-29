@@ -99,7 +99,14 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
 function initKey() {
   const field = apiKeyField();
   const pill = $('#keyPill');
-  if (!field.value.trim()) {
+  // Reflect reality in both directions. Previously only the empty case was
+  // handled, so a pre-filled key left the static markup's "Demo key ready" on
+  // screen — dev language on a product surface, and a claim that is wrong the
+  // moment an operator pastes a real key.
+  if (field.value.trim()) {
+    pill.className = 'pill ok';
+    pill.innerHTML = '<span class="dot"></span>Key active for this visit';
+  } else {
     pill.className = 'pill bad';
     pill.innerHTML = '<span class="dot"></span>No key loaded — paste yours';
     $('#keyEditor').hidden = false;
@@ -671,7 +678,7 @@ function renderFirstRun(host) {
 
   const lede = document.createElement('p');
   lede.className = 'small muted';
-  lede.textContent = 'Use the box above, or one of the three starter questions under it. '
+  lede.textContent = 'Use the box above, or one of the starter questions under it. '
     + 'Your answers will appear here, each one saying where it came from.';
 
   wrap.append(title, lede);
