@@ -57,9 +57,9 @@ storage.
 
 | # | Item | Gate |
 |---|---|---|
-| 1.1 | **M12 — one ledger, not one chain per pod.** Segment, archive to object storage, merge, and reconcile | A verifier reconstructs the global chain from a cold start; a deliberate gap in sequence numbers is **detected**, not smoothed |
-| 1.2 | **Unbounded log growth.** The audit file grows forever, and `M13` makes `/readyz` re-read all of it | `audit.jsonl` rotates on a schedule; `/readyz` uses a checkpoint and stays under 50ms at 10M records |
-| 1.3 | **Key rotation must not break verification.** Rotating the HMAC key invalidates the chain it signed | Old and new key verify simultaneously during an overlap window; a rotation test proves no record becomes unreadable |
+| 1.1 | **M12 — one ledger, not one chain per pod.** *Partly closed*: segments, per-replica rotation, S3 archive and `reconcile_segments()` (which orders segments by head linkage and reports unlinked ones as separate chains rather than corruption) all exist and are tested. Not closed: no scheduler, no global sequence, and nothing calls the reconciler in production | A verifier reconstructs the global chain from a cold start on a schedule; a deliberate gap in sequence numbers is **detected**, not smoothed |
+| 1.2 | ~~**Unbounded log growth**~~ — *closed*: the chain rotates at `audit_max_bytes` (10MB default), carries `head` into the new file, and best-effort archives the rotated segment to S3. `M13` is also closed: `/readyz` uses the O(1) tail probe, not a full re-verify | **Still open:** rotation is size-triggered only, so a quiet-but-growing archive has no time-based compaction or retention |
+| 1.3 | ~~**Key rotation must not break verification**~~ — **closed this session.** `AEGIS_AUDIT_HMAC_KEY_PREVIOUS` accepts retired keys for verification while refusing to sign with them; the record format is unchanged so pre-rotation chains still verify byte-for-byte; reads report `signed_with` so a rotation window is observable. 9 tests, including that dropping a retired key makes its records unverifiable — which is the real operational constraint | Keep retired keys at least as long as you may need to prove something they signed |
 | 1.4 | **Clock skew.** Audit `ts` comes from the host clock | A skew beyond a threshold is *detected and reported*, not silently absorbed into the chain |
 | 1.5 | **Postgres backup and restore** — today only the audit file has a drill | `pg_dump` → restore → row-count and checksum equality, on a schedule, unattended |
 | 1.6 | **Retention.** Payloads are kept forever by default | A configured TTL is enforced in a test, and expiry is itself audited |
@@ -94,8 +94,8 @@ database is down at 9am on a Monday."
 | 2.1 | **Failover is a stub.** `echo` is a deterministic non-answer, not a fallback model | A second *real* provider is configured, and a fault-injection test kills the primary mid-request and asserts a real answer from the backup |
 | 2.2 | **Postgres down** — what does a user see? | A defined answer (degraded read, or a clean `503` with a reason), tested by killing the database in a test, not by reasoning about it |
 | 2.3 | **Redis down** — controls and rate limits are shared state | Documented, tested behaviour. Not "it falls back to per-process and the pause silently stops working across replicas" |
-| 2.4 | **Graceful shutdown.** SIGTERM must drain in-flight requests and checkpoint | A test kills a process mid-request; in-flight requests complete or fail cleanly, and the chain is not left with a torn write |
-| 2.5 | **M6 — blocking work on the event loop.** Audit append and synchronous embedding calls | A loadtest run at 3× the target shows no latency cliff; the embedding call is off the loop and the append path is benchmarked in CI |
+| 2.4 | **Graceful shutdown.** *Partly closed this session*: `DrainMiddleware` refuses new work with `503`+`Retry-After`, exempts probes, waits for in-flight to reach zero with a bounded timeout, and only then closes the gateway. **Still open:** no test kills a real process mid-request, so a torn audit write is unproven | A test kills a process mid-request; in-flight requests complete or fail cleanly, and the chain is not left with a torn write |
+| 2.5 | **M6 — blocking work on the event loop.** *Partly closed*: audit append runs via `asyncio.to_thread` and both embedding providers have async variants. **Still open:** nothing proves the async path is the one actually taken, and the append path is not benchmarked in CI | A loadtest run at 3× the target shows no latency cliff; the embedding call is off the loop and the append path is benchmarked in CI |
 | 2.6 | **Multi-replica load**, not single-process `echo` | A published number: throughput and p99 at N replicas, with the database and Redis in the path |
 | 2.7 | **Limits everywhere** — request size, body size, concurrent streams, timeouts, retries with backoff, circuit-breaker thresholds | Each limit has a test at the boundary and one past it |
 
@@ -105,14 +105,13 @@ database is down at 9am on a Monday."
 
 | # | Item | Gate |
 |---|---|---|
-| 3.1 | **H7 — `/metrics` is tenant-readable** and series carry per-tenant labels. This is a cross-tenant disclosure | Restricted to `admin`, with a migration path for existing scrape configs and a documented break-glass for self-hosted users |
 | 3.2 | **Secret lifecycle** — expiry, rotation, revocation. Nothing rotates today | A rotated secret takes effect without a redeploy, and the old one stops working on a schedule |
 | 3.3 | **Tenant key rotation** with a dual-key overlap window, so rotation does not drop requests | A rotation test shows old and new keys both valid during overlap, old dead after |
-| 3.4 | **Credential stuffing on `/admin/login`** — no rate limit today | Login attempts are rate-limited per source and per id; the test proves a run of guesses cannot succeed |
-| 3.5 | **Session invalidation** — a password change must end existing sessions | Changing the password invalidates every issued session, tested |
+| 3.4 | ~~**Credential stuffing on `/admin/login`**~~ — **closed this session.** Limited per source and per (source, id); a correct login clears the window so a fumbled password does not lock out a real operator | ~~Login attempts are rate-limited per source and per id; the test proves a run of guesses cannot succeed~~ |
+| 3.5 | ~~**Session invalidation**~~ — **closed this session.** Cookies carry an HMAC fingerprint of the credential that minted them, so a password change ends every session with no server-side revocation store | ~~Changing the password invalidates every issued session, tested~~ |
 | 3.6 | **H1/H2 — encrypted payloads.** "Prove what the AI said" requires `AEGIS_AUDIT_ENCRYPT_KEY`; without it the chain proves *that*, not *what* | A production-mode gateway without the key either refuses to boot or the claim is narrowed everywhere. Pick one; today the docs say the latter and the code allows the former |
 | 3.7 | **Supply chain** — `pip-audit` or equivalent, Dependabot, pinned hashes, SBOM | Dependency audit runs in CI and blocks on a known CVE; an SBOM is generated per release |
-| 3.8 | **Who read the log?** Reading the audit trail is itself an access that should be recorded | Reading `/admin/audit` cross-tenant writes a record |
+| 3.8 | ~~**Who read the log?**~~ — **closed this session.** Reads and exports write an `admin_audit_read` record with the read's shape (scope, cross-tenant or not, limit, payloads included) and never the records themselves | ~~Reading `/admin/audit` cross-tenant writes a record~~ |
 
 ---
 
@@ -189,22 +188,35 @@ buys a report that is wrong by the time it lands.
 ## The shortest honest path to "production grade"
 
 If the goal is a defensible claim rather than a complete product, this is the
-minimum, in order:
+minimum, in order. Three of these are **done** and are marked.
 
-1. **Deploy for real, against a real model, for 30 days** (Wave 0)
-2. **Make `/metrics` admin-only** (3.1) — it is a live cross-tenant disclosure
-3. **Rate-limit the admin login** (3.4) — it is an unthrottled credential oracle
-4. **Prove key rotation** (1.3) — a product whose evidence key cannot be rotated
-   without destroying the evidence is not deployable at 12-month intervals
-5. **Build the global ledger** (1.1) — "tamper-evident" is currently per-pod, and
-   this is the weakest point in the strongest feature
-6. **Run an independent pen test** (5.1)
-7. **Resolve the erasure conflict** (1.7) — before the first compliance
-   conversation, not after
+1. ~~**Deploy for real, against a real model, for 30 days**~~ — **not done, and
+   it is the one that matters.** Blocked on a cluster and a provider key, not on
+   code.
+2. ~~**Make `/metrics` admin-only**~~ — **already done.** It is tenant-scoped;
+   a non-admin sees only its own series plus untagged globals.
+3. ~~**Rate-limit the admin login**~~ — **done this session.** Per source and
+   per (source, id), with the window cleared on a correct login.
+4. ~~**Prove key rotation**~~ — **done this session.** Retired keys verify
+   without being able to sign, and the record format does not change.
+5. **Build the global ledger** — *partly done*: segments, S3 archive and the
+   reconciler exist. Still needed: a schedule, a global sequence, and something
+   that actually calls the reconciler in production. This is now the largest
+   code-side gap in the plan.
+6. **Run an independent pen test** — needs money and a stable target.
+7. **Resolve the erasure conflict** — before the first compliance conversation,
+   not after.
 
-Items 2 and 3 are days of work. Items 1, 4, 5, 6 and 7 are the real project.
+**Still open and cheap**, in case there is time between the big items:
 
----
+- time-based retention/compaction for archived audit segments (1.2)
+- proving the async embedding path is the one actually taken (2.5)
+- a test that kills a real process mid-request (2.4)
+- dependency audit and SBOM in CI (3.7)
+
+So the honest summary: the cheap, high-risk code-side items are done. What is
+left is the expensive half — a real deployment, a real ledger, and third-party
+review — and none of that is closed by writing more code.
 
 ## Claims to stop making until the gates above close
 
