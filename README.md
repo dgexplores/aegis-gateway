@@ -280,7 +280,7 @@ curl -s localhost:8080/v1/rag/query -H "Authorization: Bearer $KEY" \
 # → an answer, plus citations: [{source:"hr-policy.md", chunk:0, score:..., matched_by:"bm25+vector"}]
 ```
 
-`make verify` runs every gate described above — lint, types, 426 tests,
+`make verify` runs every gate described above — lint, types, 435 tests,
 red-team, eval regression, retrieval drift, PII, the deployment guard and a
 documentation check.
 

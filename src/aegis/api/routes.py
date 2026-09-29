@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -13,7 +14,12 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from aegis.api.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from aegis.api.middleware import (
+    DrainMiddleware,
+    RequestContextMiddleware,
+    SecurityHeadersMiddleware,
+    current_drain,
+)
 from aegis.budget import BudgetExceeded
 from aegis.config import Settings, get_settings
 from aegis.gateway import Gateway, build_gateway
@@ -24,6 +30,8 @@ from aegis.ratelimit import RateLimitExceeded, SlidingWindowLimiter
 from aegis.security import admin_session
 from aegis.security.admin_session import AdminAuthError
 from aegis.security.auth import Authenticator, Tenant
+
+log = logging.getLogger("aegis.api")
 
 STATE: dict = {}
 
@@ -94,11 +102,34 @@ async def lifespan(app: FastAPI):
         # reuse test-injected gateway (pytest fixtures)
         if "settings" not in STATE:
             STATE["settings"] = STATE["gateway"].settings
+
+    # A starting process is not draining. See DrainMiddleware.end_drain.
+    if current_drain() is not None:
+        current_drain().end_drain()
+
     yield
+
+    # SIGTERM path. Refuse new work, let in-flight work finish, then tear the
+    # gateway down. The order matters: closing the provider client first would
+    # cut off requests that are still mid-call, and a request interrupted between
+    # the provider answering and the audit record being written is a user billed
+    # for an answer with no evidence it happened.
+    drained = True
+    drain = current_drain()
+    if drain is not None:
+        drain.begin_drain()
+        in_flight = drain.in_flight
+        drained = await drain.wait_for_idle()
+        if not drained:
+            log.warning(
+                "shutdown drain timed out with %d request(s) in flight", in_flight
+            )
     try:
         await STATE["gateway"].aclose()
     except Exception:  # noqa: BLE001,S110
         pass
+    if drain is not None and not drained:
+        log.warning("exiting with requests still in flight; their audit records may be partial")
 
 
 app = FastAPI(
@@ -112,6 +143,7 @@ app = FastAPI(
 )
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(DrainMiddleware)
 
 # Console assets are served from disk, not a CDN. That keeps the dashboard
 # working on an air-gapped network, and it lets the CSP forbid inline script and
