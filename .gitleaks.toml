@@ -1,0 +1,30 @@
+# Gitleaks configuration.
+#
+# One allowlist entry, for one value.
+#
+# `demo-sk-aegis-2024` is the demo tenant key. It is published on purpose: it is
+# written into `.env` by `scripts/setup.sh`, it is a hash rather than a live
+# credential, and `make prod-guard` *fails the build* if either deploy artifact
+# ever ships it -- which is a stronger control than this scanner, because it
+# looks at where the credential would actually be used.
+#
+# It was flagged because curl examples used it literally, which is a bad habit
+# worth not keeping: the line gets copied, the value gets swapped for a real one,
+# and the scanner is right every time. The examples now read the key from the
+# environment. The history still contains the old lines, and gitleaks scans
+# history (`fetch-depth: 0`), so this entry exists to stop a fixed-in-the-
+# working-tree example from blocking every future push.
+#
+# Scoped to the exact value on purpose. Any *other* token-shaped string in a
+# README, a doc or a script still fails the scan -- this is not a blanket
+# exemption for documentation.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The published demo tenant key; blocked from shipping by make prod-guard"
+regexTarget = "match"
+regexes = [
+  '''demo-sk-aegis-2024''',
+]
