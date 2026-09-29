@@ -179,6 +179,10 @@ pass (a 13th admin probe is skipped without an admin-scoped key) ·
 
 ## 4. What is left
 
+The full path from here to a defensible production claim — ordered, gated, and
+with the items that are blocked on something other than work marked as such — is
+in [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md).
+
 ### 4.1 Eval corpus depth — partly landed, still the top item
 
 **M1 / M2 / M3.** The three CI gates were plumbing assertions. The first pass at

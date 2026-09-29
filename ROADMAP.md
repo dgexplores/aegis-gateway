@@ -9,6 +9,12 @@ list; this file holds the direction.
 The bar for everything here: **a claim is only made if a gate measures it.**
 That rule is why some numbers in this repo are deliberately small today.
 
+**If the question is "how do we make this production grade" rather than "what
+should it become", read [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md).
+It carries the wave-by-wave plan, the gate that closes each item, what is
+blocked on something other than work, and — deliberately — a table of claims
+this project must stop making until those gates close.
+
 ---
 
 ## Objective 1 — Make the quality gates actually measure quality
