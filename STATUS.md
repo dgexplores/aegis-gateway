@@ -148,7 +148,7 @@ EVAL GATE   12/12 passed
 RAG EVAL    recall@4=100%  MRR=1.0  no drift vs baseline
 PII-EVAL    all must-recall cases masked
 PROD-GUARD  PASSED (10 checks)
-PYTEST      402 passed, 5 live skipped
+PYTEST      412 passed, 5 live skipped
 VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green
 ```
 
@@ -256,7 +256,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 407 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 417 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```

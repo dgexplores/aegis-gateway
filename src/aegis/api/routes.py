@@ -686,7 +686,6 @@ def require_admin_portal(request: Request) -> str:
         _require_admin(get_tenant(request))
         return "bearer"
 
-    token = request.cookies.get(admin_session.COOKIE)
     username = _verify_admin_session(request, settings)
     if username:
         return username
@@ -781,7 +780,6 @@ async def admin_session_state(request: Request) -> dict:
     """Who the portal thinks you are, and whether a login is even available."""
     settings = _settings()
     creds = _admin_creds(settings)
-    token = request.cookies.get(admin_session.COOKIE)
     username = _verify_admin_session(request, settings)
     demo = bool(
         creds

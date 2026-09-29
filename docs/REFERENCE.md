@@ -20,7 +20,7 @@ the security model. Nothing on the main page depends on reading this.
 > instead of finding a key in a config file.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`407 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
+`417 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
 
 > **Not claiming it's production-ready.** [`STATUS.md`](STATUS.md) lists what is done,
 > what is verified, and what is still open — no Postgres, no deploy, unbuilt S3
@@ -284,7 +284,7 @@ rejected with `400`. That flag is *policy*; it is not what provides the protecti
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 407 tests
+make test       # 417 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -300,7 +300,7 @@ RED-TEAM   attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE  score=100%  (12/12 passed)   p95 latency=0.6 ms
 RAG EVAL   recall@4=100%  MRR=1.0  (hybrid/bm25/vector, no drift)
 PII-EVAL   all must-recall masked (EMAIL/SSN/CARD/IP/PHONE + AADHAAR/PAN/PASSPORT/UPI)
-PYTEST     402 passed, 5 live skipped
+PYTEST     412 passed, 5 live skipped
 ```
 
 Attack classes: instruction override, system-prompt extraction, DAN/persona
