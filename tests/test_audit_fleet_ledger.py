@@ -158,3 +158,64 @@ def test_fleet_ledger_accepts_external_segments(tmp_path):
 def test_short_ledgers_are_complete(tmp_path, count):
     base = _ledger(tmp_path, count=count)
     assert reconcile_segments(discover_segments(base), KEY)["complete"] is True
+
+
+def _with_fake_archive(monkeypatch, succeed=True):
+    """Pretend rotation archived to S3, so retention is permitted to act."""
+    import aegis.security.audit as audit_mod
+
+    def fake_archive(path, bucket, prefix="aegis-audit/"):
+        return f"s3://bucket/{path.name}" if succeed else None
+
+    monkeypatch.setattr(audit_mod, "archive_to_s3", fake_archive)
+
+
+def test_retention_keeps_every_segment_by_default(tmp_path, monkeypatch):
+    _with_fake_archive(monkeypatch)
+    base = tmp_path / "audit.jsonl"
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=300, s3_bucket="b", keep_segments=0)
+    for i in range(12):
+        chain.append("t", "probe", {"i": i, "pad": "x" * 60})
+    assert len(discover_segments(base)) == 12, "keep_segments=0 must retain everything"
+
+
+def test_retention_prunes_only_archived_segments(tmp_path, monkeypatch):
+    _with_fake_archive(monkeypatch)
+    base = tmp_path / "audit.jsonl"
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=300, s3_bucket="b", keep_segments=3)
+    for i in range(12):
+        chain.append("t", "probe", {"i": i, "pad": "x" * 60})
+    remaining = discover_segments(base)
+    assert len(remaining) == 4, "three retained segments plus the live file"
+    assert "audit.jsonl" in [p.name for p in remaining], "the live file is never pruned"
+
+
+def test_retention_never_deletes_an_unarchived_segment(tmp_path, monkeypatch):
+    """The whole point of the gate: no bucket configured means no deletion."""
+    _with_fake_archive(monkeypatch, succeed=False)
+    base = tmp_path / "audit.jsonl"
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=300, keep_segments=2)
+    for i in range(10):
+        chain.append("t", "probe", {"i": i, "pad": "x" * 60})
+    assert len(discover_segments(base)) == 10, "unarchived segments must survive"
+
+
+def test_retention_warns_when_it_cannot_prune(tmp_path, monkeypatch, caplog):
+    _with_fake_archive(monkeypatch, succeed=False)
+    base = tmp_path / "audit.jsonl"
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=300, keep_segments=2)
+    with caplog.at_level("WARNING"):
+        for i in range(8):
+            chain.append("t", "probe", {"i": i, "pad": "x" * 60})
+    assert any("retention" in r.message for r in caplog.records), "unbounded growth must be surfaced"
+
+
+def test_retention_sorts_segments_numerically(tmp_path, monkeypatch):
+    """.10 must be treated as newer than .9, not older."""
+    _with_fake_archive(monkeypatch)
+    base = tmp_path / "audit.jsonl"
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=300, s3_bucket="b", keep_segments=2)
+    for i in range(30):
+        chain.append("t", "probe", {"i": i, "pad": "x" * 60})
+    kept = [p.name for p in discover_segments(base)]
+    assert kept[:2] == ["audit.jsonl.28", "audit.jsonl.29"], f"kept the wrong segments: {kept[:3]}"

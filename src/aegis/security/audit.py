@@ -153,6 +153,7 @@ class AuditChain:
         encrypt_key: str = "",
         s3_bucket: str = "",
         s3_prefix: str = "aegis-audit/",
+        keep_segments: int = 0,
         hmac_previous_keys: Sequence[str] = (),
     ) -> None:
         # The signing key is `_keys[0]`. The rest are *accepted* for verification
@@ -170,6 +171,9 @@ class AuditChain:
         self.encrypt_key = encrypt_key
         self.s3_bucket = s3_bucket
         self.s3_prefix = s3_prefix
+        self.keep_segments = keep_segments
+        # Only segments confirmed in object storage may ever be pruned.
+        self._archived: set[str] = set()
         self.seq = 0
         self.head = "GENESIS"
         self._thread_lock = threading.Lock()
@@ -329,6 +333,40 @@ class AuditChain:
         self._segment_no += 1
         return candidate
 
+    def _prune_archived(self) -> None:
+        """Drop the oldest segments once they are provably in object storage.
+
+        Segments are now retained rather than overwritten, which turns the
+        previous silent data loss into unbounded disk growth -- a real risk on a
+        busy gateway, but only fixable by deletion, which is what caused the
+        original bug. So deletion is gated on the segment having been uploaded:
+        a segment that failed to archive, or was written while no bucket was
+        configured, is kept and counted in the warning. Retention can never be
+        the reason records disappear.
+        """
+        if self.keep_segments <= 0:
+            return
+        on_disk = [p.name for p in discover_segments(self.path) if p.name != self.path.name]
+        if len(on_disk) <= self.keep_segments:
+            return
+        surplus = len(on_disk) - self.keep_segments
+        removable = [name for name in sorted(on_disk, key=_segment_sort_key) if name in self._archived]
+        for name in removable[:surplus]:
+            try:
+                self.path.with_name(name).unlink()
+                self._archived.discard(name)
+                log.info("audit pruned %s (archived, over keep=%d)", name, self.keep_segments)
+            except OSError:
+                continue
+        kept = [n for n in on_disk if n not in removable[:surplus]]
+        if len(kept) > self.keep_segments:
+            log.warning(
+                "audit retention is %d segments over keep=%d: they are not archived, so they "
+                "are being kept. Set AEGIS_AUDIT_S3_BUCKET or the directory will grow without bound.",
+                len(kept) - self.keep_segments,
+                self.keep_segments,
+            )
+
     def _highest_segment_on_disk(self) -> int:
         highest = 0
         prefix = self.path.name + "."
@@ -352,7 +390,9 @@ class AuditChain:
                 self.path.rename(backup)
                 uri = archive_to_s3(backup, self.s3_bucket, self.s3_prefix)
                 if uri:
+                    self._archived.add(backup.name)
                     log.info("audit rotated, archived %s", uri)
+                self._prune_archived()
         except OSError:
             pass
 
@@ -592,6 +632,12 @@ def load_verified_records(path: str | Path, hmac_key: str, hmac_previous_keys: S
             records.append(rec)
             last = rec
     return records
+
+
+def _segment_sort_key(name: str) -> int:
+    """Sort `audit.jsonl.10` after `audit.jsonl.9` rather than before it."""
+    suffix = name.rsplit(".", 1)[-1]
+    return int(suffix) if suffix.isdigit() else 1 << 30
 
 
 def discover_segments(path: str | Path) -> list[Path]:

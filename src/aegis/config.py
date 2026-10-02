@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     audit_encrypt_key: str = ""
     audit_s3_bucket: str = ""
     audit_s3_prefix: str = "aegis-audit/"
+    # How many rotated segments to keep on local disk once they are safely in
+    # object storage. 0 keeps every segment, which is the safe default: pruning
+    # a segment that was never archived is the same data loss as the rotation
+    # bug, just slower. Set it only alongside AEGIS_AUDIT_S3_BUCKET.
+    audit_keep_segments: int = 0
     # Embeddings: legacy (default, zero-dep hash_vec path) | hash | gmi | openai.
     embed_provider: str = "legacy"
     embed_model: str = ""

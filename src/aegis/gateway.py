@@ -125,6 +125,7 @@ class Gateway:
             encrypt_key=settings.audit_encrypt_key,
             s3_bucket=settings.audit_s3_bucket,
             s3_prefix=settings.audit_s3_prefix,
+            keep_segments=settings.audit_keep_segments,
             hmac_previous_keys=[k.strip() for k in (settings.audit_hmac_key_previous or "").split(",") if k.strip()],
         )
         # Assembles every segment of the ledger, not just the live file, so an
