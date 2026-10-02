@@ -10,7 +10,7 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 493
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 497
 tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
 Kubernetes, Render) all boot. What remains is not correctness work: it is
 **eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
@@ -211,7 +211,7 @@ injection vectors (encoded, multi-turn, role-tag smuggling).
 |---|---|---|
 | **M6** | `audit.append` fsyncs on the event loop; embedding providers use synchronous `httpx.post` inside async handlers | Throughput ceiling under concurrency. Partly mitigated (`asyncio.to_thread` on the audit path) but the embeddings call is still blocking |
 | **H7** | `/metrics` is readable by any tenant and the series carry per-tenant labels | Cross-tenant disclosure. Tightening to `admin` breaks existing scrape configs, so it needs a deliberate rollout |
-| **M12** | *Partly closed.* Segments now assemble into one ledger with proven continuity, served on `/admin/audit`; each pod still writes its own chain and there is no sequence global across pods | A lost segment is now detected rather than looking like a second pod. Reconciling pods still needs a schedule and archived segments pulled back |
+| **M12** | *Partly closed.* Segments now assemble into one ledger with proven continuity, served on `/admin/audit`; assembly is on a 60s timer that logs at ERROR, but each pod still writes its own chain, there is no sequence global across pods, and archived segments are not pulled back | A lost segment is now detected rather than looking like a second pod. Reconciling pods still needs a schedule and archived segments pulled back |
 | **M13** | `/readyz` re-reads the whole audit file | Cost grows with chain length; a probe should not do full verification |
 | **M10** | No stale-chunk policy for RAG | A re-ingested document's old chunks can linger |
 | **M4** | Injection false positives are measured now, but only against a hand-authored corpus | 200 prompts, 0 false positives, worst case 0.65 against a 0.70 block line. Real traffic would be a stronger sample, and a benign prompt at 0.68 would still be refused |
@@ -263,7 +263,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 493 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 497 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```

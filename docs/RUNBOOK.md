@@ -200,9 +200,11 @@ Two things to know before you trust it:
   in every segment, so it is cached rather than recomputed per request. After an
   incident, re-read with `refresh=1` to force a fresh assembly.
 
-Assembly is still **not yet scheduled** — it happens when an operator reads
-`/admin/audit` rather than on a timer — and archived segments are not pulled
-back from S3 or sibling replicas automatically. See
+Assembly runs on a timer (every 60s) and logs at `ERROR` when the ledger is not
+continuous, so you should not have to be looking at the page to find out. What
+is **not yet** automatic is pulling archived segments back from S3 or sibling
+replicas, and there is still no sequence that is global across pods — so
+"complete" describes *this host's* segments. See
 `docs/PRODUCTION-READINESS.md` item 1.1.
 
 ---

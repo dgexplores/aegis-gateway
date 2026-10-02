@@ -141,7 +141,7 @@ def test_the_runbook_does_not_claim_the_unsolved_things_are_solved():
     for claim, why in (
         ("no recovery story", "the corpus and counters genuinely have none"),
         ("per-replica", "the ledger is still per-pod"),
-        ("not yet scheduled", "the reconciler is not wired in"),
+        ("not yet", "which parts of the ledger are still not automatic"),
         ("unsolved", "erasure vs immutability is unresolved"),
     ):
         assert claim in FLAT, f"the runbook dropped its {why!r} caveat"

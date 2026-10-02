@@ -219,3 +219,103 @@ def test_retention_sorts_segments_numerically(tmp_path, monkeypatch):
         chain.append("t", "probe", {"i": i, "pad": "x" * 60})
     kept = [p.name for p in discover_segments(base)]
     assert kept[:2] == ["audit.jsonl.28", "audit.jsonl.29"], f"kept the wrong segments: {kept[:3]}"
+
+
+class _StubLedger:
+    def __init__(self, result=None, raises=None):
+        self._result = result
+        self._raises = raises
+        self.calls = 0
+
+    def status(self, refresh=False):
+        self.calls += 1
+        if self._raises:
+            raise self._raises
+        return self._result
+
+
+class _StubGateway:
+    def __init__(self, ledger):
+        self.audit_ledger = ledger
+
+
+def _run_reconciler(ledger, ticks=3, interval=0.01):
+    import asyncio
+    import contextlib
+
+    from aegis.api.routes import _audit_reconciler
+
+    async def drive():
+        task = asyncio.create_task(_audit_reconciler(_StubGateway(ledger), interval=interval))
+        await asyncio.sleep(interval * (ticks + 1))
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    asyncio.run(drive())
+
+
+def test_reconciler_announces_a_ledger_that_is_not_whole(caplog):
+    import logging
+
+    ledger = _StubLedger(
+        {
+            "complete": False,
+            "segments": 3,
+            "records": 9,
+            "errors": {},
+            "seq_gaps": [],
+            "starts_mid_sequence": [{"segment": "audit.jsonl.9"}],
+        }
+    )
+    with caplog.at_level(logging.ERROR):
+        _run_reconciler(ledger)
+    assert any("not continuous" in r.message for r in caplog.records), (
+        "a ledger that lost records must announce itself without an operator looking"
+    )
+
+
+def test_reconciler_stays_quiet_while_the_ledger_is_whole(caplog):
+    import logging
+
+    ledger = _StubLedger(
+        {
+            "complete": True,
+            "segments": 3,
+            "records": 9,
+            "errors": {},
+            "seq_gaps": [],
+            "starts_mid_sequence": [],
+        }
+    )
+    with caplog.at_level(logging.ERROR):
+        _run_reconciler(ledger)
+    assert not any("not continuous" in r.message for r in caplog.records)
+
+
+def test_reconciler_survives_a_transient_failure(caplog):
+    """A monitoring loop that dies on one bad poll stops monitoring forever."""
+    import logging
+
+    ledger = _StubLedger(raises=RuntimeError("volume hiccup"))
+    with caplog.at_level(logging.WARNING):
+        _run_reconciler(ledger)
+    assert ledger.calls > 1, "the loop exited on the first exception"
+    assert any("audit reconciliation failed" in r.message for r in caplog.records)
+
+
+def test_reconciler_stops_cleanly_on_cancel():
+    import asyncio
+    import contextlib
+
+    from aegis.api.routes import _audit_reconciler
+
+    async def drive():
+        task = asyncio.create_task(_audit_reconciler(_StubGateway(_StubLedger({"complete": True})), interval=0.01))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert task.cancelled() or task.done()
+
+    asyncio.run(drive())

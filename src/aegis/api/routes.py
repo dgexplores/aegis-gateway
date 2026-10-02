@@ -88,6 +88,35 @@ def _settings() -> Settings:
     return settings
 
 
+async def _audit_reconciler(gateway: Gateway, interval: float = 60.0) -> None:
+    """Assemble the ledger on a timer and complain when it is not whole.
+
+    Logging is the point. A ledger that loses a segment should announce it
+    whether or not anyone is looking at the admin page, and `complete: false`
+    is the only statement in the system that means records are provably
+    missing. Exits quietly when cancelled so shutdown stays clean.
+    """
+    await asyncio.sleep(interval)  # let boot finish first
+    while True:
+        try:
+            status = await asyncio.to_thread(gateway.audit_ledger.status, refresh=True)
+            if not status["complete"]:
+                log.error(
+                    "audit ledger is not continuous: %d segments, %d records, errors=%d, "
+                    "seq_gaps=%d, orphaned_chains=%d -- see RUNBOOK.md",
+                    status["segments"],
+                    status["records"],
+                    len(status["errors"]),
+                    len(status["seq_gaps"]),
+                    len(status["starts_mid_sequence"]),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — a monitoring loop must not die
+            log.warning("audit reconciliation failed: %s: %s", type(exc).__name__, exc)
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if "gateway" not in STATE:
@@ -110,6 +139,12 @@ async def lifespan(app: FastAPI):
     if (starting_drain := current_drain()) is not None:
         starting_drain.end_drain()
 
+    # Reconcile the ledger on a timer rather than only when an operator opens
+    # the audit page. Assembling hashes every record in every segment, so a
+    # missing segment was previously discovered only by someone who happened to
+    # be looking; now it is logged within a minute of happening.
+    audit_task = asyncio.create_task(_audit_reconciler(STATE["gateway"]))
+
     yield
 
     # SIGTERM path. Refuse new work, let in-flight work finish, then tear the
@@ -125,6 +160,11 @@ async def lifespan(app: FastAPI):
         drained = await drain.wait_for_idle()
         if not drained:
             log.warning("shutdown drain timed out with %d request(s) in flight", in_flight)
+    audit_task.cancel()
+    try:
+        await asyncio.wait_for(audit_task, timeout=2.0)
+    except (asyncio.CancelledError, TimeoutError):
+        pass
     try:
         await STATE["gateway"].aclose()
     except Exception:  # noqa: BLE001,S110

@@ -20,7 +20,7 @@ the security model. Nothing on the main page depends on reading this.
 > instead of finding a key in a config file.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`493 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
+`497 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
 
 > **Not claiming it's production-ready.** [`STATUS.md`](STATUS.md) lists what is done,
 > what is verified, and what is still open — no Postgres, no deploy, unbuilt S3
@@ -284,7 +284,7 @@ rejected with `400`. That flag is *policy*; it is not what provides the protecti
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 493 tests
+make test       # 497 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
