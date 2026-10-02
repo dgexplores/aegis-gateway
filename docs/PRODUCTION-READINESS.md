@@ -97,7 +97,7 @@ database is down at 9am on a Monday."
 | 2.1 | **Failover is a stub.** `echo` is a deterministic non-answer, not a fallback model | A second *real* provider is configured, and a fault-injection test kills the primary mid-request and asserts a real answer from the backup |
 | 2.2 | **Postgres down** — what does a user see? | A defined answer (degraded read, or a clean `503` with a reason), tested by killing the database in a test, not by reasoning about it |
 | 2.3 | **Redis down** — controls and rate limits are shared state | Documented, tested behaviour. Not "it falls back to per-process and the pause silently stops working across replicas" |
-| 2.4 | **Graceful shutdown.** *Partly closed this session*: `DrainMiddleware` refuses new work with `503`+`Retry-After`, exempts probes, waits for in-flight to reach zero with a bounded timeout, and only then closes the gateway. **Still open:** no test kills a real process mid-request, so a torn audit write is unproven | A test kills a process mid-request; in-flight requests complete or fail cleanly, and the chain is not left with a torn write |
+| 2.4 | **Graceful shutdown.** Closed for both halves. `DrainMiddleware` refuses new work with `503`+`Retry-After`, exempts probes, waits for in-flight to reach zero with a bounded timeout, and only then closes the gateway. `tests/test_audit_crash_safety.py` now SIGKILLs a real gateway mid-request -- no shutdown hook, no drain, no chance to flush -- and asserts no torn final line, valid JSON on every line, and a chain that still verifies. Measured over repeated runs: 60 requests in flight, 60 records, all linked, file newline-terminated. **Still open:** the in-flight record's fate is not *proven* either way, only that nothing is torn | A test kills a process mid-request; in-flight requests complete or fail cleanly, and the chain is not left with a torn write |
 | 2.5 | **M6 — blocking work on the event loop.** *Partly closed*: audit append runs via `asyncio.to_thread` and both embedding providers have async variants. **Still open:** nothing proves the async path is the one actually taken, and the append path is not benchmarked in CI | A loadtest run at 3× the target shows no latency cliff; the embedding call is off the loop and the append path is benchmarked in CI |
 | 2.6 | **Multi-replica load**, not single-process `echo` | A published number: throughput and p99 at N replicas, with the database and Redis in the path |
 | 2.7 | **Limits everywhere** — request size, body size, concurrent streams, timeouts, retries with backoff, circuit-breaker thresholds | Each limit has a test at the boundary and one past it |
@@ -217,7 +217,6 @@ minimum, in order. Three of these are **done** and are marked.
 
 - time-based retention/compaction for archived audit segments (1.2)
 - proving the async embedding path is the one actually taken (2.5)
-- a test that kills a real process mid-request (2.4)
 - dependency audit and SBOM in CI (3.7)
 
 So the honest summary: the cheap, high-risk code-side items are done. What is

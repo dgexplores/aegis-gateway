@@ -77,6 +77,10 @@ ignore = [
 # the alternative -- eight noqa comments -- is worse, because the formatter
 # reflows these calls and slides the suppressions off the lines they explain.
 "scripts/capture_shots.py" = ["S603", "S310", "S607"]
+# The crash-safety test SIGKILLs a real gateway on loopback. Starting that
+# process and reading it back over HTTP *is* the test; nothing here takes
+# input from anywhere.
+"tests/test_audit_crash_safety.py" = ["S603", "S310"]
 
 [tool.mypy]
 python_version = "3.11"
