@@ -30,7 +30,9 @@ sys.path.insert(0, str(ROOT / "src"))
 from aegis.security.audit import load_verified_records  # noqa: E402
 from aegis.security.auth import Authenticator  # noqa: E402
 
-PYTHON = ROOT / ".venv" / "bin" / "python"
+# The interpreter running the tests. Hardcoding `.venv/bin/python` works on a
+# laptop and fails on CI, which has no venv -- it runs the system interpreter.
+PYTHON = sys.executable
 KEY = "torn-write-key-minimum-32-chars!!"
 # No tenant exists by default, so an unauthenticated request would 401 and
 # never reach the audit path -- the test would then pass by writing nothing.
