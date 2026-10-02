@@ -165,6 +165,7 @@ class AuditChain:
                 self._keys.append(extra.encode())
         self._key = self._keys[0]
         self.path = Path(path)
+        self._segment_no = self._highest_segment_on_disk() + 1
         self.max_bytes = max_bytes
         self.encrypt_key = encrypt_key
         self.s3_bucket = s3_bucket
@@ -303,6 +304,40 @@ class AuditChain:
 
     # -- public ---------------------------------------------------------------
 
+    def _next_segment_path(self) -> Path:
+        """First unused monotonically numbered segment path.
+
+        Numbering only ever increases. An earlier version rotated to a single
+        fixed ``.1`` backup and unlinked it first, so the second rotation
+        silently destroyed the previous segment -- 60 appends at a 200-byte
+        budget left 2 records on disk. An audit trail that deletes itself on a
+        schedule is worse than no audit trail, because it still looks healthy.
+
+        Cached because rotation runs on the request path under the exclusive
+        lock: stat-ing every candidate each time made a long-lived process
+        quadratic in its own segment count. The counter is re-derived from disk
+        when a candidate is unexpectedly taken, which covers a restart or a
+        restore that added segments underneath us.
+        """
+        for _ in range(2):
+            candidate = self.path.with_suffix(self.path.suffix + f".{self._segment_no}")
+            if not candidate.exists():
+                self._segment_no += 1
+                return candidate
+            self._segment_no = self._highest_segment_on_disk() + 1
+        candidate = self.path.with_suffix(self.path.suffix + f".{self._segment_no}")
+        self._segment_no += 1
+        return candidate
+
+    def _highest_segment_on_disk(self) -> int:
+        highest = 0
+        prefix = self.path.name + "."
+        for entry in self.path.parent.glob(self.path.name + ".*"):
+            suffix = entry.name[len(prefix) :]
+            if suffix.isdigit():
+                highest = max(highest, int(suffix))
+        return highest
+
     def _maybe_rotate(self) -> None:
         """Rotate when over budget, carrying head into the new file.
 
@@ -313,9 +348,7 @@ class AuditChain:
         """
         try:
             if self.path.exists() and self.path.stat().st_size >= self.max_bytes:
-                backup = self.path.with_suffix(self.path.suffix + ".1")
-                if backup.exists():
-                    backup.unlink()
+                backup = self._next_segment_path()
                 self.path.rename(backup)
                 uri = archive_to_s3(backup, self.s3_bucket, self.s3_prefix)
                 if uri:
@@ -561,6 +594,112 @@ def load_verified_records(path: str | Path, hmac_key: str, hmac_previous_keys: S
     return records
 
 
+def discover_segments(path: str | Path) -> list[Path]:
+    """Every on-disk segment of one ledger, oldest first, live file last.
+
+    Callers used to hand-assemble this list, which meant a rotated ledger was
+    reconciled from whatever subset someone remembered to pass -- the failure
+    mode being a clean-looking chain that quietly omits most of the history.
+    """
+    base = Path(path)
+    segments: list[tuple[int, Path]] = []
+    for entry in base.parent.glob(base.name + "*"):
+        suffix = entry.name[len(base.name) :]
+        if not (suffix == "" or suffix.lstrip(".").isdigit()):
+            continue
+        if entry.name.endswith(".lock") or not entry.is_file():
+            continue
+        segments.append((int(suffix.lstrip(".")) if suffix else 1 << 30, entry))
+    return [p for _, p in sorted(segments)]
+
+
+class FleetLedger:
+    """Reconciled view across every segment of one ledger, cached.
+
+    `reconcile_segments` existed with no caller, so a rotated ledger was never
+    assembled: the admin view called `audit.verify()`, which reads the live
+    file alone, so every rotated segment -- most of the history -- was simply
+    absent from what an operator was shown. This is the piece that makes the
+    assembled view reachable, and it caches because assembly hashes every
+    record in every segment and an admin page should not pay that per request.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        hmac_key: str,
+        hmac_previous_keys: Sequence[str] = (),
+        extra_paths: Sequence[str | Path] = (),
+        ttl_seconds: float = 30.0,
+    ) -> None:
+        self.path = Path(path)
+        self.hmac_key = hmac_key
+        self.hmac_previous_keys = tuple(hmac_previous_keys)
+        self.extra_paths = tuple(Path(p) for p in extra_paths)
+        self.ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._cached: dict | None = None
+        self._computed_at = 0.0
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._cached = None
+
+    def segments(self) -> list[Path]:
+        """Live ledger segments first, then any externally supplied ones.
+
+        `extra_paths` covers segments restored from object storage or fetched
+        from another replica -- the cases a single host cannot see on its own.
+        """
+        return [*discover_segments(self.path), *self.extra_paths]
+
+    def status(self, refresh: bool = False) -> dict:
+        """Assemble the ledger, or return the cached assembly while it is fresh.
+
+        `complete` is the field to gate on. A false one means records are
+        provably missing -- either an unreadable segment, a sequence break
+        inside a chain, or a chain whose predecessor is gone.
+        """
+        now = time.monotonic()
+        with self._lock:
+            fresh = self._cached is not None and not refresh and (now - self._computed_at) < self.ttl_seconds
+            if fresh:
+                cached = dict(self._cached or {})
+                cached["age_s"] = round(now - self._computed_at, 3)
+                cached["cached"] = True
+                return cached
+
+            paths: list[str | Path] = list(self.segments())
+            assembled = reconcile_segments(paths, self.hmac_key, self.hmac_previous_keys)
+            per_segment = []
+            for path in paths:
+                key = str(path)
+                if key in assembled["errors"]:
+                    per_segment.append({"segment": Path(path).name, "records": 0, "readable": False})
+                    continue
+                records = len(load_verified_records(path, self.hmac_key, self.hmac_previous_keys))
+                per_segment.append({"segment": Path(path).name, "records": records, "readable": True})
+
+            self._computed_at = now
+            self._cached = {
+                "segments": len(paths),
+                "chains": len(assembled["chains"]),
+                "records": assembled["records"],
+                "complete": assembled["complete"],
+                "errors": {Path(k).name: v for k, v in assembled["errors"].items()},
+                "seq_gaps": assembled["seq_gaps"],
+                "starts_mid_sequence": [
+                    {**m, "segment": Path(m["segment"]).name} for m in assembled["starts_mid_sequence"]
+                ],
+                "per_segment": per_segment,
+                "longest_chain": max((len(c) for c in assembled["chains"]), default=0),
+            }
+            result = dict(self._cached)
+            result["age_s"] = 0.0
+            result["cached"] = False
+            return result
+
+
 def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_keys: Sequence[str] = ()) -> dict:
     """Order per-pod audit segments by head linkage (M12).
 
@@ -569,6 +708,14 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_key
     Segments sharing no link are different pods — reported as separate
     chains, which is expected, not corruption. Tampered/unreadable files
     land in `errors` and never poison a chain.
+
+    Continuity is reported, not assumed. A lost segment breaks the hash link,
+    which on its own is indistinguishable from a second pod writing its own
+    chain — so both halves of the trail look equally healthy while records are
+    missing. `seq_gaps` and `starts_mid_sequence` close that gap by checking
+    the sequence counter across each assembled chain: sequence numbers only
+    advance, so a break is proof that something was dropped. `complete` is the
+    single field a caller should gate on.
     """
     verified: dict[str, list[AuditRecord]] = {}
     errors: dict[str, str] = {}
@@ -593,12 +740,58 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_key
     chains: list[list[str]] = []
     for start in starts:
         chain, seen = [start], {start}
-        while chain[-1] in next_of and next_of[chain[-1]] not in seen:
-            chain.append(next_of[chain[-1]])
-            seen.add(chain[-1])
+        # The next name must be read before the append. Written as
+        # `chain.append(next_of[chain[-1]])` followed by
+        # `seen.add(next_of[chain[-1]])`, the second line reads chain[-1]
+        # *after* the append and marks the segment two steps ahead, so the walk
+        # stopped one step early and every chain was truncated to two segments.
+        # Nothing caught it because no caller existed.
+        while chain[-1] in next_of:
+            nxt = next_of[chain[-1]]
+            if nxt in seen:
+                break
+            chain.append(nxt)
+            seen.add(nxt)
         chains.append(chain)
+
+    seq_gaps: list[dict] = []
+    starts_mid_sequence: list[dict] = []
+    all_seqs = [r.seq for recs in verified.values() for r in recs]
+    baseline = min(all_seqs) if all_seqs else 0
+    for chain in chains:
+        # Only the first segment of a chain carries information: mid-chain
+        # segments are *expected* to begin above the baseline, since they
+        # follow their predecessor. A chain that begins above the observed
+        # minimum is a chain whose predecessor is gone.
+        first = verified.get(chain[0]) if chain else None
+        if first:
+            # The baseline is the observed minimum, not 0, because sequence
+            # numbers start at 1 and a pod's first segment legitimately does.
+            if first[0].seq > baseline:
+                starts_mid_sequence.append(
+                    {
+                        "segment": chain[0],
+                        "first_seq": first[0].seq,
+                        "baseline_seq": baseline,
+                        "missing_before": first[0].seq - baseline,
+                    }
+                )
+        flat = [r for name in chain for r in verified[name]]
+        for prev, cur in zip(flat, flat[1:], strict=False):
+            if cur.seq != prev.seq + 1:
+                seq_gaps.append(
+                    {
+                        "after_seq": prev.seq,
+                        "expected_seq": prev.seq + 1,
+                        "found_seq": cur.seq,
+                        "missing": max(0, cur.seq - prev.seq - 1),
+                    }
+                )
     return {
         "chains": chains,
         "records": sum(len(verified[n]) for chain in chains for n in chain),
         "errors": errors,
+        "seq_gaps": seq_gaps,
+        "starts_mid_sequence": starts_mid_sequence,
+        "complete": not errors and not seq_gaps and not starts_mid_sequence,
     }

@@ -24,17 +24,22 @@ def _pod_with_rotation(tmp_path, name, n, max_bytes=300):
 
 def test_linked_segments_order_into_one_chain(tmp_path):
     segs = _pod_with_rotation(tmp_path, "pod-a.jsonl", 8)
-    assert len(segs) == 2, "rotation should have sealed one segment"
+    # Rotation now numbers segments monotonically and retains every one. This
+    # asserted `len(segs) == 2` until the fix, with a comment reading
+    # "rotation keeps a single backup, so older generations are gone from
+    # disk" -- the test was pinning the data-loss bug in place rather than
+    # describing intended behaviour. At a 300-byte budget each record forces a
+    # rotation, so eight appends leave eight segments and no lost records.
+    assert len(segs) == 8, "rotation must retain every sealed segment"
 
     report = reconcile_segments(segs, KEY)
 
     assert report["errors"] == {}
     assert len(report["chains"]) == 1
     assert sorted(report["chains"][0]) == sorted(segs)
-    # rotation keeps a single backup, so older generations are gone from
-    # disk; reconcile must account for exactly what survives, no more.
     on_disk = sum(len(open(p).read().splitlines()) for p in segs)
-    assert report["records"] == on_disk >= 2
+    assert report["records"] == on_disk == 8, "no append may be dropped"
+    assert report["complete"] is True
 
 
 def test_unlinked_segments_stay_separate_chains(tmp_path):

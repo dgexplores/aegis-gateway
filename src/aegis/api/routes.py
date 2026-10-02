@@ -625,6 +625,11 @@ async def admin_audit(
         event=event,
         with_payload=include_payload,
     )
+    # The rows above come from the live file. `ledger` says how much history
+    # exists beyond it and whether that history is provably whole -- otherwise
+    # a reader has no way to tell a complete trail from one that lost a
+    # segment to a bad prune or a lost volume.
+    data["ledger"] = await asyncio.to_thread(gateway.audit_ledger.status)
     data["caller"] = caller.id
     data["scoped_to_tenant"] = scope_filter or None
     return data

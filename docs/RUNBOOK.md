@@ -172,9 +172,38 @@ Two normal causes, both expected:
   was not checked would be exactly the kind of quiet failure this product is
   built to avoid.
 
-To see the full history across replicas, `reconcile_segments()` orders the
-segments by head linkage. **It is not yet scheduled or wired into a running
-deployment** — see `docs/PRODUCTION-READINESS.md` item 1.1.
+To see whether the history you are looking at is *whole*, read the `ledger`
+block that `/admin/audit` returns alongside the rows:
+
+```bash
+curl -s localhost:8080/admin/audit -H "Authorization: Bearer $KEY" \
+  | python3 -c 'import json,sys; l=json.load(sys.stdin)["ledger"]; print(json.dumps({k:l[k] for k in ("segments","chains","longest_chain","records","complete","cached","age_s")}, indent=2))'
+```
+
+`complete: true` means every segment verified and the sequence numbers are
+contiguous — the trail has nothing missing. **`complete: false` is the signal to
+act**, and the block tells you which way it broke:
+
+| Field | Meaning when `complete` is false |
+| --- | --- |
+| `errors` | A segment could not be read or failed verification. Named by filename. |
+| `starts_mid_sequence` | A chain whose predecessor is gone — `missing_before` records are missing ahead of it. |
+| `seq_gaps` | A sequence break *inside* a chain: records missing between two verified ones. |
+
+Two things to know before you trust it:
+
+- **Multiple chains is normal.** Each replica writes its own chain, so a
+  fleet legitimately reports one chain per pod. A lost segment looks identical
+  to a second pod — the hash link breaks either way — which is why continuity
+  is proven from the sequence counter instead.
+- **`cached: true` means up to 30 seconds old.** Assembly hashes every record
+  in every segment, so it is cached rather than recomputed per request. After an
+  incident, re-read with `refresh=1` to force a fresh assembly.
+
+Assembly is still **not yet scheduled** — it happens when an operator reads
+`/admin/audit` rather than on a timer — and archived segments are not pulled
+back from S3 or sibling replicas automatically. See
+`docs/PRODUCTION-READINESS.md` item 1.1.
 
 ---
 

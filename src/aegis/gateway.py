@@ -22,7 +22,7 @@ from aegis.providers.registry import AllProvidersDown, build_registry, complete_
 from aegis.ratelimit import RateLimitExceeded, SlidingWindowLimiter
 from aegis.router import estimate_cost_usd
 from aegis.router import route as route_request
-from aegis.security.audit import AuditChain
+from aegis.security.audit import AuditChain, FleetLedger
 from aegis.security.auth import Authenticator
 from aegis.security.injection import InjectionReport, scan
 from aegis.security.pii import Vault, build_vault
@@ -125,6 +125,13 @@ class Gateway:
             encrypt_key=settings.audit_encrypt_key,
             s3_bucket=settings.audit_s3_bucket,
             s3_prefix=settings.audit_s3_prefix,
+            hmac_previous_keys=[k.strip() for k in (settings.audit_hmac_key_previous or "").split(",") if k.strip()],
+        )
+        # Assembles every segment of the ledger, not just the live file, so an
+        # operator can be told whether the history they are shown is whole.
+        self.audit_ledger = FleetLedger(
+            settings.audit_path,
+            settings.audit_hmac_key,
             hmac_previous_keys=[k.strip() for k in (settings.audit_hmac_key_previous or "").split(",") if k.strip()],
         )
         self._vault_key = settings.vault_hmac_key

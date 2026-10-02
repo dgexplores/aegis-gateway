@@ -240,3 +240,19 @@ def test_the_export_is_recorded_too(client_bearer):
     assert client_bearer.get("/admin/audit/export", params={"limit": 5}).status_code == 200
     after = client_bearer.get("/admin/audit", params={"limit": 500}).json()["count"]
     assert after > before, "an export left no trace"
+
+
+def test_audit_response_reports_ledger_coverage(client_bearer):
+    """An operator reading the trail must be able to see whether it is whole.
+
+    The returned rows come from the live file alone, so without a ledger block
+    there is no way to tell a complete trail from one that lost a segment to a
+    bad prune or a lost volume -- the same class of silent gap the reconciler
+    was written to close.
+    """
+    body = client_bearer.get("/admin/audit", params={"limit": 5}).json()
+    ledger = body.get("ledger")
+    assert ledger is not None, "audit response must carry ledger coverage"
+    for field in ("segments", "chains", "records", "complete", "per_segment"):
+        assert field in ledger, f"ledger is missing {field}"
+    assert ledger["complete"] is True, "a freshly written ledger should be whole"

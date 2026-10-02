@@ -60,7 +60,7 @@ storage.
 
 | # | Item | Gate |
 |---|---|---|
-| 1.1 | **M12 — one ledger, not one chain per pod.** *Partly closed*: segments, per-replica rotation, S3 archive and `reconcile_segments()` (which orders segments by head linkage and reports unlinked ones as separate chains rather than corruption) all exist and are tested. Not closed: no scheduler, no global sequence, and nothing calls the reconciler in production | A verifier reconstructs the global chain from a cold start on a schedule; a deliberate gap in sequence numbers is **detected**, not smoothed |
+| 1.1 | **M12 — one ledger, not one chain per pod.** *Closed for assembly and continuity detection.* Segments rotate monotonically, `discover_segments()` finds them, `FleetLedger` assembles them with a cache, and `/admin/audit` returns the result. Three real defects were fixed on the way: rotation wrote to a single fixed `.1` and unlinked it, so the second rotation silently destroyed the previous segment (60 appends left 2 records); the chain walk marked the segment *two* steps ahead, truncating every chain to 2 segments; and a lost segment was indistinguishable from a second pod, because both break the hash link identically. Continuity is now proven from the sequence counter. Still open: no periodic schedule (it assembles on read, cached 30s), no global sequence across pods, and no retrieval of segments from S3 or other replicas in a running process | A verifier reconstructs the global chain from a cold start on a schedule; a deliberate gap in sequence numbers is **detected**, not smoothed |
 | 1.2 | ~~**Unbounded log growth**~~ — *closed*: the chain rotates at `audit_max_bytes` (10MB default), carries `head` into the new file, and best-effort archives the rotated segment to S3. `M13` is also closed: `/readyz` uses the O(1) tail probe, not a full re-verify | **Still open:** rotation is size-triggered only, so a quiet-but-growing archive has no time-based compaction or retention |
 | 1.3 | ~~**Key rotation must not break verification**~~ — **closed this session.** `AEGIS_AUDIT_HMAC_KEY_PREVIOUS` accepts retired keys for verification while refusing to sign with them; the record format is unchanged so pre-rotation chains still verify byte-for-byte; reads report `signed_with` so a rotation window is observable. 9 tests, including that dropping a retired key makes its records unverifiable — which is the real operational constraint | Keep retired keys at least as long as you may need to prove something they signed |
 | 1.4 | **Clock skew.** Audit `ts` comes from the host clock | A skew beyond a threshold is *detected and reported*, not silently absorbed into the chain |
@@ -202,10 +202,13 @@ minimum, in order. Three of these are **done** and are marked.
    per (source, id), with the window cleared on a correct login.
 4. ~~**Prove key rotation**~~ — **done this session.** Retired keys verify
    without being able to sign, and the record format does not change.
-5. **Build the global ledger** — *partly done*: segments, S3 archive and the
-   reconciler exist. Still needed: a schedule, a global sequence, and something
-   that actually calls the reconciler in production. This is now the largest
-   code-side gap in the plan.
+5. **Build the global ledger** — *assembly and continuity detection are done*:
+   the ledger is now actually assembled and served on `/admin/audit`, and a
+   lost segment is proven lost rather than assumed to be a second pod. Three
+   defects were found and fixed doing it, including one that deleted records on
+   a schedule. Still needed: a periodic schedule rather than on-read assembly,
+   a sequence that is global across pods, and pulling archived segments back
+   from S3 or sibling replicas. This is now the largest code-side gap.
 6. **Run an independent pen test** — needs money and a stable target.
 7. **Resolve the erasure conflict** — before the first compliance conversation,
    not after.
