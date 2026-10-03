@@ -90,7 +90,11 @@ async def hammer(base: str, key: str, total: int, concurrency: int, payload: dic
     remaining = total
     lock = asyncio.Lock()
 
-    async with httpx.AsyncClient(base_url=base, timeout=30.0) as client:
+    # Default httpx pool caps at 100 connections: beyond that the harness
+    # queues against itself and the "collapse" is client-side, not server.
+    pool = max(concurrency, 100) + 50
+    limits = httpx.Limits(max_connections=pool, max_keepalive_connections=pool)
+    async with httpx.AsyncClient(base_url=base, timeout=30.0, limits=limits) as client:
 
         async def one(index: int) -> None:
             nonlocal remaining
