@@ -320,3 +320,40 @@ def test_reconciler_stops_cleanly_on_cancel():
         assert task.cancelled() or task.done()
 
     asyncio.run(drive())
+
+
+def test_probe_does_not_reread_the_whole_chain(tmp_path, monkeypatch):
+    """A liveness probe must stay O(1) as the ledger grows (M13).
+
+    Measured: probe holds at ~0.05ms from 100 to 10,000 records while a full
+    verify goes 0.38ms -> 31.7ms. A timing assertion would be flaky, so this
+    pins the mechanism instead -- the probe must not re-verify the chain.
+    """
+    base = _ledger(tmp_path, count=50, max_bytes=10**9)
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=10**9)
+
+    reloaded = []
+    monkeypatch.setattr(chain, "_load", lambda: reloaded.append(1))
+
+    ok, detail = chain.probe()
+    assert ok is True, detail
+    assert not reloaded, "probe re-read the whole chain; its cost grows with chain length"
+
+
+def test_probe_still_notices_a_corrupt_tail(tmp_path):
+    """Cheap must not mean blind: a broken tail has to fail the probe.
+
+    Constructed *before* the tamper, because `_load` at construction already
+    rejects a corrupt chain -- the point here is what an already-running
+    process reports once its file changes underneath it.
+    """
+    base = _ledger(tmp_path, count=6, max_bytes=10**9)
+    chain = AuditChain(path=base, hmac_key=KEY, max_bytes=10**9)
+
+    raw = base.read_text(encoding="utf-8").splitlines()
+    tampered = raw[-1].replace('"probe"', '"tampered"')
+    base.write_text("\n".join(raw[:-1] + [tampered]) + "\n", encoding="utf-8")
+
+    ok, detail = chain.probe()
+    assert ok is False, "a corrupt tail must fail the probe"
+    assert "corrupt" in detail

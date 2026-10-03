@@ -10,7 +10,7 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 504
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 506
 tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
 Kubernetes, Render) all boot. What remains is not correctness work: it is
 **eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
@@ -212,7 +212,7 @@ injection vectors (encoded, multi-turn, role-tag smuggling).
 | **M6** | `audit.append` fsyncs on the event loop; embedding providers use synchronous `httpx.post` inside async handlers | Throughput ceiling under concurrency. Partly mitigated (`asyncio.to_thread` on the audit path) but the embeddings call is still blocking. The fsync-per-record is load-bearing: a SIGKILL mid-request test confirms nothing is torn without it |
 | **H7** | `/metrics` is readable by any tenant and the series carry per-tenant labels | Cross-tenant disclosure. Tightening to `admin` breaks existing scrape configs, so it needs a deliberate rollout |
 | **M12** | *Partly closed.* Segments now assemble into one ledger with proven continuity, served on `/admin/audit`, reassembled on a 60s timer that logs at ERROR; each pod still writes its own chain, there is no sequence global across pods, and archived segments are not pulled back | A lost segment is now detected rather than looking like a second pod. Reconciling pods still needs archived segments pulled back and a cross-pod sequence |
-| **M13** | `/readyz` re-reads the whole audit file | Cost grows with chain length; a probe should not do full verification |
+| ~~**M13**~~ | **Closed.** `/readyz` calls `probe()`, which reads the tail record and does one HMAC instead of re-reading every line. Measured: flat at ~0.05ms from 100 to 10,000 records, while a full `verify()` goes 0.38ms → 31.7ms (609× at 10k). Regression test asserts the probe never re-verifies the chain | — |
 | **M10** | No stale-chunk policy for RAG | A re-ingested document's old chunks can linger |
 | **M4** | Injection false positives are measured now, but only against a hand-authored corpus | 200 prompts, 0 false positives, worst case 0.65 against a 0.70 block line. Real traffic would be a stronger sample, and a benign prompt at 0.68 would still be refused |
 | **H1 / H2** | The audit log stores hashes by default; payloads only when `AEGIS_AUDIT_ENCRYPT_KEY` is set | Documented explicitly in the README, so the claim matches the artifact — but "prove what the AI said" requires setting the key |
@@ -263,7 +263,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 504 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 506 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```
