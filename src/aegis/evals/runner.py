@@ -64,11 +64,13 @@ async def run_evals(cases: list[GoldenCase], ask: AskFn, judge: Judge | None = N
         try:
             answer, blocked, citations = await ask(case.question)
         except Exception as exc:  # transport failure counts as failure, never crash the run
-            card.results.append(CaseResult(
-                verdict=Verdict(case.id, False, {}, f"ask error: {exc}"),
-                latency_ms=(time.perf_counter() - start) * 1000,
-                answer_preview="<error>",
-            ))
+            card.results.append(
+                CaseResult(
+                    verdict=Verdict(case.id, False, {}, f"ask error: {exc}"),
+                    latency_ms=(time.perf_counter() - start) * 1000,
+                    answer_preview="<error>",
+                )
+            )
             continue
         latency = (time.perf_counter() - start) * 1000
         verdict = judge.evaluate(case, answer, blocked, citations)

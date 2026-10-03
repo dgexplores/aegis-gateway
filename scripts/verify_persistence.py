@@ -48,9 +48,7 @@ def main() -> int:
     try:
         store.ensure_schema(conn)
         conn.close()
-        chunks = chunk_document(
-            "Refund window is 30 days with receipt. " * 4, "policy.md"
-        )
+        chunks = chunk_document("Refund window is 30 days with receipt. " * 4, "policy.md")
         store.save(tenant, chunks)
         stores: dict = {}
         added = store.bootstrap(stores)

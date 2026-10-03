@@ -72,8 +72,7 @@ def admin_headers():
 def test_chat_returns_what_the_provider_received(client):
     r = client.post(
         "/v1/chat",
-        json={"messages": [{"role": "user",
-                            "content": "email bob@corp.example about the leave policy"}]},
+        json={"messages": [{"role": "user", "content": "email bob@corp.example about the leave policy"}]},
         headers=chat_headers(),
     )
     assert r.status_code == 200
@@ -89,9 +88,7 @@ def test_chat_returns_what_the_provider_received(client):
     # search cannot test this: the *answer* legitimately carries the raw address
     # back to the caller who owns it. "PII appears in the response" therefore
     # does NOT mean masking failed — only its appearance in `outbound` does.
-    assert "bob@corp.example" in body["answer"], (
-        "the caller's own PII should be restored to them in the answer"
-    )
+    assert "bob@corp.example" in body["answer"], "the caller's own PII should be restored to them in the answer"
 
 
 def test_outbound_preview_is_absent_in_production(tmp_path, monkeypatch):
@@ -103,28 +100,28 @@ def test_outbound_preview_is_absent_in_production(tmp_path, monkeypatch):
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("aegis.gateway._connect_redis", lambda url, *, strict: None)
-    settings = make_settings(tmp_path, env="production",
-                             redis_url="redis://stub:6379/0",
-                             audit_encrypt_key="")
+    settings = make_settings(tmp_path, env="production", redis_url="redis://stub:6379/0", audit_encrypt_key="")
     gw = asyncio.run(build_gateway(settings))
-    result = asyncio.run(gw.handle_chat(
-        "acme", [{"role": "user", "content": "hi"}], debug=False
-    ))
+    result = asyncio.run(gw.handle_chat("acme", [{"role": "user", "content": "hi"}], debug=False))
     assert result["outbound"] is None
 
 
 def test_outbound_preview_shows_retrieved_document_was_scrubbed(client):
     """Regression: PII inside an indexed document used to reach the provider in
     the clear while the API still reported `pii_masked: []`."""
-    client.post("/v1/rag/ingest",
-                json={"text": ("Escalation contacts are listed below. "
-                               "The on-call engineer is reachable at oncall@corp.example "
-                               "or on card 4111111111111111 during incidents."),
-                      "source": "runbook-cap.md"},
-                headers=chat_headers())
-    r = client.post("/v1/rag/query",
-                    json={"question": "Who is the on-call engineer?"},
-                    headers=chat_headers())
+    client.post(
+        "/v1/rag/ingest",
+        json={
+            "text": (
+                "Escalation contacts are listed below. "
+                "The on-call engineer is reachable at oncall@corp.example "
+                "or on card 4111111111111111 during incidents."
+            ),
+            "source": "runbook-cap.md",
+        },
+        headers=chat_headers(),
+    )
+    r = client.post("/v1/rag/query", json={"question": "Who is the on-call engineer?"}, headers=chat_headers())
     assert r.status_code == 200
     body = r.json()
     assert "EMAIL" in body["pii_masked"]
@@ -136,14 +133,19 @@ def test_outbound_preview_shows_retrieved_document_was_scrubbed(client):
 def test_injection_hidden_in_a_document_is_caught_at_retrieval(client):
     """The retrieved document arrives as a `system` turn. Scanning only `user`
     turns — the original bug — made this a straight bypass."""
-    client.post("/v1/rag/ingest",
-                json={"text": (f"Quarterly maintenance notes for the platform. {ATTACK}. "
-                               "Contact the platform team with questions."),
-                      "source": "poisoned-cap.md"},
-                headers=chat_headers())
-    r = client.post("/v1/rag/query",
-                    json={"question": "What are the quarterly maintenance notes?"},
-                    headers=chat_headers())
+    client.post(
+        "/v1/rag/ingest",
+        json={
+            "text": (
+                f"Quarterly maintenance notes for the platform. {ATTACK}. Contact the platform team with questions."
+            ),
+            "source": "poisoned-cap.md",
+        },
+        headers=chat_headers(),
+    )
+    r = client.post(
+        "/v1/rag/query", json={"question": "What are the quarterly maintenance notes?"}, headers=chat_headers()
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["blocked"] is True
@@ -153,17 +155,16 @@ def test_injection_hidden_in_a_document_is_caught_at_retrieval(client):
 
 
 def test_chat_exposes_cost_and_latency_for_the_evidence_strip(client):
-    r = client.post("/v1/chat",
-                    json={"messages": [{"role": "user", "content": "evidence probe"}]},
-                    headers=chat_headers())
+    r = client.post(
+        "/v1/chat", json={"messages": [{"role": "user", "content": "evidence probe"}]}, headers=chat_headers()
+    )
     body = r.json()
-    for field in ("model", "provider", "usage", "output_tokens", "latency_ms",
-                  "routing", "audit_seq", "cached"):
+    for field in ("model", "provider", "usage", "output_tokens", "latency_ms", "routing", "audit_seq", "cached"):
         assert field in body, f"missing {field}"
     assert body["cached"] is False
-    second = client.post("/v1/chat",
-                         json={"messages": [{"role": "user", "content": "evidence probe"}]},
-                         headers=chat_headers())
+    second = client.post(
+        "/v1/chat", json={"messages": [{"role": "user", "content": "evidence probe"}]}, headers=chat_headers()
+    )
     assert second.json()["cached"] is True
 
 
@@ -175,8 +176,7 @@ def test_audit_read_is_open_to_self_but_closed_across_tenants(client):
     tenant's. That is the useful boundary — requiring global `admin` just to see
     your own requests would make the evidence useless to the people it protects.
     """
-    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "self read"}]},
-                headers=chat_headers())
+    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "self read"}]}, headers=chat_headers())
     own = client.get("/admin/audit", headers=chat_headers())
     assert own.status_code == 200
     assert all(r["tenant"] == "acme" for r in own.json()["records"])
@@ -190,9 +190,11 @@ def test_audit_read_is_open_to_self_but_closed_across_tenants(client):
 
 
 def test_audit_read_returns_correlated_verified_records(client):
-    r = client.post("/v1/chat",
-                    json={"messages": [{"role": "user", "content": "correlate me"}]},
-                    headers={**chat_headers(), "x-request-id": "corr-cap-1"})
+    r = client.post(
+        "/v1/chat",
+        json={"messages": [{"role": "user", "content": "correlate me"}]},
+        headers={**chat_headers(), "x-request-id": "corr-cap-1"},
+    )
     seq = r.json()["audit_seq"]
 
     data = client.get("/admin/audit?limit=20", headers=admin_headers()).json()
@@ -206,8 +208,7 @@ def test_audit_read_returns_correlated_verified_records(client):
 
 
 def test_non_admin_caller_is_pinned_to_its_own_records(client):
-    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "mine"}]},
-                headers=chat_headers())
+    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "mine"}]}, headers=chat_headers())
 
     own = client.get("/admin/audit", headers=chat_headers())
     assert own.status_code == 200
@@ -220,19 +221,15 @@ def test_non_admin_caller_is_pinned_to_its_own_records(client):
 
 
 def test_audit_read_filters_by_event(client):
-    client.post("/v1/chat",
-                json={"messages": [{"role": "user", "content": ATTACK}]},
-                headers=chat_headers())
-    data = client.get("/admin/audit?event=injection_blocked",
-                      headers=admin_headers()).json()
+    client.post("/v1/chat", json={"messages": [{"role": "user", "content": ATTACK}]}, headers=chat_headers())
+    data = client.get("/admin/audit?event=injection_blocked", headers=admin_headers()).json()
     assert data["count"] >= 1
     assert all(r["event"] == "injection_blocked" for r in data["records"])
     assert data["records"][-1]["payload"]["band"] == "hard"
 
 
 def test_audit_export_is_downloadable_ndjson(client):
-    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "export me"}]},
-                headers=chat_headers())
+    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "export me"}]}, headers=chat_headers())
     r = client.get("/admin/audit/export", headers=admin_headers())
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/x-ndjson")
@@ -247,8 +244,7 @@ def test_audit_export_requires_admin(client):
 
 
 def test_audit_payloads_are_readable_and_digest_checked(client):
-    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "payload please"}]},
-                headers=chat_headers())
+    client.post("/v1/chat", json={"messages": [{"role": "user", "content": "payload please"}]}, headers=chat_headers())
     data = client.get("/admin/audit?limit=5", headers=admin_headers()).json()
 
     assert data["payload_available"] is True
@@ -267,8 +263,7 @@ def test_without_an_encrypt_key_the_trail_is_hash_only(tmp_path, monkeypatch):
     STATE["gateway"] = asyncio.run(build_gateway(settings))
     STATE["authenticator"] = Authenticator(settings)
     with TestClient(app) as c:
-        c.post("/v1/chat", json={"messages": [{"role": "user", "content": "hash only"}]},
-               headers=chat_headers())
+        c.post("/v1/chat", json={"messages": [{"role": "user", "content": "hash only"}]}, headers=chat_headers())
         data = c.get("/admin/audit?limit=5", headers=admin_headers()).json()
 
     assert data["payload_available"] is False
@@ -281,10 +276,11 @@ def test_without_an_encrypt_key_the_trail_is_hash_only(tmp_path, monkeypatch):
 
 
 def test_documents_are_listed_for_the_tenant(client):
-    client.post("/v1/rag/ingest",
-                json={"text": "Refunds are issued within thirty days of purchase.",
-                      "source": "refunds-cap.md"},
-                headers=chat_headers())
+    client.post(
+        "/v1/rag/ingest",
+        json={"text": "Refunds are issued within thirty days of purchase.", "source": "refunds-cap.md"},
+        headers=chat_headers(),
+    )
     body = client.get("/v1/rag/documents", headers=chat_headers()).json()
     assert body["tenant"] == "acme"
     entry = next(d for d in body["documents"] if d["source"] == "refunds-cap.md")
@@ -294,12 +290,12 @@ def test_documents_are_listed_for_the_tenant(client):
 
 
 def test_ingest_and_delete_are_audited(client):
-    client.post("/v1/rag/ingest",
-                json={"text": "Travel is booked through the corporate portal.",
-                      "source": "travel-cap.md"},
-                headers=chat_headers())
-    deleted = client.post("/v1/rag/delete", json={"source": "travel-cap.md"},
-                          headers=chat_headers()).json()
+    client.post(
+        "/v1/rag/ingest",
+        json={"text": "Travel is booked through the corporate portal.", "source": "travel-cap.md"},
+        headers=chat_headers(),
+    )
+    deleted = client.post("/v1/rag/delete", json={"source": "travel-cap.md"}, headers=chat_headers()).json()
     assert deleted["chunks_removed"] >= 1
     assert deleted["audit_seq"] >= 1
 
@@ -311,21 +307,24 @@ def test_ingest_and_delete_are_audited(client):
 
 
 def test_deleted_document_stops_being_retrievable(client):
-    client.post("/v1/rag/ingest",
-                json={"text": ("The warranty period for the Falcon widget is thirty-six months "
-                               "from the delivery date."),
-                      "source": "warranty-cap.md"},
-                headers=chat_headers())
-    before = client.post("/v1/rag/query",
-                         json={"question": "What is the Falcon widget warranty period?"},
-                         headers=chat_headers()).json()
+    client.post(
+        "/v1/rag/ingest",
+        json={
+            "text": ("The warranty period for the Falcon widget is thirty-six months from the delivery date."),
+            "source": "warranty-cap.md",
+        },
+        headers=chat_headers(),
+    )
+    before = client.post(
+        "/v1/rag/query", json={"question": "What is the Falcon widget warranty period?"}, headers=chat_headers()
+    ).json()
     assert any(c["source"] == "warranty-cap.md" for c in before["citations"])
 
     client.post("/v1/rag/delete", json={"source": "warranty-cap.md"}, headers=chat_headers())
 
-    after = client.post("/v1/rag/query",
-                        json={"question": "What is the Falcon widget warranty period?"},
-                        headers=chat_headers()).json()
+    after = client.post(
+        "/v1/rag/query", json={"question": "What is the Falcon widget warranty period?"}, headers=chat_headers()
+    ).json()
     assert not any(c["source"] == "warranty-cap.md" for c in after["citations"])
 
     listed = client.get("/v1/rag/documents", headers=chat_headers()).json()
@@ -338,5 +337,4 @@ def test_document_endpoints_require_rag_scope(client, tmp_path):
     STATE["authenticator"] = Authenticator(settings)
     headers = {"Authorization": "Bearer sk-plain"}
     assert client.get("/v1/rag/documents", headers=headers).status_code == 403
-    assert client.post("/v1/rag/delete", json={"source": "x"},
-                       headers=headers).status_code == 403
+    assert client.post("/v1/rag/delete", json={"source": "x"}, headers=headers).status_code == 403

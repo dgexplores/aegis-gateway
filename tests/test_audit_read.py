@@ -125,10 +125,20 @@ def test_pre_request_id_chains_still_verify(tmp_path):
     legacy = AuditChain(KEY, path=str(path))
     ts = 1_700_000_000.0
     entry = legacy._entry_hash(1, ts, "acme", "chat_completed", "deadbeef", "GENESIS")
-    path.write_text(json.dumps({
-        "seq": 1, "ts": ts, "tenant": "acme", "event": "chat_completed",
-        "payload_sha256": "deadbeef", "prev_hash": "GENESIS", "entry_hash": entry,
-    }) + "\n")
+    path.write_text(
+        json.dumps(
+            {
+                "seq": 1,
+                "ts": ts,
+                "tenant": "acme",
+                "event": "chat_completed",
+                "payload_sha256": "deadbeef",
+                "prev_hash": "GENESIS",
+                "entry_hash": entry,
+            }
+        )
+        + "\n"
+    )
 
     data = AuditChain(KEY, path=str(path)).tail_records(limit=1)
     assert data["records"][0]["sig_ok"] is True
@@ -161,9 +171,7 @@ def test_swapped_payload_cipher_is_caught(tmp_path):
     path.write_text("\n".join(lines) + "\n")
 
     data = reader_for(path, encrypt_key="evidence-key").tail_records(limit=2)
-    assert data["records"][0]["payload_ok"] is False, (
-        "sha256(decrypted) must equal the signed payload_sha256"
-    )
+    assert data["records"][0]["payload_ok"] is False, "sha256(decrypted) must equal the signed payload_sha256"
     assert data["records"][1]["payload_ok"] is True
 
 

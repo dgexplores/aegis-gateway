@@ -23,9 +23,9 @@ class TTLCache:
         It is a required positional argument, not a defaulted one: omitting it
         meant a `max_tokens=10` request could be served a cached 4,000-token
         answer (and vice versa), because the answer length depends on it."""
-        material = json.dumps({"t": tenant, "m": model, "msgs": messages,
-                               "mt": max_tokens},
-                              sort_keys=True, separators=(",", ":"))
+        material = json.dumps(
+            {"t": tenant, "m": model, "msgs": messages, "mt": max_tokens}, sort_keys=True, separators=(",", ":")
+        )
         return hashlib.sha256(material.encode()).hexdigest()
 
     def get(self, key: str) -> Any | None:

@@ -17,3 +17,6 @@ audit.jsonl.1
 # scratch from local verification runs
 .pytest_tmp/
 .livetest/
+
+# playwright-mcp scratch (screenshots, console logs, snapshots)
+.playwright-mcp/

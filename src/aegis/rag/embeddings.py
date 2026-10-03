@@ -51,8 +51,7 @@ class GMIEmbedProvider:
     def __init__(self, model: str = "", api_key: str = "", base_url: str = "") -> None:
         self.model = model or os.environ.get("GMI_EMBED_MODEL", "Qwen/Qwen3-Embedding-8B")
         self.api_key = api_key or os.environ.get("GMI_API_KEY", "")
-        base = (base_url or os.environ.get("GMI_BASE_URL",
-                "https://api.gmi-serving.com/v1")).rstrip("/")
+        base = (base_url or os.environ.get("GMI_BASE_URL", "https://api.gmi-serving.com/v1")).rstrip("/")
         self.api_url = f"{base}/embeddings"
 
     @property
@@ -64,10 +63,12 @@ class GMIEmbedProvider:
 
         if not self.available:
             raise RuntimeError("GMI_API_KEY not set")
-        resp = httpx.post(self.api_url,
-                          json={"model": self.model, "input": texts},
-                          headers={"Authorization": f"Bearer {self.api_key}"},
-                          timeout=30.0)
+        resp = httpx.post(
+            self.api_url,
+            json={"model": self.model, "input": texts},
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=30.0,
+        )
         resp.raise_for_status()
         items = sorted(resp.json()["data"], key=lambda d: d["index"])
         return [l2norm(d["embedding"]) for d in items]
@@ -79,9 +80,11 @@ class GMIEmbedProvider:
         if not self.available:
             raise RuntimeError("GMI_API_KEY not set")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(self.api_url,
-                                     json={"model": self.model, "input": texts},
-                                     headers={"Authorization": f"Bearer {self.api_key}"})
+            resp = await client.post(
+                self.api_url,
+                json={"model": self.model, "input": texts},
+                headers={"Authorization": f"Bearer {self.api_key}"},
+            )
             resp.raise_for_status()
             items = sorted(resp.json()["data"], key=lambda d: d["index"])
             return [l2norm(d["embedding"]) for d in items]
@@ -103,10 +106,12 @@ class OpenAIEmbedProvider:
 
         if not self.available:
             raise RuntimeError("OPENAI_API_KEY not set")
-        resp = httpx.post("https://api.openai.com/v1/embeddings",
-                          json={"model": self.model, "input": texts},
-                          headers={"Authorization": f"Bearer {self.api_key}"},
-                          timeout=30.0)
+        resp = httpx.post(
+            "https://api.openai.com/v1/embeddings",
+            json={"model": self.model, "input": texts},
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=30.0,
+        )
         resp.raise_for_status()
         items = sorted(resp.json()["data"], key=lambda d: d["index"])
         return [l2norm(d["embedding"]) for d in items]
@@ -118,9 +123,11 @@ class OpenAIEmbedProvider:
         if not self.available:
             raise RuntimeError("OPENAI_API_KEY not set")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post("https://api.openai.com/v1/embeddings",
-                                     json={"model": self.model, "input": texts},
-                                     headers={"Authorization": f"Bearer {self.api_key}"})
+            resp = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                json={"model": self.model, "input": texts},
+                headers={"Authorization": f"Bearer {self.api_key}"},
+            )
             resp.raise_for_status()
             items = sorted(resp.json()["data"], key=lambda d: d["index"])
             return [l2norm(d["embedding"]) for d in items]

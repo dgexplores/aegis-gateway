@@ -90,12 +90,19 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
 - ADR-4 echo fallback always last: guarantees liveness (never 503 on valid
   input when fallback exists), keeps evals/red-team deterministic.
 - ADR-7 multi-pod ledger reconciliation (M12): each pod keeps its own chain
-  (no single writer to become a single point of failure). Rotation uploads
-  the sealed segment to `AEGIS_AUDIT_S3_BUCKET`. To reconcile: collect every
-  segment (S3 objects + live tails via `/admin/audit/export`), verify each
-  with `verify()`, then order segments by head linkage (segment B's first
-  `prev_hash` equals segment A's last `entry_hash`). Segments that share no
-  head link belong to different pods — that is expected, not corruption.
+  (no single writer to become a single point of failure). Rotation seals a
+  monotonically numbered segment — never overwriting an earlier one — and
+  uploads it to `AEGIS_AUDIT_S3_BUCKET` (requires the `archive` extra -- boto3). `FleetLedger` assembles every segment
+  on demand, orders them by head linkage (segment B's first `prev_hash` equals
+  segment A's last `entry_hash`), and proves continuity from the sequence
+  counter, because a broken hash link is indistinguishable from a second pod
+  writing its own chain. `complete` is the field to gate on; `/admin/audit`
+  returns it beside the rows.
+- ADR-7a retention: because segments are retained, the directory would grow
+  without bound. `AEGIS_AUDIT_KEEP_SEGMENTS` prunes the oldest, but **only
+  once they are confirmed in object storage** — an unarchived segment is kept
+  and counted in a warning, because retention must never be the reason records
+  disappear. The default (0) keeps everything.
   Within one pod the order is total; across pods it is partial (merge by `ts`
   for a timeline view, never for verification).
 

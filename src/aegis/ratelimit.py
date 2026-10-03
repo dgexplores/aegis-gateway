@@ -57,6 +57,21 @@ class SlidingWindowLimiter:
         pipe.execute()
         return RateLimitResult(True, self.limit - count - 1)
 
+    def reset(self, key: str) -> None:
+        """Clear a window.
+
+        Used when an attempt *succeeds*: a correct password must not spend the
+        budget of whoever is genuinely signing in, and a stale window would
+        otherwise lock out an operator who fumbled once and then got it right.
+        """
+        if self.redis is not None:
+            try:
+                self.redis.delete(f"rl:{key}")
+                return
+            except Exception:  # Redis down — fall through to the local view
+                pass
+        self._windows.pop(key, None)
+
     def _check_memory(self, key: str, now: float, window: float) -> RateLimitResult:
         q = self._windows[key]
         while q and q[0] <= now - window:

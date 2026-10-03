@@ -37,6 +37,7 @@ def hl(text: str) -> str:
 
 # --- verdict helpers ---------------------------------------------------------
 
+
 def band_of(score: float) -> tuple[str, str]:
     if score >= 0.7:
         return "hard-block", "bad"
@@ -126,9 +127,9 @@ audit_rows = "".join(
     f'<tr><td class="num">{r["seq"]}</td>'
     f'<td class="mono small">{esc(r["event"])}</td>'
     f'<td class="mono small dim">{esc(r.get("request_id") or "—")}</td>'
-    f'<td>{chip("sig ok" if r["sig_ok"] else "sig BAD", "good" if r["sig_ok"] else "bad")}</td>'
-    f'<td>{chip("link ok" if r["link_ok"] else "link unknown", "good" if r["link_ok"] else "muted")}</td>'
-    f'<td>{chip("payload ok" if r["payload_ok"] else "payload —", "good" if r["payload_ok"] else "muted")}</td>'
+    f"<td>{chip('sig ok' if r['sig_ok'] else 'sig BAD', 'good' if r['sig_ok'] else 'bad')}</td>"
+    f"<td>{chip('link ok' if r['link_ok'] else 'link unknown', 'good' if r['link_ok'] else 'muted')}</td>"
+    f"<td>{chip('payload ok' if r['payload_ok'] else 'payload —', 'good' if r['payload_ok'] else 'muted')}</td>"
     f'<td class="mono small dim">{esc(r["payload_sha256"][:16])}…</td></tr>'
     for r in recs
 )

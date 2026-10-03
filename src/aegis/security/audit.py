@@ -25,6 +25,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -144,14 +145,35 @@ def archive_to_s3(path: Path, bucket: str, prefix: str = "aegis-audit/") -> str 
 
 
 class AuditChain:
-    def __init__(self, hmac_key: str, path: str = "audit.jsonl", max_bytes: int = 10_000_000,
-                 encrypt_key: str = "", s3_bucket: str = "", s3_prefix: str = "aegis-audit/") -> None:
-        self._key = hmac_key.encode()
+    def __init__(
+        self,
+        hmac_key: str,
+        path: str = "audit.jsonl",
+        max_bytes: int = 10_000_000,
+        encrypt_key: str = "",
+        s3_bucket: str = "",
+        s3_prefix: str = "aegis-audit/",
+        keep_segments: int = 0,
+        hmac_previous_keys: Sequence[str] = (),
+    ) -> None:
+        # The signing key is `_keys[0]`. The rest are *accepted* for verification
+        # only, and exist so a rotation does not invalidate the records the old
+        # key signed. See `hmac_previous_keys` on the module for the rotation
+        # procedure and what dropping a key costs.
+        self._keys: list[bytes] = [hmac_key.encode()]
+        for extra in hmac_previous_keys:
+            if extra and extra != hmac_key and extra.encode() not in self._keys:
+                self._keys.append(extra.encode())
+        self._key = self._keys[0]
         self.path = Path(path)
+        self._segment_no = self._highest_segment_on_disk() + 1
         self.max_bytes = max_bytes
         self.encrypt_key = encrypt_key
         self.s3_bucket = s3_bucket
         self.s3_prefix = s3_prefix
+        self.keep_segments = keep_segments
+        # Only segments confirmed in object storage may ever be pruned.
+        self._archived: set[str] = set()
         self.seq = 0
         self.head = "GENESIS"
         self._thread_lock = threading.Lock()
@@ -212,14 +234,52 @@ class AuditChain:
 
     # -- internals ----------------------------------------------------------
 
-    def _entry_hash(self, seq: int, ts: float, tenant: str, event: str,
-                    payload_sha256: str, prev_hash: str, request_id: str = "") -> str:
+    def _entry_hash(
+        self, seq: int, ts: float, tenant: str, event: str, payload_sha256: str, prev_hash: str, request_id: str = ""
+    ) -> str:
         """Signed material. `request_id` is appended only when non-empty so
         pre-existing records (which lack the field) still verify."""
         material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
         if request_id:
             material = f"{material}|{request_id}"
         return hmac.new(self._key, material.encode(), hashlib.sha256).hexdigest()
+
+    def _entry_hash_under(
+        self,
+        key: bytes,
+        seq: int,
+        ts: float,
+        tenant: str,
+        event: str,
+        payload_sha256: str,
+        prev_hash: str,
+        request_id: str = "",
+    ) -> str:
+        material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
+        if request_id:
+            material = f"{material}|{request_id}"
+        return hmac.new(key, material.encode(), hashlib.sha256).hexdigest()
+
+    def _verify_entry(self, rec: "AuditRecord") -> tuple[bool, int]:
+        """Does this record's signature match under any accepted key?
+
+        Returns ``(ok, key_slot)``. The slot is 0 for the current key and 1..n
+        for the previous keys, so a caller can report *which* key a record was
+        signed under — which is what tells an operator whether a rotation window
+        is still open.
+
+        Every candidate is compared even after a match, so the time does not
+        depend on which key matched. With one key this is identical work to
+        before, which matters because this is on the boot path.
+        """
+        matched = -1
+        for slot, key in enumerate(self._keys):
+            expected = self._entry_hash_under(
+                key, rec.seq, rec.ts, rec.tenant, rec.event, rec.payload_sha256, rec.prev_hash, rec.request_id
+            )
+            if hmac.compare_digest(expected, rec.entry_hash):
+                matched = slot
+        return (matched >= 0), matched
 
     def _load(self) -> None:
         if not self.path.exists():
@@ -236,9 +296,8 @@ class AuditChain:
                 raw.setdefault("payload_alg", "none")
                 raw.setdefault("request_id", "")
                 rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
-                expected = self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                            rec.payload_sha256, rec.prev_hash, rec.request_id)
-                if not hmac.compare_digest(expected, rec.entry_hash):
+                ok, _slot = self._verify_entry(rec)
+                if not ok:
                     raise AuditError(f"audit chain corrupt at seq={rec.seq}")
                 if last is not None and rec.prev_hash != last.entry_hash:
                     raise AuditError(f"audit chain broken linkage at seq={rec.seq}")
@@ -248,6 +307,74 @@ class AuditChain:
             self.head = last.entry_hash
 
     # -- public ---------------------------------------------------------------
+
+    def _next_segment_path(self) -> Path:
+        """First unused monotonically numbered segment path.
+
+        Numbering only ever increases. An earlier version rotated to a single
+        fixed ``.1`` backup and unlinked it first, so the second rotation
+        silently destroyed the previous segment -- 60 appends at a 200-byte
+        budget left 2 records on disk. An audit trail that deletes itself on a
+        schedule is worse than no audit trail, because it still looks healthy.
+
+        Cached because rotation runs on the request path under the exclusive
+        lock: stat-ing every candidate each time made a long-lived process
+        quadratic in its own segment count. The counter is re-derived from disk
+        when a candidate is unexpectedly taken, which covers a restart or a
+        restore that added segments underneath us.
+        """
+        for _ in range(2):
+            candidate = self.path.with_suffix(self.path.suffix + f".{self._segment_no}")
+            if not candidate.exists():
+                self._segment_no += 1
+                return candidate
+            self._segment_no = self._highest_segment_on_disk() + 1
+        candidate = self.path.with_suffix(self.path.suffix + f".{self._segment_no}")
+        self._segment_no += 1
+        return candidate
+
+    def _prune_archived(self) -> None:
+        """Drop the oldest segments once they are provably in object storage.
+
+        Segments are now retained rather than overwritten, which turns the
+        previous silent data loss into unbounded disk growth -- a real risk on a
+        busy gateway, but only fixable by deletion, which is what caused the
+        original bug. So deletion is gated on the segment having been uploaded:
+        a segment that failed to archive, or was written while no bucket was
+        configured, is kept and counted in the warning. Retention can never be
+        the reason records disappear.
+        """
+        if self.keep_segments <= 0:
+            return
+        on_disk = [p.name for p in discover_segments(self.path) if p.name != self.path.name]
+        if len(on_disk) <= self.keep_segments:
+            return
+        surplus = len(on_disk) - self.keep_segments
+        removable = [name for name in sorted(on_disk, key=_segment_sort_key) if name in self._archived]
+        for name in removable[:surplus]:
+            try:
+                self.path.with_name(name).unlink()
+                self._archived.discard(name)
+                log.info("audit pruned %s (archived, over keep=%d)", name, self.keep_segments)
+            except OSError:
+                continue
+        kept = [n for n in on_disk if n not in removable[:surplus]]
+        if len(kept) > self.keep_segments:
+            log.warning(
+                "audit retention is %d segments over keep=%d: they are not archived, so they "
+                "are being kept. Set AEGIS_AUDIT_S3_BUCKET or the directory will grow without bound.",
+                len(kept) - self.keep_segments,
+                self.keep_segments,
+            )
+
+    def _highest_segment_on_disk(self) -> int:
+        highest = 0
+        prefix = self.path.name + "."
+        for entry in self.path.parent.glob(self.path.name + ".*"):
+            suffix = entry.name[len(prefix) :]
+            if suffix.isdigit():
+                highest = max(highest, int(suffix))
+        return highest
 
     def _maybe_rotate(self) -> None:
         """Rotate when over budget, carrying head into the new file.
@@ -259,18 +386,17 @@ class AuditChain:
         """
         try:
             if self.path.exists() and self.path.stat().st_size >= self.max_bytes:
-                backup = self.path.with_suffix(self.path.suffix + ".1")
-                if backup.exists():
-                    backup.unlink()
+                backup = self._next_segment_path()
                 self.path.rename(backup)
                 uri = archive_to_s3(backup, self.s3_bucket, self.s3_prefix)
                 if uri:
+                    self._archived.add(backup.name)
                     log.info("audit rotated, archived %s", uri)
+                self._prune_archived()
         except OSError:
             pass
 
-    def append(self, tenant: str, event: str, payload: dict,
-               request_id: str = "") -> AuditRecord:
+    def append(self, tenant: str, event: str, payload: dict, request_id: str = "") -> AuditRecord:
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
@@ -281,8 +407,7 @@ class AuditChain:
             self._maybe_rotate()
             ts = time.time()
             self.seq += 1
-            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256,
-                                         self.head, request_id)
+            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id)
             record = AuditRecord(
                 seq=self.seq,
                 ts=ts,
@@ -325,10 +450,8 @@ class AuditChain:
                 tail = self._read_tail()
                 if tail is None:
                     return True, "chain empty, ready"
-                expected = self._entry_hash(tail.seq, tail.ts, tail.tenant,
-                                            tail.event, tail.payload_sha256,
-                                            tail.prev_hash, tail.request_id)
-                if not hmac.compare_digest(expected, tail.entry_hash):
+                ok, _slot = self._verify_entry(tail)
+                if not ok:
                     return False, f"audit tail corrupt at seq={tail.seq}"
                 return True, f"tail ok, head={tail.entry_hash[:12]}…, length={tail.seq}"
         except (OSError, AuditError) as exc:
@@ -372,8 +495,7 @@ class AuditChain:
         lines.reverse()
         return lines, pos == 0
 
-    def tail_records(self, limit: int = 50, tenant: str = "", event: str = "",
-                     with_payload: bool = True) -> dict:
+    def tail_records(self, limit: int = 50, tenant: str = "", event: str = "", with_payload: bool = True) -> dict:
         """Newest-first-selected evidence, with every signature re-verified.
 
         Each returned record carries:
@@ -404,22 +526,15 @@ class AuditChain:
                 raw.setdefault("payload_enc", None)
                 raw.setdefault("payload_alg", "none")
                 raw.setdefault("request_id", "")
-                parsed.append(
-                    AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
-                )
+                parsed.append(AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__}))
             except (json.JSONDecodeError, KeyError, TypeError) as exc:
                 # A corrupt line is evidence too — surface it rather than skip.
-                malformed.append({"error": f"{type(exc).__name__}: {exc}",
-                                  "line": line[:200]})
+                malformed.append({"error": f"{type(exc).__name__}: {exc}", "line": line[:200]})
 
         rows: list[dict] = []
         prev: AuditRecord | None = None
         for rec in parsed:
-            sig_ok = hmac.compare_digest(
-                rec.entry_hash,
-                self._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                 rec.payload_sha256, rec.prev_hash, rec.request_id),
-            )
+            sig_ok, key_slot = self._verify_entry(rec)
             if prev is None:
                 link_ok: bool | None = rec.prev_hash == "GENESIS" if reached_start else None
             else:
@@ -436,20 +551,23 @@ class AuditChain:
                     payload = {"error": f"undecryptable: {type(exc).__name__}"}
                     payload_ok = False
 
-            rows.append({
-                "seq": rec.seq,
-                "ts": rec.ts,
-                "tenant": rec.tenant,
-                "event": rec.event,
-                "request_id": rec.request_id,
-                "payload_sha256": rec.payload_sha256,
-                "entry_hash": rec.entry_hash,
-                "prev_hash": rec.prev_hash,
-                "sig_ok": sig_ok,
-                "link_ok": link_ok,
-                "payload": payload,
-                "payload_ok": payload_ok,
-            })
+            rows.append(
+                {
+                    "seq": rec.seq,
+                    "ts": rec.ts,
+                    "tenant": rec.tenant,
+                    "event": rec.event,
+                    "request_id": rec.request_id,
+                    "payload_sha256": rec.payload_sha256,
+                    "entry_hash": rec.entry_hash,
+                    "prev_hash": rec.prev_hash,
+                    "sig_ok": sig_ok,
+                    "signed_with": "current" if key_slot == 0 else f"previous:{key_slot - 1}",
+                    "link_ok": link_ok,
+                    "payload": payload,
+                    "payload_ok": payload_ok,
+                }
+            )
             prev = rec
 
         if tenant:
@@ -478,7 +596,7 @@ class AuditChain:
         }
 
 
-def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
+def load_verified_records(path: str | Path, hmac_key: str, hmac_previous_keys: Sequence[str] = ()) -> list[AuditRecord]:
     """Parse one segment file, verifying every signature and link.
 
     Same checks as AuditChain._load, but standalone so reconcile can name
@@ -486,7 +604,14 @@ def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
     """
     p = Path(path)
     verifier = AuditChain.__new__(AuditChain)
-    verifier._key = hmac_key.encode()
+    # Mirror AuditChain.__init__'s keyring. This deliberately bypasses
+    # __init__ (there is no file to adopt a head from), so the keyring has to
+    # be built here too -- and if a rotation makes segments unreadable, this is
+    # where it would show up.
+    verifier._keys = [hmac_key.encode()] + [
+        k.encode() for k in hmac_previous_keys if k and k != hmac_key and k.encode() != hmac_key.encode()
+    ]
+    verifier._key = verifier._keys[0]
     records: list[AuditRecord] = []
     last: AuditRecord | None = None
     with p.open("r", encoding="utf-8") as fh:
@@ -499,10 +624,8 @@ def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
             raw.setdefault("payload_alg", "none")
             raw.setdefault("request_id", "")
             rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
-            expected = verifier._entry_hash(rec.seq, rec.ts, rec.tenant, rec.event,
-                                            rec.payload_sha256, rec.prev_hash,
-                                            rec.request_id)
-            if not hmac.compare_digest(expected, rec.entry_hash):
+            ok, _slot = verifier._verify_entry(rec)
+            if not ok:
                 raise AuditError(f"{p}: chain corrupt at seq={rec.seq}")
             if last is not None and rec.prev_hash != last.entry_hash:
                 raise AuditError(f"{p}: broken linkage at seq={rec.seq}")
@@ -511,7 +634,214 @@ def load_verified_records(path: str | Path, hmac_key: str) -> list[AuditRecord]:
     return records
 
 
-def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
+def _segment_sort_key(name: str) -> int:
+    """Sort `audit.jsonl.10` after `audit.jsonl.9` rather than before it."""
+    suffix = name.rsplit(".", 1)[-1]
+    return int(suffix) if suffix.isdigit() else 1 << 30
+
+
+def discover_segments(path: str | Path) -> list[Path]:
+    """Every on-disk segment of one ledger, oldest first, live file last.
+
+    Callers used to hand-assemble this list, which meant a rotated ledger was
+    reconciled from whatever subset someone remembered to pass -- the failure
+    mode being a clean-looking chain that quietly omits most of the history.
+    """
+    base = Path(path)
+    segments: list[tuple[int, Path]] = []
+    for entry in base.parent.glob(base.name + "*"):
+        suffix = entry.name[len(base.name) :]
+        if not (suffix == "" or suffix.lstrip(".").isdigit()):
+            continue
+        if entry.name.endswith(".lock") or not entry.is_file():
+            continue
+        segments.append((int(suffix.lstrip(".")) if suffix else 1 << 30, entry))
+    return [p for _, p in sorted(segments)]
+
+
+def fetch_s3_segments(
+    bucket: str,
+    cache_dir: str | Path,
+    prefix: str = "aegis-audit/",
+    hmac_key: str | None = None,
+) -> list[Path]:
+    """Download archived audit segments so they can be reconciled.
+
+    Archiving was a one-way trip: rotation uploaded a sealed segment and nothing
+    could bring it back, so a pruned or restarted host had no way to see the
+    history it had already written. This is the return path.
+
+    `hmac_key`, when given, keeps only objects that actually verify. An
+    attacker with write access to the bucket could otherwise drop well-formed
+    junk into the ledger and have it counted -- archive objects are untrusted
+    input until proven otherwise.
+
+    Returns the local paths, and never raises: a ledger that cannot reach object
+    storage must still reconcile what it has on disk.
+    """
+    if not bucket:
+        return []
+    try:
+        import boto3  # type: ignore[import-not-found]
+    except ImportError:
+        log.warning("audit s3 fetch skipped: install the 'archive' extra for boto3")
+        return []
+
+    dest = Path(cache_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    key_prefix = prefix.rstrip("/")
+    found: list[Path] = []
+    try:
+        client = boto3.client("s3")
+        token = None
+        while True:
+            extra_args: dict[str, str] = {"ContinuationToken": token} if token else {}
+            page = client.list_objects_v2(Bucket=bucket, Prefix=f"{key_prefix}/", **extra_args)
+            for item in page.get("Contents", []) or []:
+                name = str(item.get("Key", "")).rsplit("/", 1)[-1]
+                # A segment is `<ledger>.jsonl` or `<ledger>.jsonl.<n>`. Anything
+                # else under a shared prefix is not ledger -- `audit.jsonl.gz`
+                # in particular, which a substring check would happily accept.
+                tail = name[len("audit.jsonl") :] if name.startswith("audit.jsonl") else None
+                if tail is None:
+                    continue
+                if tail != "" and not tail.lstrip(".").isdigit():
+                    continue
+                target = dest / name
+                if not target.exists():
+                    client.download_file(bucket, str(item["Key"]), str(target))
+                if hmac_key is not None:
+                    try:
+                        load_verified_records(target, hmac_key)
+                    except (AuditError, OSError, ValueError, KeyError) as exc:
+                        log.warning("audit s3 object %s rejected: %s", name, exc)
+                        target.unlink(missing_ok=True)
+                        continue
+                found.append(target)
+            if not page.get("IsTruncated"):
+                break
+            token = page.get("NextContinuationToken")
+            if not token:
+                break
+    except Exception as exc:  # noqa: BLE001 — archive access never blocks reconciliation
+        log.warning("audit s3 fetch failed: %s", exc)
+    return sorted(found, key=lambda p: _segment_sort_key(p.name))
+
+
+class FleetLedger:
+    """Reconciled view across every segment of one ledger, cached.
+
+    `reconcile_segments` existed with no caller, so a rotated ledger was never
+    assembled: the admin view called `audit.verify()`, which reads the live
+    file alone, so every rotated segment -- most of the history -- was simply
+    absent from what an operator was shown. This is the piece that makes the
+    assembled view reachable, and it caches because assembly hashes every
+    record in every segment and an admin page should not pay that per request.
+    """
+
+    def __init__(
+        self,
+        path: str | Path,
+        hmac_key: str,
+        hmac_previous_keys: Sequence[str] = (),
+        extra_paths: Sequence[str | Path] = (),
+        ttl_seconds: float = 30.0,
+        s3_bucket: str = "",
+        s3_prefix: str = "aegis-audit/",
+        archive_cache: str | Path | None = None,
+    ) -> None:
+        self.path = Path(path)
+        self.hmac_key = hmac_key
+        self.hmac_previous_keys = tuple(hmac_previous_keys)
+        self.extra_paths = tuple(Path(p) for p in extra_paths)
+        self.s3_bucket = s3_bucket
+        self.s3_prefix = s3_prefix
+        self.archive_cache = Path(archive_cache) if archive_cache else Path(path).parent / "archive-cache"
+        self.ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._cached: dict | None = None
+        self._computed_at = 0.0
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._cached = None
+
+    def segments(self) -> list[Path]:
+        """Live ledger segments first, then any externally supplied ones.
+
+        `extra_paths` covers segments restored from object storage or fetched
+        from another replica -- the cases a single host cannot see on its own.
+        """
+        return [*discover_segments(self.path), *self.extra_paths]
+
+    def sync_from_archive(self) -> list[Path]:
+        """Pull archived segments in, then invalidate so they are counted.
+
+        Called from the background reconciler rather than from `status`, because
+        status must stay cheap and must not do network I/O on an admin read.
+        """
+        if not self.s3_bucket:
+            return []
+        fetched = fetch_s3_segments(
+            self.s3_bucket,
+            self.archive_cache,
+            self.s3_prefix,
+            self.hmac_key,
+        )
+        if fetched:
+            known = {p.name for p in self.extra_paths}
+            self.extra_paths = (*self.extra_paths, *[p for p in fetched if p.name not in known])
+            self.invalidate()
+        return fetched
+
+    def status(self, refresh: bool = False) -> dict:
+        """Assemble the ledger, or return the cached assembly while it is fresh.
+
+        `complete` is the field to gate on. A false one means records are
+        provably missing -- either an unreadable segment, a sequence break
+        inside a chain, or a chain whose predecessor is gone.
+        """
+        now = time.monotonic()
+        with self._lock:
+            fresh = self._cached is not None and not refresh and (now - self._computed_at) < self.ttl_seconds
+            if fresh:
+                cached = dict(self._cached or {})
+                cached["age_s"] = round(now - self._computed_at, 3)
+                cached["cached"] = True
+                return cached
+
+            paths: list[str | Path] = list(self.segments())
+            assembled = reconcile_segments(paths, self.hmac_key, self.hmac_previous_keys)
+            per_segment = []
+            for path in paths:
+                key = str(path)
+                if key in assembled["errors"]:
+                    per_segment.append({"segment": Path(path).name, "records": 0, "readable": False})
+                    continue
+                records = len(load_verified_records(path, self.hmac_key, self.hmac_previous_keys))
+                per_segment.append({"segment": Path(path).name, "records": records, "readable": True})
+
+            self._computed_at = now
+            self._cached = {
+                "segments": len(paths),
+                "chains": len(assembled["chains"]),
+                "records": assembled["records"],
+                "complete": assembled["complete"],
+                "errors": {Path(k).name: v for k, v in assembled["errors"].items()},
+                "seq_gaps": assembled["seq_gaps"],
+                "starts_mid_sequence": [
+                    {**m, "segment": Path(m["segment"]).name} for m in assembled["starts_mid_sequence"]
+                ],
+                "per_segment": per_segment,
+                "longest_chain": max((len(c) for c in assembled["chains"]), default=0),
+            }
+            result = dict(self._cached)
+            result["age_s"] = 0.0
+            result["cached"] = False
+            return result
+
+
+def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_keys: Sequence[str] = ()) -> dict:
     """Order per-pod audit segments by head linkage (M12).
 
     Verifies every segment, then chains them: segment B follows A when B's
@@ -519,6 +849,14 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
     Segments sharing no link are different pods — reported as separate
     chains, which is expected, not corruption. Tampered/unreadable files
     land in `errors` and never poison a chain.
+
+    Continuity is reported, not assumed. A lost segment breaks the hash link,
+    which on its own is indistinguishable from a second pod writing its own
+    chain — so both halves of the trail look equally healthy while records are
+    missing. `seq_gaps` and `starts_mid_sequence` close that gap by checking
+    the sequence counter across each assembled chain: sequence numbers only
+    advance, so a break is proof that something was dropped. `complete` is the
+    single field a caller should gate on.
     """
     verified: dict[str, list[AuditRecord]] = {}
     errors: dict[str, str] = {}
@@ -527,7 +865,7 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
         if name in verified or name in errors:
             continue
         try:
-            verified[name] = load_verified_records(name, hmac_key)
+            verified[name] = load_verified_records(name, hmac_key, hmac_previous_keys)
         except (AuditError, OSError, ValueError, KeyError) as exc:
             errors[name] = str(exc)
     firsts = {n: recs[0].prev_hash for n, recs in verified.items() if recs}
@@ -543,12 +881,58 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str) -> dict:
     chains: list[list[str]] = []
     for start in starts:
         chain, seen = [start], {start}
-        while chain[-1] in next_of and next_of[chain[-1]] not in seen:
-            chain.append(next_of[chain[-1]])
-            seen.add(chain[-1])
+        # The next name must be read before the append. Written as
+        # `chain.append(next_of[chain[-1]])` followed by
+        # `seen.add(next_of[chain[-1]])`, the second line reads chain[-1]
+        # *after* the append and marks the segment two steps ahead, so the walk
+        # stopped one step early and every chain was truncated to two segments.
+        # Nothing caught it because no caller existed.
+        while chain[-1] in next_of:
+            nxt = next_of[chain[-1]]
+            if nxt in seen:
+                break
+            chain.append(nxt)
+            seen.add(nxt)
         chains.append(chain)
+
+    seq_gaps: list[dict] = []
+    starts_mid_sequence: list[dict] = []
+    all_seqs = [r.seq for recs in verified.values() for r in recs]
+    baseline = min(all_seqs) if all_seqs else 0
+    for chain in chains:
+        # Only the first segment of a chain carries information: mid-chain
+        # segments are *expected* to begin above the baseline, since they
+        # follow their predecessor. A chain that begins above the observed
+        # minimum is a chain whose predecessor is gone.
+        first = verified.get(chain[0]) if chain else None
+        if first:
+            # The baseline is the observed minimum, not 0, because sequence
+            # numbers start at 1 and a pod's first segment legitimately does.
+            if first[0].seq > baseline:
+                starts_mid_sequence.append(
+                    {
+                        "segment": chain[0],
+                        "first_seq": first[0].seq,
+                        "baseline_seq": baseline,
+                        "missing_before": first[0].seq - baseline,
+                    }
+                )
+        flat = [r for name in chain for r in verified[name]]
+        for prev, cur in zip(flat, flat[1:], strict=False):
+            if cur.seq != prev.seq + 1:
+                seq_gaps.append(
+                    {
+                        "after_seq": prev.seq,
+                        "expected_seq": prev.seq + 1,
+                        "found_seq": cur.seq,
+                        "missing": max(0, cur.seq - prev.seq - 1),
+                    }
+                )
     return {
         "chains": chains,
         "records": sum(len(verified[n]) for chain in chains for n in chain),
         "errors": errors,
+        "seq_gaps": seq_gaps,
+        "starts_mid_sequence": starts_mid_sequence,
+        "complete": not errors and not seq_gaps and not starts_mid_sequence,
     }

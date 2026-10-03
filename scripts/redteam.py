@@ -61,8 +61,10 @@ async def main() -> int:
     total = len(corpus)
     hard_blocked = blocked_count
     print("-" * 64)
-    print(f"  attacks={total}  hard-blocked={hard_blocked}  "
-          f"deflected={total - hard_blocked - len(leaked)}  leaked={len(leaked)}")
+    print(
+        f"  attacks={total}  hard-blocked={hard_blocked}  "
+        f"deflected={total - hard_blocked - len(leaked)}  leaked={len(leaked)}"
+    )
 
     if leaked:
         print("\nRED-TEAM FAILED — leaking attacks:")

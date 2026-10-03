@@ -80,8 +80,7 @@ def test_dashboard_references_local_assets_only(client):
     html = template()
     assert "/static/dashboard.css" in html
     assert "/static/dashboard.js" in html
-    for remote in ("cdn.tailwindcss.com", "cdn.jsdelivr.net", "fonts.googleapis.com",
-                   "fonts.gstatic.com", "unpkg.com"):
+    for remote in ("cdn.tailwindcss.com", "cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com", "unpkg.com"):
         assert remote not in html, f"the console must not depend on {remote}"
     # No attribute may fetch over the network. (The inline SVG favicon carries an
     # xmlns URI — that is a namespace identifier, not a request, so check the
@@ -139,9 +138,7 @@ def test_console_calls_endpoints_that_exist(client):
         "/admin/status": "GET",
     }
     for path in paths:
-        assert f"'{path}" in js or f"`{path}" in js or f"{path}?" in js, (
-            f"the console never calls {path}"
-        )
+        assert f"'{path}" in js or f"`{path}" in js or f"{path}?" in js, f"the console never calls {path}"
 
     # and the route table agrees
     declared = {r.path for r in app.routes if hasattr(r, "path")}
@@ -159,8 +156,7 @@ def test_console_has_no_browser_storage():
 def test_console_surfaces_the_evidence_the_backend_provides():
     """Each of these is a capability the review flagged as invisible in the UI."""
     js = script()
-    for token in ("outbound", "pii_masked", "audit_seq", "sig_ok", "link_ok",
-                  "payload_ok", "request_id", "cached"):
+    for token in ("outbound", "pii_masked", "audit_seq", "sig_ok", "link_ok", "payload_ok", "request_id", "cached"):
         assert token in js, f"the console does not surface '{token}'"
 
 
@@ -180,9 +176,7 @@ def test_console_never_calls_base64_encrypted():
     body = re.search(r"function payloadMode\(data\) \{(.*?)\n\}", js, re.S)
     assert body, "payloadMode is gone; the panel has no way to name the algorithm"
     rendered = body.group(1)
-    assert "decryptable" not in rendered, (
-        "the panel must distinguish encrypted-at-rest from merely-decodable"
-    )
+    assert "decryptable" not in rendered, "the panel must distinguish encrypted-at-rest from merely-decodable"
     assert "NOT encrypted" in rendered, "the base64 state has to be named explicitly"
     # All three states must be distinguished, not collapsed into one string.
     for branch in ("hash-only (no encrypt key)", "encrypted at rest", "NOT encrypted"):
@@ -196,6 +190,4 @@ def test_console_escapes_interpolated_values():
     # no template literal may interpolate a raw dynamic value into innerHTML
     for raw in ("${d.source}", "${r.event}", "${row.tenant}"):
         idx = js.find(raw)
-        assert idx == -1 or "esc(" in js[max(0, idx - 30):idx], (
-            f"{raw} is interpolated without escaping"
-        )
+        assert idx == -1 or "esc(" in js[max(0, idx - 30) : idx], f"{raw} is interpolated without escaping"

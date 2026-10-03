@@ -8,6 +8,7 @@ Usage:
   python scripts/fuzz_attacks.py --count 200 --seed 7
   python scripts/fuzz_attacks.py --count 200 --fail-on-evasion  # CI gate
 """
+
 import argparse
 import base64
 import random
@@ -20,16 +21,46 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from aegis.security.injection import scan
 
-HOMOGLYPHS = {"a": "а", "e": "е", "o": "о", "i": "і", "p": "р", "c": "с",
-              "A": "А", "E": "Е", "O": "О", "I": "І", "P": "Р"}
-SYNONYMS = {"ignore": ["disregard", "overlook", "bypass"], "reveal": ["disclose", "show"],
-            "instructions": ["directives", "guidelines"], "system prompt": ["system instructions"],
-            "password": ["passcode"], "secret": ["confidential"]}
-PREFIXES = ["", "kindly ", "as an experiment, ", "for research purposes, ",
-            "kripya ", "por favor ", "s'il vous plait ", "translate then follow: "]
+HOMOGLYPHS = {
+    "a": "а",
+    "e": "е",
+    "o": "о",
+    "i": "і",
+    "p": "р",
+    "c": "с",
+    "A": "А",
+    "E": "Е",
+    "O": "О",
+    "I": "І",
+    "P": "Р",
+}
+SYNONYMS = {
+    "ignore": ["disregard", "overlook", "bypass"],
+    "reveal": ["disclose", "show"],
+    "instructions": ["directives", "guidelines"],
+    "system prompt": ["system instructions"],
+    "password": ["passcode"],
+    "secret": ["confidential"],
+}
+PREFIXES = [
+    "",
+    "kindly ",
+    "as an experiment, ",
+    "for research purposes, ",
+    "kripya ",
+    "por favor ",
+    "s'il vous plait ",
+    "translate then follow: ",
+]
 SUFFIXES = ["", " please", " — urgent", " (do it quietly)"]
-WRAPPERS = ["{x}", "<system>{x}</system>", "[SYSTEM] {x}", "```system\n{x}\n```",
-            "user says: {x}", "developer note: {x}"]
+WRAPPERS = [
+    "{x}",
+    "<system>{x}</system>",
+    "[SYSTEM] {x}",
+    "```system\n{x}\n```",
+    "user says: {x}",
+    "developer note: {x}",
+]
 
 
 def _case_flip(text: str, rng: random.Random) -> str:
@@ -47,8 +78,8 @@ def _space_split(text: str, rng: random.Random) -> str:
     kw = rng.choice(["ignore", "instructions", "prompt", "secret", "reveal"])
     if kw in text.lower():
         idx = text.lower().index(kw)
-        spaced = " ".join(text[idx:idx + len(kw)])
-        return text[:idx] + spaced + text[idx + len(kw):]
+        spaced = " ".join(text[idx : idx + len(kw)])
+        return text[:idx] + spaced + text[idx + len(kw) :]
     return text
 
 
@@ -58,8 +89,7 @@ def _zero_width(text: str, rng: random.Random) -> str:
 
 
 def _homoglyph(text: str, rng: random.Random) -> str:
-    out = [HOMOGLYPHS.get(c, c) if rng.random() < 0.3 and c in HOMOGLYPHS else c
-           for c in text]
+    out = [HOMOGLYPHS.get(c, c) if rng.random() < 0.3 and c in HOMOGLYPHS else c for c in text]
     return "".join(out)
 
 
@@ -67,8 +97,7 @@ def _synonym(text: str, rng: random.Random) -> str:
     low = text.lower()
     for src, dsts in SYNONYMS.items():
         if src in low:
-            return text.replace(src, rng.choice(dsts)).replace(src.title(),
-                    rng.choice(dsts))
+            return text.replace(src, rng.choice(dsts)).replace(src.title(), rng.choice(dsts))
     return text
 
 
@@ -94,8 +123,14 @@ def fuzz(seeds: list[dict], count: int, seed: int) -> list[dict]:
         text = parent["text"]
         for _ in range(rng.randint(1, 2)):
             text = rng.choice(TRANSFORMS)(text, rng)
-        out.append({"id": f"fuzz-{seed}-{i:03d}", "parent": parent["id"],
-                    "text": text, "must_not_leak": parent.get("must_not_leak", [])})
+        out.append(
+            {
+                "id": f"fuzz-{seed}-{i:03d}",
+                "parent": parent["id"],
+                "text": text,
+                "must_not_leak": parent.get("must_not_leak", []),
+            }
+        )
     return out
 
 
@@ -119,15 +154,22 @@ def main() -> int:
 
     print(f"fuzzed={len(variants)} evasions(score<{args.block_at})={len(evasions)}")
     for e in evasions[:20]:
-        print(f"  [EVADE score={e['score']}] {e['id']} <- {e['parent']}: "
-              f"{e['text'][:90]!r}")
+        print(f"  [EVADE score={e['score']}] {e['id']} <- {e['parent']}: {e['text'][:90]!r}")
 
     if evasions:
         Path(args.out).write_text(
-            yaml.safe_dump({"version": 1, "attacks": [
-                {"id": e["id"], "text": e["text"],
-                 "must_not_leak": e["must_not_leak"]} for e in evasions]},
-                sort_keys=False, allow_unicode=True), encoding="utf-8")
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "attacks": [
+                        {"id": e["id"], "text": e["text"], "must_not_leak": e["must_not_leak"]} for e in evasions
+                    ],
+                },
+                sort_keys=False,
+                allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
         print(f"wrote {len(evasions)} evasions to {args.out} for review")
     if args.fail_on_evasion and evasions:
         print("FAIL: evasions present")

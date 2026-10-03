@@ -43,8 +43,7 @@ def test_readyz_ok_when_boot_chain_intact(tmp_path, monkeypatch):
 
 
 def test_audit_rotation_keeps_verify_green(tmp_path):
-    chain = AuditChain("test-audit-key-32-chars-minimum!!",
-                       path=str(tmp_path / "audit.jsonl"), max_bytes=300)
+    chain = AuditChain("test-audit-key-32-chars-minimum!!", path=str(tmp_path / "audit.jsonl"), max_bytes=300)
     for i in range(20):
         chain.append("t", "ev", {"i": i})
     assert (tmp_path / "audit.jsonl.1").exists()
@@ -54,8 +53,7 @@ def test_audit_rotation_keeps_verify_green(tmp_path):
 
 def test_probe_ok_on_long_chain_and_catches_tail_tamper(tmp_path):
     """M13: probe is O(1) and green on long chains; tampered tail -> not ready."""
-    chain = AuditChain("test-audit-key-32-chars-minimum!!",
-                       path=str(tmp_path / "audit.jsonl"))
+    chain = AuditChain("test-audit-key-32-chars-minimum!!", path=str(tmp_path / "audit.jsonl"))
     for i in range(200):
         chain.append("t", "ev", {"i": i})
     ok, msg = chain.probe()

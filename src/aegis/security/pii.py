@@ -15,9 +15,7 @@ from dataclasses import dataclass, field
 # --- detectors -------------------------------------------------------------
 
 _EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]{2,}\b")
-_PHONE = re.compile(
-    r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{3}[\s.-]?\d{3,4}(?:[\s.-]?\d{2,4})?(?!\w)"
-)
+_PHONE = re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{2,4}\)[\s.-]?)?\d{3}[\s.-]?\d{3,4}(?:[\s.-]?\d{2,4})?(?!\w)")
 _SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 _CARD = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 _IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -122,6 +120,7 @@ class Vault:
         """Replace every detected PII span with its stable pseudonym."""
         self.masked_types = []
         for pattern, label in _DETECTORS:
+
             def _sub(match: re.Match[str], _label: str = label) -> str:
                 value = match.group(0)
                 if _label == "CARD" and not _luhn_ok(value):
