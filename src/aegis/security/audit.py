@@ -659,6 +659,75 @@ def discover_segments(path: str | Path) -> list[Path]:
     return [p for _, p in sorted(segments)]
 
 
+def fetch_s3_segments(
+    bucket: str,
+    cache_dir: str | Path,
+    prefix: str = "aegis-audit/",
+    hmac_key: str | None = None,
+) -> list[Path]:
+    """Download archived audit segments so they can be reconciled.
+
+    Archiving was a one-way trip: rotation uploaded a sealed segment and nothing
+    could bring it back, so a pruned or restarted host had no way to see the
+    history it had already written. This is the return path.
+
+    `hmac_key`, when given, keeps only objects that actually verify. An
+    attacker with write access to the bucket could otherwise drop well-formed
+    junk into the ledger and have it counted -- archive objects are untrusted
+    input until proven otherwise.
+
+    Returns the local paths, and never raises: a ledger that cannot reach object
+    storage must still reconcile what it has on disk.
+    """
+    if not bucket:
+        return []
+    try:
+        import boto3  # type: ignore[import-not-found]
+    except ImportError:
+        log.warning("audit s3 fetch skipped: install the 'archive' extra for boto3")
+        return []
+
+    dest = Path(cache_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    key_prefix = prefix.rstrip("/")
+    found: list[Path] = []
+    try:
+        client = boto3.client("s3")
+        token = None
+        while True:
+            extra_args: dict[str, str] = {"ContinuationToken": token} if token else {}
+            page = client.list_objects_v2(Bucket=bucket, Prefix=f"{key_prefix}/", **extra_args)
+            for item in page.get("Contents", []) or []:
+                name = str(item.get("Key", "")).rsplit("/", 1)[-1]
+                # A segment is `<ledger>.jsonl` or `<ledger>.jsonl.<n>`. Anything
+                # else under a shared prefix is not ledger -- `audit.jsonl.gz`
+                # in particular, which a substring check would happily accept.
+                tail = name[len("audit.jsonl") :] if name.startswith("audit.jsonl") else None
+                if tail is None:
+                    continue
+                if tail != "" and not tail.lstrip(".").isdigit():
+                    continue
+                target = dest / name
+                if not target.exists():
+                    client.download_file(bucket, str(item["Key"]), str(target))
+                if hmac_key is not None:
+                    try:
+                        load_verified_records(target, hmac_key)
+                    except (AuditError, OSError, ValueError, KeyError) as exc:
+                        log.warning("audit s3 object %s rejected: %s", name, exc)
+                        target.unlink(missing_ok=True)
+                        continue
+                found.append(target)
+            if not page.get("IsTruncated"):
+                break
+            token = page.get("NextContinuationToken")
+            if not token:
+                break
+    except Exception as exc:  # noqa: BLE001 — archive access never blocks reconciliation
+        log.warning("audit s3 fetch failed: %s", exc)
+    return sorted(found, key=lambda p: _segment_sort_key(p.name))
+
+
 class FleetLedger:
     """Reconciled view across every segment of one ledger, cached.
 
@@ -677,11 +746,17 @@ class FleetLedger:
         hmac_previous_keys: Sequence[str] = (),
         extra_paths: Sequence[str | Path] = (),
         ttl_seconds: float = 30.0,
+        s3_bucket: str = "",
+        s3_prefix: str = "aegis-audit/",
+        archive_cache: str | Path | None = None,
     ) -> None:
         self.path = Path(path)
         self.hmac_key = hmac_key
         self.hmac_previous_keys = tuple(hmac_previous_keys)
         self.extra_paths = tuple(Path(p) for p in extra_paths)
+        self.s3_bucket = s3_bucket
+        self.s3_prefix = s3_prefix
+        self.archive_cache = Path(archive_cache) if archive_cache else Path(path).parent / "archive-cache"
         self.ttl_seconds = ttl_seconds
         self._lock = threading.Lock()
         self._cached: dict | None = None
@@ -698,6 +773,26 @@ class FleetLedger:
         from another replica -- the cases a single host cannot see on its own.
         """
         return [*discover_segments(self.path), *self.extra_paths]
+
+    def sync_from_archive(self) -> list[Path]:
+        """Pull archived segments in, then invalidate so they are counted.
+
+        Called from the background reconciler rather than from `status`, because
+        status must stay cheap and must not do network I/O on an admin read.
+        """
+        if not self.s3_bucket:
+            return []
+        fetched = fetch_s3_segments(
+            self.s3_bucket,
+            self.archive_cache,
+            self.s3_prefix,
+            self.hmac_key,
+        )
+        if fetched:
+            known = {p.name for p in self.extra_paths}
+            self.extra_paths = (*self.extra_paths, *[p for p in fetched if p.name not in known])
+            self.invalidate()
+        return fetched
 
     def status(self, refresh: bool = False) -> dict:
         """Assemble the ledger, or return the cached assembly while it is fresh.

@@ -134,6 +134,8 @@ class Gateway:
             settings.audit_path,
             settings.audit_hmac_key,
             hmac_previous_keys=[k.strip() for k in (settings.audit_hmac_key_previous or "").split(",") if k.strip()],
+            s3_bucket=settings.audit_s3_bucket,
+            s3_prefix=settings.audit_s3_prefix,
         )
         self._vault_key = settings.vault_hmac_key
         self._vaults: dict[str, Any] = {}

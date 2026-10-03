@@ -201,11 +201,21 @@ Two things to know before you trust it:
   incident, re-read with `refresh=1` to force a fresh assembly.
 
 Assembly runs on a timer (every 60s) and logs at `ERROR` when the ledger is not
-continuous, so you should not have to be looking at the page to find out. What
-is **not yet** automatic is pulling archived segments back from S3 or sibling
-replicas, and there is still no sequence that is global across pods — so
-"complete" describes *this host's* segments. See
-`docs/PRODUCTION-READINESS.md` item 1.1.
+continuous, so you should not have to be looking at the page to find out. The
+same tick pulls archived segments back from S3, so a host that has pruned its
+own disk does not report itself incomplete.
+
+Two things still limit this. The ledger is still **per-replica**: there is no
+sequence that is global across pods, so `complete` describes *this host's*
+segments plus whatever archive it can reach — two replicas can each be
+individually whole and jointly disagree. Fetching a sibling
+replica's segments is **not yet** implemented — only the configured bucket is
+pulled — so cross-pod reconciliation still needs a shared bucket. See `docs/PRODUCTION-READINESS.md` item 1.1.
+
+The archive needs `pip install -e '.[archive]'`. Without boto3, setting
+`AEGIS_AUDIT_S3_BUCKET` logs `audit s3 archive skipped` and uploads nothing —
+which is safe (retention refuses to prune what was never archived) but means
+`AEGIS_AUDIT_KEEP_SEGMENTS` will never free anything.
 
 ---
 

@@ -92,7 +92,7 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
 - ADR-7 multi-pod ledger reconciliation (M12): each pod keeps its own chain
   (no single writer to become a single point of failure). Rotation seals a
   monotonically numbered segment — never overwriting an earlier one — and
-  uploads it to `AEGIS_AUDIT_S3_BUCKET`. `FleetLedger` assembles every segment
+  uploads it to `AEGIS_AUDIT_S3_BUCKET` (requires the `archive` extra -- boto3). `FleetLedger` assembles every segment
   on demand, orders them by head linkage (segment B's first `prev_hash` equals
   segment A's last `entry_hash`), and proves continuity from the sequence
   counter, because a broken hash link is indistinguishable from a second pod

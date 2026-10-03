@@ -28,6 +28,12 @@ dependencies = [
 aegis-gateway = "aegis.serve:main"
 
 [project.optional-dependencies]
+archive = [
+    # Required by AEGIS_AUDIT_S3_BUCKET. The archive path was documented in the
+    # config, the runbook and ADR-7 with no way to install its dependency, so
+    # setting the variable silently did nothing.
+    "boto3>=1.34",
+]
 backends = [
     "psycopg[binary]>=3.1",
 ]

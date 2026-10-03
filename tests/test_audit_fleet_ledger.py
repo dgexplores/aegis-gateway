@@ -237,6 +237,7 @@ class _StubLedger:
 class _StubGateway:
     def __init__(self, ledger):
         self.audit_ledger = ledger
+        self.audit_ledger.sync_from_archive = lambda: []
 
 
 def _run_reconciler(ledger, ticks=3, interval=0.01):

@@ -99,6 +99,10 @@ async def _audit_reconciler(gateway: Gateway, interval: float = 60.0) -> None:
     await asyncio.sleep(interval)  # let boot finish first
     while True:
         try:
+            # Pull archived segments back before assessing, or a host that has
+            # pruned its disk reports itself incomplete when it is merely
+            # missing what it filed away.
+            await asyncio.to_thread(gateway.audit_ledger.sync_from_archive)
             status = await asyncio.to_thread(gateway.audit_ledger.status, refresh=True)
             if not status["complete"]:
                 log.error(
