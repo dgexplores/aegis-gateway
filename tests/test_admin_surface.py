@@ -282,3 +282,13 @@ def test_tenant_totals_and_total_do_not_cross_talk():
     assert totals["acme"]["requests"] == 2
     assert totals["acme"]["cost_usd"] == 0.25
     assert totals["root"]["cost_usd"] == 0.0
+
+
+def test_overview_reports_audit_cost_means(client):
+    """The audit lock-vs-disk question must answer from the Overview, not a load rig."""
+    client.post("/v1/chat", headers=_user(), json={"messages": [{"role": "user", "content": "hello"}]})
+    d = client.get("/admin/overview", headers=_admin()).json()
+    cost = d["audit_cost"]
+    assert cost["appends"] >= 1
+    assert cost["mean_hold_ms"] > 0
+    assert cost["mean_lock_wait_ms"] >= 0

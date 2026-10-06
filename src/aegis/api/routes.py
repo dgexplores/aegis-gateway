@@ -900,6 +900,22 @@ async def admin_overview(tenant: Tenant = Depends(get_tenant), gateway: Gateway 
     requests = metrics.total("aegis_requests_total")
     blocked = metrics.total("aegis_injection_blocked_total")
     soft = metrics.total("aegis_injection_softblocked_total")
+    appends = metrics.total("aegis_audit_append_total")
+    batches = metrics.total("aegis_audit_batch_total")
+    # Means, not tails: the registry holds counters, so per-append latency
+    # distribution is not visible here — but the two means separate the two
+    # questions that matter (lock contention vs slow disk).
+    audit_cost = {
+        "appends": appends,
+        "mean_hold_ms": round(metrics.total("aegis_audit_append_seconds_total") / appends * 1000, 3)
+        if appends
+        else 0.0,
+        "mean_lock_wait_ms": round(metrics.total("aegis_audit_lock_wait_seconds_total") / appends * 1000, 3)
+        if appends
+        else 0.0,
+        "batches": batches,
+        "mean_batch_size": round(metrics.total("aegis_audit_batch_size_total") / batches, 2) if batches else 0.0,
+    }
     return {
         "generated_at": time.time(),
         # The window every counter below describes. The admin view shows it.
@@ -918,6 +934,7 @@ async def admin_overview(tenant: Tenant = Depends(get_tenant), gateway: Gateway 
         "cache": gateway.cache.stats(),
         "breakers": [b.snapshot() for _, b in gateway.registry.values()],
         "audit_chain": {"intact": ok, "detail": chain_msg, "length": gateway.audit.seq, "head": gateway.audit.head},
+        "audit_cost": audit_cost,
         "tenants": metrics.tenant_totals(),
     }
 
