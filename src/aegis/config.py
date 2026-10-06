@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     # a segment that was never archived is the same data loss as the rotation
     # bug, just slower. Set it only alongside AEGIS_AUDIT_S3_BUCKET.
     audit_keep_segments: int = 0
+    # Max age in days for a rotated segment on local disk. 0 disables: age
+    # alone never prunes. Like keep_segments, the archived gate applies — an
+    # old segment that never reached object storage is kept, because pruning
+    # it would be silent data loss with a schedule attached.
+    audit_keep_days: float = 0
     # Embeddings: legacy (default, zero-dep hash_vec path) | hash | gmi | openai.
     embed_provider: str = "legacy"
     embed_model: str = ""

@@ -154,6 +154,7 @@ class AuditChain:
         s3_bucket: str = "",
         s3_prefix: str = "aegis-audit/",
         keep_segments: int = 0,
+        keep_days: float = 0,
         hmac_previous_keys: Sequence[str] = (),
     ) -> None:
         # The signing key is `_keys[0]`. The rest are *accepted* for verification
@@ -172,6 +173,7 @@ class AuditChain:
         self.s3_bucket = s3_bucket
         self.s3_prefix = s3_prefix
         self.keep_segments = keep_segments
+        self.keep_days = keep_days
         # Only segments confirmed in object storage may ever be pruned.
         self._archived: set[str] = set()
         self.seq = 0
@@ -344,28 +346,42 @@ class AuditChain:
         configured, is kept and counted in the warning. Retention can never be
         the reason records disappear.
         """
-        if self.keep_segments <= 0:
-            return
         on_disk = [p.name for p in discover_segments(self.path) if p.name != self.path.name]
-        if len(on_disk) <= self.keep_segments:
-            return
-        surplus = len(on_disk) - self.keep_segments
-        removable = [name for name in sorted(on_disk, key=_segment_sort_key) if name in self._archived]
-        for name in removable[:surplus]:
-            try:
-                self.path.with_name(name).unlink()
-                self._archived.discard(name)
-                log.info("audit pruned %s (archived, over keep=%d)", name, self.keep_segments)
-            except OSError:
-                continue
-        kept = [n for n in on_disk if n not in removable[:surplus]]
-        if len(kept) > self.keep_segments:
-            log.warning(
-                "audit retention is %d segments over keep=%d: they are not archived, so they "
-                "are being kept. Set AEGIS_AUDIT_S3_BUCKET or the directory will grow without bound.",
-                len(kept) - self.keep_segments,
-                self.keep_segments,
-            )
+        if self.keep_segments > 0 and len(on_disk) > self.keep_segments:
+            surplus = len(on_disk) - self.keep_segments
+            removable = [name for name in sorted(on_disk, key=_segment_sort_key) if name in self._archived]
+            for name in removable[:surplus]:
+                try:
+                    self.path.with_name(name).unlink()
+                    self._archived.discard(name)
+                    log.info("audit pruned %s (archived, over keep=%d)", name, self.keep_segments)
+                except OSError:
+                    continue
+            kept = [n for n in on_disk if n not in removable[:surplus]]
+            if len(kept) > self.keep_segments:
+                log.warning(
+                    "audit retention is %d segments over keep=%d: they are not archived, so they "
+                    "are being kept. Set AEGIS_AUDIT_S3_BUCKET or the directory will grow without bound.",
+                    len(kept) - self.keep_segments,
+                    self.keep_segments,
+                )
+            on_disk = [p.name for p in discover_segments(self.path) if p.name != self.path.name]
+        if self.keep_days > 0:
+            # Age alone prunes, but the archived gate still applies: an old
+            # segment that never reached object storage is evidence with no
+            # other copy, so it stays and the operator gets told.
+            cutoff = time.time() - self.keep_days * 86400
+            for name in sorted(on_disk, key=_segment_sort_key):
+                if name not in self._archived:
+                    continue
+                try:
+                    if self.path.with_name(name).stat().st_mtime >= cutoff:
+                        continue
+                    self.path.with_name(name).unlink()
+                    self._archived.discard(name)
+                    log.info("audit pruned %s (archived, older than keep=%.1f days)", name, self.keep_days)
+                except OSError:
+                    continue
 
     def _highest_segment_on_disk(self) -> int:
         highest = 0
@@ -397,10 +413,21 @@ class AuditChain:
             pass
 
     def append(self, tenant: str, event: str, payload: dict, request_id: str = "") -> AuditRecord:
+        """Server-side cost breakdown lands in the metrics singleton.
+
+        Two counters per append: lock-wait seconds and hold seconds (the
+        critical section: tail read, rotation check, write, fsync). Mean =
+        sum / `aegis_audit_append_total`. Sums only, no percentiles — the
+        registry holds counters, and a mean answers "is the audit lock the
+        bottleneck" without pretending to show a tail it cannot see.
+        """
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
+        start_wait = time.perf_counter()
         with self._locked(exclusive=True):
+            wait_s = time.perf_counter() - start_wait
+            start_hold = time.perf_counter()
             # adopt seq/head minted by sibling workers, then rotate, then write —
             # all atomically, so multi-worker uvicorn can't fork the chain.
             self._refresh_from_tail()
@@ -427,7 +454,14 @@ class AuditChain:
                 fh.flush()
                 os.fsync(fh.fileno())
             self.head = entry_hash
-            return record
+            hold_s = time.perf_counter() - start_hold
+        # Outside the lock: recording must never extend the critical section.
+        from aegis.metrics import metrics
+
+        metrics.inc("aegis_audit_append_total")
+        metrics.inc("aegis_audit_lock_wait_seconds_total", wait_s)
+        metrics.inc("aegis_audit_append_seconds_total", hold_s)
+        return record
 
     def verify(self) -> tuple[bool, str]:
         try:
