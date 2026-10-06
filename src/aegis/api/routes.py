@@ -104,6 +104,11 @@ async def _audit_reconciler(gateway: Gateway, interval: float = 60.0) -> None:
             # missing what it filed away.
             await asyncio.to_thread(gateway.audit_ledger.sync_from_archive)
             status = await asyncio.to_thread(gateway.audit_ledger.status, refresh=True)
+            keep = getattr(getattr(gateway, "settings", None), "audit_payload_keep_days", 0) or 0
+            if keep > 0:
+                purged = await asyncio.to_thread(gateway.audit.purge_old_payloads, keep)
+                if purged:
+                    log.info("audit payload purge: %d expired copies nullified", purged)
             if not status["complete"]:
                 log.error(
                     "audit ledger is not continuous: %d segments, %d records, errors=%d, "

@@ -547,6 +547,60 @@ class AuditChain:
             s["done"].set()
         return slot["record"]
 
+    def purge_old_payloads(self, max_age_days: float) -> int:
+        """Null encrypted payload copies older than `max_age_days`.
+
+        Data minimization for regulated deployments: the *hash* of every
+        payload stays (so `verify()` is unaffected — `entry_hash` covers
+        `payload_sha256`, never the encrypted copy), but the recoverable
+        content goes. Files rewrite atomically under the exclusive lock; the
+        purge itself appends a `payload_purge` record with the count, so the
+        expiry is audited rather than silent. 0 or negative disables.
+        """
+        if max_age_days <= 0:
+            return 0
+        # No mtime shortcut: the live file is always freshly modified and
+        # still holds old records, so file age says nothing about record age.
+        # Full scan costs O(chain) per tick — the same class as the
+        # reconciler's status(refresh=True) on the same tick.
+        cutoff = time.time() - max_age_days * 86400
+        purged = 0
+        with self._locked(exclusive=True):
+            for path in discover_segments(self.path):
+                try:
+                    lines = path.read_text(encoding="utf-8").splitlines()
+                except OSError:
+                    continue
+                out = []
+                changed = False
+                for line in lines:
+                    if not line.strip():
+                        continue
+                    try:
+                        raw = json.loads(line)
+                    except ValueError:
+                        out.append(line)
+                        continue
+                    if raw.get("ts", 0) < cutoff and raw.get("payload_enc") is not None:
+                        raw["payload_enc"] = None
+                        raw["payload_alg"] = "none"
+                        purged += 1
+                        changed = True
+                    out.append(json.dumps(raw, separators=(",", ":")))
+                if changed:
+                    tmp = path.with_suffix(path.suffix + ".purge-tmp")
+                    try:
+                        tmp.write_text("\n".join(out) + "\n", encoding="utf-8")
+                        os.replace(tmp, path)
+                    except OSError:
+                        try:
+                            tmp.unlink()
+                        except OSError:
+                            pass
+        if purged:
+            self.append("admin", "payload_purge", {"purged": purged, "max_age_days": max_age_days})
+        return purged
+
     def verify(self) -> tuple[bool, str]:
         try:
             with self._locked(exclusive=False):

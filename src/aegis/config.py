@@ -129,6 +129,12 @@ class Settings(BaseSettings):
     # lock-wait dominates mean hold in the loadtest server-side report — and
     # re-measure; the window is a bet, not a default.
     audit_batch_window_ms: float = 0
+    # Payload TTL in days for encrypted audit payload copies. 0 keeps them
+    # forever (current behavior). Above 0, the reconciler nulls copies older
+    # than this on its tick and audits the purge itself. Hashes stay, so the
+    # chain still verifies — only recoverable content goes. This is data
+    # minimization, not erasure: seq, hashes and linkage are retained.
+    audit_payload_keep_days: float = 0
     # Embeddings: legacy (default, zero-dep hash_vec path) | hash | gmi | openai.
     embed_provider: str = "legacy"
     embed_model: str = ""
