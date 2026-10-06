@@ -155,6 +155,7 @@ class AuditChain:
         s3_prefix: str = "aegis-audit/",
         keep_segments: int = 0,
         keep_days: float = 0,
+        batch_window_ms: float = 0,
         hmac_previous_keys: Sequence[str] = (),
     ) -> None:
         # The signing key is `_keys[0]`. The rest are *accepted* for verification
@@ -174,6 +175,14 @@ class AuditChain:
         self.s3_prefix = s3_prefix
         self.keep_segments = keep_segments
         self.keep_days = keep_days
+        # Group-commit window in ms. 0 disables: every append fsyncs alone.
+        # Above 0, threads arriving within one window share a single fsync
+        # (leader-follower, no background thread). Ack still waits for the
+        # fsync, so durability is identical — the trade is bounded latency
+        # (one window) for throughput under concurrency.
+        self.batch_window_ms = batch_window_ms
+        self._batch_lock = threading.Lock()
+        self._batch: list[dict] = []
         # Only segments confirmed in object storage may ever be pruned.
         self._archived: set[str] = set()
         self.seq = 0
@@ -424,36 +433,58 @@ class AuditChain:
         payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         payload_sha256 = hashlib.sha256(payload_bytes).hexdigest()
         payload_enc, payload_alg = encrypt_payload(payload_bytes, self.encrypt_key)
+        item = (tenant, event, payload_sha256, payload_enc, payload_alg, request_id)
+        if self.batch_window_ms > 0:
+            return self._append_batched(item)
+        return self._append_solo(item)
+
+    def _write_batch(self, items: list[tuple]) -> list[AuditRecord]:
+        """Mint seq, hash, write and fsync every item. One fsync for the batch.
+
+        Must run under the exclusive lock. Rotation is checked once up front:
+        a batch may push the file one batch over budget, which the next batch
+        rotates — bounded overshoot, never silent loss.
+        """
+        # adopt seq/head minted by sibling workers, then rotate, then write —
+        # all atomically, so multi-worker uvicorn can't fork the chain.
+        self._refresh_from_tail()
+        self._maybe_rotate()
+        records = []
+        lines = []
+        for tenant, event, payload_sha256, payload_enc, payload_alg, request_id in items:
+            ts = time.time()
+            self.seq += 1
+            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id)
+            records.append(
+                AuditRecord(
+                    seq=self.seq,
+                    ts=ts,
+                    tenant=tenant,
+                    event=event,
+                    payload_sha256=payload_sha256,
+                    prev_hash=self.head,
+                    entry_hash=entry_hash,
+                    payload_enc=payload_enc,
+                    payload_alg=payload_alg,
+                    request_id=request_id,
+                )
+            )
+            lines.append(json.dumps(records[-1].__dict__, separators=(",", ":")))
+            self.head = entry_hash
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as fh:
+            for line in lines:
+                fh.write(line + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        return records
+
+    def _append_solo(self, item: tuple) -> AuditRecord:
         start_wait = time.perf_counter()
         with self._locked(exclusive=True):
             wait_s = time.perf_counter() - start_wait
             start_hold = time.perf_counter()
-            # adopt seq/head minted by sibling workers, then rotate, then write —
-            # all atomically, so multi-worker uvicorn can't fork the chain.
-            self._refresh_from_tail()
-            self._maybe_rotate()
-            ts = time.time()
-            self.seq += 1
-            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id)
-            record = AuditRecord(
-                seq=self.seq,
-                ts=ts,
-                tenant=tenant,
-                event=event,
-                payload_sha256=payload_sha256,
-                prev_hash=self.head,
-                entry_hash=entry_hash,
-                payload_enc=payload_enc,
-                payload_alg=payload_alg,
-                request_id=request_id,
-            )
-            line = json.dumps(record.__dict__, separators=(",", ":"))
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
-                fh.flush()
-                os.fsync(fh.fileno())
-            self.head = entry_hash
+            records = self._write_batch([item])
             hold_s = time.perf_counter() - start_hold
         # Outside the lock: recording must never extend the critical section.
         from aegis.metrics import metrics
@@ -461,7 +492,60 @@ class AuditChain:
         metrics.inc("aegis_audit_append_total")
         metrics.inc("aegis_audit_lock_wait_seconds_total", wait_s)
         metrics.inc("aegis_audit_append_seconds_total", hold_s)
-        return record
+        return records[0]
+
+    def _append_batched(self, item: tuple) -> AuditRecord:
+        """Leader-follower group commit. No background thread to leak, stall or
+        drain at shutdown: the first thread in a window becomes the flusher,
+        sleeps one window to collect followers, then writes the batch with one
+        fsync and wakes everyone. Ack still waits for the fsync, so a record is
+        never reported before it is durable — the window costs latency, never
+        safety. A follower whose leader dies falls back to a solo append."""
+        slot: dict = {"done": threading.Event(), "record": None, "error": None, "item": item}
+        with self._batch_lock:
+            self._batch.append(slot)
+            leader = len(self._batch) == 1
+        if not leader:
+            if slot["done"].wait(timeout=self.batch_window_ms / 1000 + 30):
+                if slot["error"] is not None:
+                    raise slot["error"]
+                return slot["record"]
+            with self._batch_lock:
+                if slot["done"].is_set():
+                    # The leader flushed while we timed out: use its result,
+                    # never write the same record twice.
+                    if slot["error"] is not None:
+                        raise slot["error"]
+                    return slot["record"]
+                if slot in self._batch:
+                    self._batch.remove(slot)
+            return self._append_solo(item)
+        time.sleep(self.batch_window_ms / 1000)
+        with self._batch_lock:
+            batch = self._batch
+            self._batch = []
+        start_wait = time.perf_counter()
+        try:
+            with self._locked(exclusive=True):
+                wait_s = time.perf_counter() - start_wait
+                start_hold = time.perf_counter()
+                records = self._write_batch([s["item"] for s in batch])
+                hold_s = time.perf_counter() - start_hold
+        except Exception as exc:  # noqa: BLE001 — every waiter must wake, with the cause attached
+            for s in batch:
+                s["error"] = exc
+                s["done"].set()
+            raise
+        from aegis.metrics import metrics
+
+        metrics.inc("aegis_audit_batch_total")
+        metrics.inc("aegis_audit_batch_size_total", float(len(batch)))
+        metrics.inc("aegis_audit_batch_lock_wait_seconds_total", wait_s)
+        metrics.inc("aegis_audit_batch_seconds_total", hold_s)
+        for s, record in zip(batch, records, strict=True):
+            s["record"] = record
+            s["done"].set()
+        return slot["record"]
 
     def verify(self) -> tuple[bool, str]:
         try:

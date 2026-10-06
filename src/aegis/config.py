@@ -120,6 +120,15 @@ class Settings(BaseSettings):
     # old segment that never reached object storage is kept, because pruning
     # it would be silent data loss with a schedule attached.
     audit_keep_days: float = 0
+    # Group-commit window in ms for audit appends. 0 disables: every append
+    # fsyncs alone. Above 0, threads arriving within one window share a single
+    # fsync; ack still waits for it, so durability is unchanged and p50 pays
+    # up to one window. Measured on a laptop at c=50: a 2ms window *lost* 20%
+    # (solo ~380 rps vs batched ~300) because the window sleep exceeds the
+    # per-record hold it saves. Enable only past saturation, where mean
+    # lock-wait dominates mean hold in the loadtest server-side report — and
+    # re-measure; the window is a bet, not a default.
+    audit_batch_window_ms: float = 0
     # Embeddings: legacy (default, zero-dep hash_vec path) | hash | gmi | openai.
     embed_provider: str = "legacy"
     embed_model: str = ""
