@@ -125,6 +125,47 @@ async def hammer(base: str, key: str, total: int, concurrency: int, payload: dic
     return summarise(latencies, statuses, wall)
 
 
+def fetch_server_costs(base: str, key: str) -> dict:
+    """Mean audit append cost from the server's own counters.
+
+    Client wall-clock mixes queueing with work. These counters separate them:
+    lock-wait rising means threads queue at the audit lock; hold rising means
+    the disk got slow. Returns {} when the endpoint is unreachable.
+    """
+    import urllib.request
+
+    # base is our own gateway (booted above or --base); http only.
+    try:
+        req = urllib.request.Request(f"{base}/metrics", headers={"Authorization": f"Bearer {key}"})  # noqa: S310
+        body = urllib.request.urlopen(req, timeout=10).read().decode()  # noqa: S310
+    except Exception:  # noqa: BLE001 — external gateways may hide /metrics; the load numbers stand alone
+        return {}
+    want = {
+        "aegis_audit_append_total",
+        "aegis_audit_lock_wait_seconds_total",
+        "aegis_audit_append_seconds_total",
+    }
+    totals: dict[str, float] = {}
+    for line in body.splitlines():
+        if line.startswith("#") or " " not in line:
+            continue
+        series, _, value = line.rpartition(" ")
+        name = series.split("{", 1)[0]
+        if name in want:
+            try:
+                totals[name] = totals.get(name, 0.0) + float(value)
+            except ValueError:
+                continue
+    appends = totals.get("aegis_audit_append_total", 0)
+    if not appends:
+        return {}
+    return {
+        "appends": int(appends),
+        "mean_hold_ms": totals.get("aegis_audit_append_seconds_total", 0.0) / appends * 1000,
+        "mean_wait_ms": totals.get("aegis_audit_lock_wait_seconds_total", 0.0) / appends * 1000,
+    }
+
+
 def report(label: str, result: dict) -> None:
     lat = result["latency_ms"]
     print(f"\n{label}")
@@ -239,6 +280,15 @@ def main() -> int:
             f"{len(args.sweep_tenants or [1]) or 1} tenant(s)",
             result,
         )
+
+        server_costs = fetch_server_costs(base, args.key)
+        if server_costs:
+            print(
+                f"server-side audit cost — mean append {server_costs['mean_hold_ms']:.3f} ms  "
+                f"mean lock-wait {server_costs['mean_wait_ms']:.3f} ms  "
+                f"over {server_costs['appends']} appends "
+                f"(client p50 was {result['latency_ms']['p50']} ms — the gap is queueing, not work)"
+            )
 
         if args.sweep_tenants:
             print("\ntenant sweep — same load, growing tenant table")

@@ -215,7 +215,8 @@ pulled — so cross-pod reconciliation still needs a shared bucket. See `docs/PR
 The archive needs `pip install -e '.[archive]'`. Without boto3, setting
 `AEGIS_AUDIT_S3_BUCKET` logs `audit s3 archive skipped` and uploads nothing —
 which is safe (retention refuses to prune what was never archived) but means
-`AEGIS_AUDIT_KEEP_SEGMENTS` will never free anything.
+`AEGIS_AUDIT_KEEP_SEGMENTS` and `AEGIS_AUDIT_KEEP_DAYS` will never free anything.
+Both share the same gate: age alone never prunes an unarchived segment.
 
 ---
 
