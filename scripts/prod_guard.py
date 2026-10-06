@@ -434,6 +434,48 @@ def check_render_blueprint() -> None:
         ok("render.yaml persists the audit chain on a disk")
 
 
+def check_render_free_blueprint() -> None:
+    """The free-tier blueprint must be honest about what free means.
+
+    No disk (paid-only on Render — declaring one silently forces a paid
+    instance), no Redis/Postgres services (no free tier), S3 archive present
+    as the only history copy, demo posture identical to render.yaml. An
+    "evaluation" file that quietly requires paid pieces is a broken promise.
+    """
+    path = ROOT / "render-free.yaml"
+    if not path.exists():
+        warn("no render-free.yaml — skipping the free-tier blueprint check")
+        return
+    try:
+        doc = yaml.safe_load(path.read_text()) or {}
+    except Exception as exc:  # noqa: BLE001 — invalid yaml blocks the pipeline with context
+        fail(f"render-free.yaml does not parse: {exc}")
+        return
+
+    web = next((s for s in (doc.get("services") or []) if s.get("type") == "web"), None)
+    if web is None:
+        fail("render-free.yaml has no web service")
+        return
+    if not web.get("healthCheckPath"):
+        fail("render-free.yaml: web service has no healthCheckPath")
+    if web.get("disk"):
+        fail("render-free.yaml declares a disk — disks are paid-only, so the free deploy is not free")
+    paid_extras = [s.get("name") for s in (doc.get("services") or []) if s.get("type") != "web"]
+    if paid_extras or doc.get("databases"):
+        fail(f"render-free.yaml wires paid pieces ({paid_extras or 'databases'}) — the free deploy is not free")
+
+    env = {e.get("key"): e for e in (web.get("envVars") or [])}
+    bucket = env.get("AEGIS_AUDIT_S3_BUCKET") or {}
+    if "value" in bucket and bucket["value"]:
+        fail("render-free.yaml hardcodes AEGIS_AUDIT_S3_BUCKET — buckets are per-operator, fill in dashboard")
+    if not bucket:
+        fail("render-free.yaml has no AEGIS_AUDIT_S3_BUCKET entry — without the archive, free-tier history evaporates")
+    if (env.get("AEGIS_ENV") or {}).get("value") == "production":
+        fail("render-free.yaml runs production without Redis — limits would silently multiply per worker")
+    if not any(f.startswith("render-free.yaml") for f in failures):
+        ok("render-free.yaml is honest free tier: no disk, no paid services, archive wired")
+
+
 def check_compose() -> None:
     text = (ROOT / "docker-compose.yml").read_text()
     comp = yaml.safe_load(text)["services"]["gateway"]
@@ -467,6 +509,7 @@ def main() -> int:
     check_dockerfile()
     check_console_surface()
     check_render_blueprint()
+    check_render_free_blueprint()
     check_compose()
     if failures:
         print(f"\nPROD-GUARD BLOCKED ({len(failures)} problem(s))")

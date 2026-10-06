@@ -268,3 +268,38 @@ def test_csp_regaining_unsafe_inline_fails(console_tree):
     mw.write_text(text.replace("\"script-src 'self'; \"", "\"script-src 'self' 'unsafe-inline'; \"", 1))
     prod_guard.check_console_surface()
     assert any("unsafe-inline" in f for f in prod_guard.failures)
+
+
+# --- the free-tier blueprint must stay free and honest ------------------------
+
+
+def test_shipped_render_free_passes():
+    prod_guard.check_render_free_blueprint()
+    assert prod_guard.failures == []
+
+
+def test_render_free_with_disk_fails():
+    text = (ROOT / "render-free.yaml").read_text()
+    disk_yaml = (
+        "    healthCheckPath: /healthz\n    disk:\n      name: audit-log\n      mountPath: /data\n      sizeGB: 1"
+    )
+    with_disk = text.replace("    healthCheckPath: /healthz", disk_yaml, 1)
+    render_free = ROOT / "render-free.yaml"
+    render_free.write_text(with_disk)
+    try:
+        prod_guard.check_render_free_blueprint()
+        assert any("disk" in f for f in prod_guard.failures)
+    finally:
+        render_free.write_text(text)
+
+
+def test_render_free_production_fails():
+    text = (ROOT / "render-free.yaml").read_text()
+    broken = text.replace("value: development", "value: production", 1)
+    render_free = ROOT / "render-free.yaml"
+    render_free.write_text(broken)
+    try:
+        prod_guard.check_render_free_blueprint()
+        assert any("Redis" in f for f in prod_guard.failures)
+    finally:
+        render_free.write_text(text)

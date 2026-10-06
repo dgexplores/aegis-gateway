@@ -148,6 +148,15 @@ async def lifespan(app: FastAPI):
     if (starting_drain := current_drain()) is not None:
         starting_drain.end_drain()
 
+    # Pull archived segments back BEFORE serving, not only on the 60s tick: a
+    # host with an ephemeral disk (free tier, fresh container) boots with an
+    # empty audit file, and the first minute of /admin/audit would report a
+    # complete history of nothing. Best-effort — the reconciler retries.
+    try:
+        await asyncio.to_thread(STATE["gateway"].audit_ledger.sync_from_archive)
+    except Exception as exc:  # noqa: BLE001 — no bucket on first boot is normal
+        log.debug("audit archive boot sync skipped: %s", exc)
+
     # Reconcile the ledger on a timer rather than only when an operator opens
     # the audit page. Assembling hashes every record in every segment, so a
     # missing segment was previously discovered only by someone who happened to
