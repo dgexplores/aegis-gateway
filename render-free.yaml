@@ -60,6 +60,12 @@ services:
         value: demo-sk-aegis-2024
       - key: AEGIS_PROVIDERS
         value: echo
+      # Single worker: without Redis, limits and counters live per process, so
+      # two workers would silently double every limit and split every dashboard
+      # number. Observed live (two workers answered different requests with
+      # different counters). The image defaults to 2; free tier overrides to 1.
+      - key: AEGIS_WORKERS
+        value: 1
       # The only copy of audit history at this tier. Fill in the dashboard.
       - key: AEGIS_AUDIT_S3_BUCKET
         sync: false

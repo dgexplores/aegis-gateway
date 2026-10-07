@@ -472,6 +472,8 @@ def check_render_free_blueprint() -> None:
         fail("render-free.yaml has no AEGIS_AUDIT_S3_BUCKET entry — without the archive, free-tier history evaporates")
     if (env.get("AEGIS_ENV") or {}).get("value") == "production":
         fail("render-free.yaml runs production without Redis — limits would silently multiply per worker")
+    if (env.get("AEGIS_WORKERS") or {}).get("value") != "1":
+        fail("render-free.yaml must pin AEGIS_WORKERS=1 — without Redis, two workers silently double every limit")
     if not any(f.startswith("render-free.yaml") for f in failures):
         ok("render-free.yaml is honest free tier: no disk, no paid services, archive wired")
 

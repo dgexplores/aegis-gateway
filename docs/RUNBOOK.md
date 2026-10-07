@@ -225,10 +225,12 @@ No disk, no Redis, no Postgres — everything free, four degradations accepted:
 - **Sleep.** The platform spins the service down after ~15 minutes idle; first
   request after sleep waits out a cold boot. Point a free uptime pinger at
   `/healthz` every 10 minutes to stay warm.
-- **Amnesia.** Each boot starts with an empty audit file. Boot pulls archived
-  segments back from S3 before serving (and the 60s reconciler keeps pulling),
-  so history reassembles from the bucket — but the bucket is then the *only*
-  copy. No bucket configured means no history survives a night.
+- **Amnesia — proven, not theoretical.** A service restart on 2026-10-07 came
+  back `/readyz: chain empty, ready`: even a restart (not a redeploy) wipes the
+  file. Boot pulls archived segments back from S3 before serving (and the 60s
+  reconciler keeps pulling), so history reassembles from the bucket — but the
+  bucket is then the *only* copy. No bucket configured means no history
+  survives a night, or a restart, or a sleep.
 - **Per-process limits.** Rate limits and budgets live in the single worker, so
   they are exact at one worker and silently multiply if you ever scale to two.
 - **In-memory RAG.** The corpus dies with the process; re-ingest after cold
