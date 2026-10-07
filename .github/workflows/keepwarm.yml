@@ -1,0 +1,26 @@
+# Keep-warm for the free-tier deploy (render-free.yaml).
+#
+# Free web services sleep after ~15 minutes idle; this pings /healthz every 10
+# minutes so cold starts stay rare. Public repo, so Actions minutes are free.
+# Doubles as uptime evidence: each run logs the status code, and a non-200
+# fails the run (visible red, plus Render's own notifyOnFail).
+#
+# GitHub pauses scheduled workflows after 60 days of repo inactivity — a push
+# re-arms it. If the pings stop, check this file's recent runs first.
+name: keepwarm
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping free-tier gateway
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 50 https://aegis-gateway-free.onrender.com/healthz)
+          echo "healthz=$code"
+          [ "$code" = 200 ]
