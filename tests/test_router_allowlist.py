@@ -47,7 +47,6 @@ def test_gateway_enforces_allowlist(tmp_path, monkeypatch):
     )
     gw = asyncio.run(build_gateway(s))
     long_code = "```\n" + "x" * 3000
-    res = asyncio.run(gw.handle_chat("d", [{"role": "user", "content": long_code}],
-                                     use_cache=False))
+    res = asyncio.run(gw.handle_chat("d", [{"role": "user", "content": long_code}], use_cache=False))
     assert res["routing"]["tier"] == "economy"
     assert "allowlist enforced" in res["routing"]["reason"]

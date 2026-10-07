@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence loadtest restore-drill docker-build docker-up gen-tenant check-secrets
 
 install:
 	pip install -e ".[dev]"
@@ -31,6 +31,13 @@ gen-tenant:
 
 lint:
 	ruff check src tests scripts
+	ruff format --check src tests scripts
+
+# The repo is formatted, so the check above can block. Kept as its own target
+# because running it rewrites files and that should never be a side effect of
+# `make lint`.
+format:
+	ruff format src tests scripts
 
 type:
 	mypy src
@@ -72,6 +79,16 @@ smoke:
 # The server is started, exercised and torn down inside ONE shell: a background
 # process does not survive the shell that launched it, so splitting these into
 # separate invocations leaves the capture talking to a dead port.
+# Load harness. Boots its own gateway on a scratch port with the echo provider, so
+# it is free and hermetic. NOT part of `verify`: it measures, it does not assert.
+# Proves an archived audit chain still verifies. NOT part of `verify`: it is a
+# drill to run on a schedule and against real archives, not a unit assertion.
+restore-drill:
+	@python scripts/restore_drill.py --records 500
+
+loadtest:
+	@python scripts/loadtest.py --requests 2000 --concurrency 20 --sweep-tenants 1 10 50 100
+
 evidence:
 	@bash -c 'set -e; \
 	  DIR=$$(mktemp -d); PORT=8098; \

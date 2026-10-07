@@ -13,6 +13,17 @@ services:
       AEGIS_AUDIT_PATH: /data/audit.jsonl
       AEGIS_REDIS_URL: redis://redis:6379/0
       AEGIS_DATABASE_URL: ${AEGIS_DATABASE_URL:-}
+      # Admin portal login. Required (`:?`) rather than defaulted, so a boot
+      # without it fails loudly instead of silently reverting to bearer-only
+      # auth on a deployment whose operator believed the portal was protected.
+      AEGIS_ADMIN_USERNAME: ${AEGIS_ADMIN_USERNAME:?set in .env}
+      AEGIS_ADMIN_PASSWORD: ${AEGIS_ADMIN_PASSWORD:?set in .env}
+      AEGIS_ADMIN_SESSION_KEY: ${AEGIS_ADMIN_SESSION_KEY:?set in .env}
+      AEGIS_ADMIN_SESSION_TTL: ${AEGIS_ADMIN_SESSION_TTL:-28800}
+      # Break-glass for the kill switch. The kill switch is the one control that
+      # stops every tenant at once, so reaching it needs a second secret that is
+      # not the admin password.
+      AEGIS_BREAKGLASS_PASSWORD: ${AEGIS_BREAKGLASS_PASSWORD:?set in .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GMI_API_KEY: ${GMI_API_KEY:-}

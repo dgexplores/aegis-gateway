@@ -27,6 +27,29 @@ stringData:
   # Redis via external-secrets / vault before a real deploy.
   AEGIS_REDIS_URL: redis://aegis-redis:6379/0
   AEGIS_DATABASE_URL: ""
+
+  # Admin portal login — the operator signs in with an id and a password rather
+  # than pasting a scoped key. UNCOMMENT AND FILL to enable it:
+  #
+  #   AEGIS_ADMIN_USERNAME: your-operator-id
+  #   AEGIS_ADMIN_PASSWORD: <openssl rand -base64 32>
+  #   # Signs the session cookie. Separate from the audit HMAC key so rotating
+  #   # one does not invalidate evidence written under the other.
+  #   AEGIS_ADMIN_SESSION_KEY: <openssl rand -base64 32>
+  #   AEGIS_ADMIN_SESSION_TTL: "28800"
+  #
+  #   # Break-glass for the kill switch. Deliberately NOT the admin password:
+  #   # otherwise compromising the portal is the same as being able to refuse
+  #   # all traffic.
+  #   AEGIS_BREAKGLASS_PASSWORD: <openssl rand -base64 32>
+  #
+  # They are commented out rather than shipped as placeholders on purpose. A
+  # `REPLACE_ME_...` value in a Secret is a *published* password: the manifest,
+  # this file and the source are all public, so shipping one puts a login form
+  # in front of the controls that can pause every tenant, protected by a string
+  # anyone can read. prod_guard.py fails the build on exactly that. Unset means
+  # admin-scoped bearer tokens only, which is the pre-existing behaviour and is
+  # safe — so "not set" is the correct state to ship, and the guard warns.
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

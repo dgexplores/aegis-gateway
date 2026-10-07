@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AEGIS Admin — fleet overview, tenants, chain, attacks</title>
+<meta name="description" content="The AEGIS admin surface: fleet overview, per-tenant budget and isolation, the tamper-evident audit chain, and every blocked request."/>
+<meta name="theme-color" content="#2d2d3d"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232d2d2d'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='30' font-weight='bold' fill='%23fff' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
+<!-- Self-contained, like the console: no CDN, no web font, no inline script or style. -->
+<link rel="stylesheet" href="/static/dashboard.css"/>
+</head>
+<body class="page-console">
+<a href="#main" class="sr-only">Skip to main content</a>
+
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a class="nav-brand" href="/">
+      <span class="nav-mark" aria-hidden="true">Æ</span>
+      <span class="nav-name">AEGIS</span>
+      <span class="pill warn" title="Fleet surface. Requires a key with the admin scope.">ADMIN</span>
+    </a>
+    <div class="nav-actions">
+      <span id="healthPill" class="pill" role="status" aria-live="polite"><span class="dot"></span>checking…</span>
+      <span id="chainPill" class="pill" title="Tamper-evident audit chain">chain —</span>
+      <button id="themeBtn" class="btn sm" type="button" title="Switch the colour theme">Theme</button>
+      <a class="btn sm" href="/dashboard" title="Back to the working console">Console</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+
+<!-- Sign in comes first: without a session every tab below is empty, so asking
+     up front beats a page of "Loading…". A portal login is offered when the
+     deployment configured one, because an operator mid-incident should not have
+     to find a scoped key in a config file and paste it into a form. The key
+     path stays for deployments that only set a bearer token — and for scripts. -->
+<section class="console-section">
+  <div class="section-inner">
+    <header class="section-head">
+      <h2 id="admin-title" class="section-title">Fleet</h2>
+      <p class="section-sub">
+        Every number here comes from an <code>admin</code>-scoped endpoint and is re-read from the
+        system each time you refresh. Nothing on this page is cached or remembered.
+      </p>
+    </header>
+
+    <div class="card key-card" id="keyCard">
+      <div class="card-head"><h3 id="keyCardTitle">Sign in</h3>
+        <span class="spacer"></span>
+        <span id="keyPill" class="pill accent"><span class="dot"></span>checking…</span>
+      </div>
+      <div class="card-body">
+
+        <!-- Portal login: id and password, answered with a signed HttpOnly
+             cookie. Not readable from JavaScript, so an XSS on this page does
+             not hand over the session. -->
+        <div id="loginBox" hidden>
+          <div class="row">
+            <input id="adminUser" type="text" autocomplete="username" class="flex-1"
+                   placeholder="operator id"/>
+            <input id="adminPass" type="password" autocomplete="current-password" class="flex-1"
+                   placeholder="password"/>
+            <button id="adminLoginBtn" class="btn primary" type="button">Sign in</button>
+          </div>
+          <p class="tiny muted mt-10" id="adminLoginMsg" role="status"></p>
+          <p class="tiny muted mt-10" id="adminDemoHint" hidden>
+            This deployment is using the published demo credentials. Set
+            <code>AEGIS_ADMIN_USERNAME</code> and <code>AEGIS_ADMIN_PASSWORD</code> before exposing it.
+          </p>
+        </div>
+
+        <div class="row">
+          <span class="spacer"></span>
+          <button id="keyToggle" class="btn sm ghost" type="button">Use an admin key instead</button>
+        </div>
+        <p class="tiny muted mt-10" id="keyMsg" role="status"></p>
+        <div id="keyEditor" class="row mt-10" hidden>
+          <input id="apiKey" type="password" autocomplete="off" class="mono flex-1" value="__AEGIS_DEMO_SLOT__" placeholder="paste a key with the admin scope"/>
+          <button id="keyReveal" class="btn sm" type="button">Show</button>
+          <button id="keySave" class="btn sm primary" type="button">Use key</button>
+        </div>
+        <p class="tiny muted mt-10">
+          Mint a key with <code>python scripts/gen_tenant.py --id ops --scopes chat+rag+admin</code>.
+          A key without the <code>admin</code> scope gets a 403 from every endpoint on this page.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tabs only. The heading lives in the section above: this band is sticky, so
+     anything inside it slides under the nav as soon as the page scrolls. -->
+<section class="tabs-section" aria-label="Admin sections">
+  <div class="section-inner">
+
+    <!-- One question per tab: is anything wrong, who needs attention, can I prove it, what are they trying. -->
+    <nav class="tabs" role="tablist" aria-label="Admin sections">
+      <button class="tab" role="tab" data-view="overview" aria-selected="true">Overview</button>
+      <button class="tab" role="tab" data-view="tenants" aria-selected="false">Tenants</button>
+      <button class="tab" role="tab" data-view="chain" aria-selected="false">Chain</button>
+      <button class="tab" role="tab" data-view="attacks" aria-selected="false">Attacks</button>
+      <button class="tab" role="tab" data-view="controls" aria-selected="false">Controls</button>
+      <button class="tab" role="tab" data-view="tour" aria-selected="false">Capability Tour</button>
+    </nav>
+
+    <!-- CONTROLS · can I act from here, or do I need a shell? -->
+    <section class="view" id="view-controls" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h3>Controls</h3>
+            <p class="small muted">
+              Act on the running gateway from this page. No shell, no kubectl, no redis-cli.
+              Every action is written into the audit chain with your id on it.
+            </p>
+          </div>
+          <span id="ctlSharedPill" class="pill">—</span>
+          <button id="ctlRefresh" class="btn sm" type="button">Refresh</button>
+        </div>
+        <div class="card-body">
+
+          <!-- The panic button. Deliberately the first control on the page and
+               deliberately the only red one. -->
+          <div class="row">
+            <div class="grow">
+              <strong>Kill switch</strong>
+              <p class="tiny muted" id="ctlKillHint">
+                Refuses every request from every tenant. Use it when something is wrong
+                everywhere and you need the gateway to stop talking to providers at all.
+              </p>
+            </div>
+            <button id="ctlKill" class="btn danger" type="button">Refuse all traffic</button>
+          </div>
+          <!-- Said out loud rather than left implied: an operator should not have
+               to find out mid-incident that the one control that stops every
+               tenant is reachable with nothing but a session cookie. -->
+          <p class="tiny callout-danger mt-10" id="ctlKillUnguarded" hidden>
+            No break-glass secret is set, so any signed-in operator can refuse all traffic.
+            Set <code>AEGIS_BREAKGLASS_PASSWORD</code> to require a second secret for it.
+          </p>
+          <hr class="rule"/>
+
+          <div class="grow">
+            <strong>Tenants</strong>
+            <p class="tiny muted">
+              <strong>Pause</strong> refuses that tenant's traffic and leaves its documents and
+              history alone. <strong>Waive the soft band</strong> stops known-noisy callers being
+              refused for <em>suspicious</em> input — it cannot waive a hard injection block, and
+              there is no control anywhere that could.
+            </p>
+          </div>
+          <div class="table-scroll mt-10">
+            <table>
+              <thead><tr><th>Tenant</th><th>State</th><th>Soft band</th><th>Act</th></tr></thead>
+              <tbody id="ctlTenantBody"><tr><td colspan="4" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <hr class="rule"/>
+
+          <div class="grow">
+            <strong>Provider circuits</strong>
+            <p class="tiny muted">
+              Hold a provider open to stop a broken upstream being retried, or force it closed
+              once it is fixed instead of waiting out the failure threshold. <em>Automatic</em>
+              hands the decision back to the failure counter.
+            </p>
+          </div>
+          <div class="table-scroll mt-10">
+            <table>
+              <thead><tr><th>Provider</th><th>Now</th><th>Override</th></tr></thead>
+              <tbody id="ctlBreakerBody"><tr><td colspan="3" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OVERVIEW · is anything wrong? -->
+    <section class="view" id="view-overview" role="tabpanel">
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h3>Activity</h3>
+            <p class="small muted">
+              Counters live in this process, so they reset on restart and are per-replica.
+              The window is stated rather than implied.
+            </p>
+          </div>
+          <span id="ovWindow" class="pill">window —</span>
+          <button id="ovRefresh" class="btn sm" type="button">Refresh</button>
+        </div>
+        <div class="card-body">
+          <div class="grid-4" id="ovTiles"><p class="small muted">Loading…</p></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h3>Providers &amp; dependencies</h3></div>
+          <div class="card-body"><div id="ovHealth"><p class="small muted">Loading…</p></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="grow"><h3>Top tenants</h3></div>
+            <span class="small muted">by requests, this window</span>
+          </div>
+          <div class="card-body"><div id="ovTop"><p class="small muted">Loading…</p></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>How a request flows</h3></div>
+        <div class="card-body">
+          <div class="pipe">
+            <div class="pipe-step"><b>Auth</b><span>hashed key + scopes</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Rate limit</b><span>per-tenant window</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Injection scan</b><span>every turn, worst wins</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>PII vault</b><span>pseudonyms out</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Budget</b><span>preflight + actuals</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Cache</b><span>tenant-scoped</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Route</b><span>cost tier</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Failover</b><span>breakers, echo last</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Restore</b><span>PII back for caller</span></div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>Audit</b><span>hash-chained record</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TENANTS · who needs attention? -->
+    <section class="view" id="view-tenants" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h3>Tenants</h3>
+            <p class="small muted">
+              Read-only. Key rotation stays in <code>scripts/gen_tenant.py</code>, where it is
+              auditable in a shell history and cannot be triggered from a browser.
+            </p>
+          </div>
+          <button id="tenRefresh" class="btn sm" type="button">Refresh</button>
+        </div>
+        <div class="card-body">
+          <p class="tiny muted" id="tenWindow" role="status"></p>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Tenant</th><th>Scopes</th><th>Requests</th><th>Blocked</th><th>Spend</th><th>Daily budget</th><th>Docs</th></tr></thead>
+              <tbody id="tenBody"><tr><td colspan="7" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <p class="small muted mt-12" id="tenSummary" role="status"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAIN · can I prove it? -->
+    <section class="view" id="view-chain" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h3>Audit chain</h3>
+            <p class="small muted">
+              This replica keeps one chain. A multi-pod deployment keeps one chain <em>per pod</em> —
+              tamper-evidence is per replica, and reconciling several is still a manual job.
+            </p>
+          </div>
+          <label class="chk"><input id="auditAuto" type="checkbox" checked/> auto-refresh</label>
+          <button id="auditRefresh" class="btn sm" type="button">Refresh</button>
+          <button id="auditExport" class="btn sm" type="button">Export NDJSON</button>
+        </div>
+        <div class="card-body">
+          <div class="row mt-10">
+            <label class="small muted" for="auditLimit">Rows</label>
+            <select id="auditLimit" class="w-auto"><option>10</option><option selected>25</option><option>50</option><option>100</option><option>250</option><option>500</option></select>
+            <label class="small muted" for="auditEvent">Event</label>
+            <select id="auditEvent" class="w-auto"><option value="">all</option></select>
+            <label class="small muted" for="auditTenant">Tenant</label>
+            <input id="auditTenant" type="text" placeholder="all" class="w-170"/>
+            <span class="spacer"></span>
+            <span id="auditVerdict" class="pill">—</span>
+          </div>
+          <p class="small muted mt-10" id="auditMsg" role="status"></p>
+          <div class="grid-4" id="auditTiles"></div>
+          <div class="table-scroll mt-12">
+            <table>
+              <thead><tr><th>Seq</th><th>When</th><th>Event</th><th>Tenant</th><th>Request id</th><th>Signature</th><th>Link</th><th>Payload</th><th></th></tr></thead>
+              <tbody id="auditBody"><tr><td colspan="9" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div id="auditDetail"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ATTACKS · what are people trying? -->
+    <section class="view" id="view-attacks" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h3>Blocked &amp; refused requests</h3>
+            <p class="small muted" id="atkNote">Loading…</p>
+          </div>
+          <span id="atkSummary" class="pill">—</span>
+          <button id="atkRefresh" class="btn sm" type="button">Refresh</button>
+        </div>
+        <div class="card-body">
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>When</th><th>Tenant</th><th>Band</th><th>Score</th><th>Signals</th><th>Seq</th><th>Request id</th><th>Signature</th></tr></thead>
+              <tbody id="atkBody"><tr><td colspan="8" class="muted small">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <p class="small muted mt-12">
+            There is deliberately no “add to blocklist” button here. A rule written from a payload
+            nobody reviewed is how you refuse a paying customer; promoting a real attempt into the
+            red-team corpus is a reviewed decision instead.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TOUR · prove it to a skeptic -->
+    <section class="view" id="view-tour" role="tabpanel" hidden>
+      <div class="card">
+        <div class="card-head">
+          <div class="grow">
+            <h3>Capability Tour</h3>
+            <p class="small muted">Ten checks driven against the live API. Nothing here is simulated.</p>
+          </div>
+          <span id="tourSummary" class="pill">not run</span>
+          <button id="tourRunAll" class="btn sm primary" type="button">Run all</button>
+        </div>
+        <div class="card-body"><div id="tourList"></div></div>
+      </div>
+    </section>
+
+  </div>
+</section>
+
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/theme.js" defer></script>
+<script src="/static/dashboard.js" defer></script>
+</body>
+</html>

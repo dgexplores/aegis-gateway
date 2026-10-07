@@ -28,8 +28,18 @@ dependencies = [
 aegis-gateway = "aegis.serve:main"
 
 [project.optional-dependencies]
+archive = [
+    # Required by AEGIS_AUDIT_S3_BUCKET. The archive path was documented in the
+    # config, the runbook and ADR-7 with no way to install its dependency, so
+    # setting the variable silently did nothing.
+    "boto3>=1.34",
+]
 backends = [
     "psycopg[binary]>=3.1",
+    # The deployed image installs this extra (see Dockerfile), and the free
+    # tier keeps its only audit history in object storage — so the archive
+    # dependency ships with the image, not as a forgotten extra.
+    "boto3>=1.34",
 ]
 dev = [
     "pytest>=9.1.1",
@@ -72,6 +82,15 @@ ignore = [
 "src/aegis/api/routes.py" = ["BLE001", "S110"]
 # KB_PASSWORD_RESET is sample documentation text, not a credential
 "scripts/eval_gate.py" = ["S105"]
+# The screenshot capture starts its own gateway on loopback and shells out to a
+# fixed `sips` argv with no shell. That is the entire purpose of the file, and
+# the alternative -- eight noqa comments -- is worse, because the formatter
+# reflows these calls and slides the suppressions off the lines they explain.
+"scripts/capture_shots.py" = ["S603", "S310", "S607"]
+# The crash-safety test SIGKILLs a real gateway on loopback. Starting that
+# process and reading it back over HTTP *is* the test; nothing here takes
+# input from anywhere.
+"tests/test_audit_crash_safety.py" = ["S603", "S310"]
 
 [tool.mypy]
 python_version = "3.11"

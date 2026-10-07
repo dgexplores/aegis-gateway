@@ -5,10 +5,9 @@ Heroku, and fall back to the configured default when no env var is set. It must
 reject non-numeric values rather than silently crash at runtime.
 """
 
-
 import pytest
 
-from aegis.serve import resolve_port, resolve_workers
+from aegis.serve import _resolve_int, resolve_port, resolve_workers
 
 
 @pytest.fixture(autouse=True)
@@ -57,4 +56,26 @@ def test_workers_rejects_non_numeric(monkeypatch):
     monkeypatch.setenv("AEGIS_WORKERS", "many")
     with pytest.raises(SystemExit) as exc_info:
         resolve_workers()
+    assert exc_info.value.code != 0
+
+
+def test_int_default_when_unset(monkeypatch):
+    monkeypatch.delenv("AEGIS_UVICORN_MAX_REQUESTS", raising=False)
+    assert _resolve_int("AEGIS_UVICORN_MAX_REQUESTS", 0) == 0
+
+
+def test_int_from_env(monkeypatch):
+    monkeypatch.setenv("AEGIS_UVICORN_GRACEFUL_SHUTDOWN", "45")
+    assert _resolve_int("AEGIS_UVICORN_GRACEFUL_SHUTDOWN", 30, minimum=1) == 45
+
+
+def test_int_floor_applies(monkeypatch):
+    monkeypatch.setenv("AEGIS_UVICORN_TIMEOUT_KEEP_ALIVE", "0")
+    assert _resolve_int("AEGIS_UVICORN_TIMEOUT_KEEP_ALIVE", 5, minimum=1) == 1
+
+
+def test_int_rejects_non_numeric(monkeypatch):
+    monkeypatch.setenv("AEGIS_UVICORN_MAX_REQUESTS", "many")
+    with pytest.raises(SystemExit) as exc_info:
+        _resolve_int("AEGIS_UVICORN_MAX_REQUESTS", 0)
     assert exc_info.value.code != 0

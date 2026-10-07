@@ -16,6 +16,7 @@ def test_opens_after_threshold():
 
 def test_half_open_then_close_on_successes():
     import time
+
     b = CircuitBreaker("prov", failure_threshold=1, recovery_seconds=0)
     b.record_failure()
     time.sleep(0.01)
@@ -28,6 +29,7 @@ def test_half_open_then_close_on_successes():
 
 def test_failure_in_half_open_reopens():
     import time
+
     b = CircuitBreaker("prov", failure_threshold=1, recovery_seconds=0)
     b.record_failure()
     time.sleep(0.01)

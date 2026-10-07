@@ -1,0 +1,79 @@
+# Render Blueprint — free-tier deployment. No disk, no Redis, no Postgres.
+#
+#   New > Blueprint, point it at this repo, apply. You get a running gateway
+#   on a free web service with the demo key (Bearer demo-sk-aegis-2024).
+#
+# WHAT FREE COSTS (read before trusting this with anything real)
+# --------------------------------------------------------------
+# 1. Sleep. Free web services spin down after ~15 minutes idle. First request
+#    after sleep waits 30-60s for boot. A free uptime pinger (cron-job.org,
+#    UptimeRobot) hitting /healthz every 10 minutes keeps it warm — that is an
+#    account you create, not something this repo can do for you.
+# 2. Amnesia. No disk means every boot starts with an empty audit file: a fresh
+#    chain, seq from 1, no history. The S3 archive (below) is then the ONLY
+#    copy of older segments — set the bucket or history evaporates on each
+#    sleep/wake cycle. Boot pulls archived segments back before serving (see
+#    lifespan in src/aegis/api/routes.py), and the 60s reconciler keeps
+#    pulling, so the ledger reassembles itself from the bucket each boot.
+# 3. Per-process limits. Without Redis, rate limits and budgets live in each
+#    worker process. Free tier runs one worker, so this is exact — until you
+#    scale to two, at which point limits silently double. That is documented,
+#    not fixed, at this tier.
+# 4. In-memory RAG. Without Postgres the corpus lives in RAM and dies with the
+#    process. Re-ingest after each cold boot, or accept echo-only use.
+#
+# S3 ARCHIVE (required for any audit history to survive a night)
+# --------------------------------------------------------------
+# Any S3-compatible store works (AWS S3, Cloudflare R2, Backblaze B2). Put the
+# credentials in the Render dashboard as env vars — never in this file:
+#   AEGIS_AUDIT_S3_BUCKET   (sync: false below — you fill it in the dashboard)
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION (dashboard)
+# boto3 ships in the image (the `backends` extra the Dockerfile installs),
+# so the archive works with only env vars set — no rebuild needed.
+#
+# Going paid later: switch to render.yaml (disk + Redis + Postgres), which
+# `make prod-guard` validates. This file gets the same structural check.
+services:
+  - type: web
+    name: aegis-gateway-free
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # Not "production" — same reason as render.yaml: the demo tenant is
+      # public, so production would refuse to boot by design.
+      - key: AEGIS_ENV
+        value: development
+      - key: AEGIS_AUDIT_HMAC_KEY
+        generateValue: true
+      - key: AEGIS_VAULT_HMAC_KEY
+        generateValue: true
+      - key: AEGIS_AUDIT_ENCRYPT_KEY
+        generateValue: true
+      # Demo tenant (Bearer demo-sk-aegis-2024) — already public in the README.
+      # Replace before any real use: python scripts/gen_tenant.py
+      - key: AEGIS_TENANTS
+        value: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag+admin
+      - key: AEGIS_DEMO_API_KEY
+        value: demo-sk-aegis-2024
+      - key: AEGIS_PROVIDERS
+        value: echo
+      # Single worker: without Redis, limits and counters live per process, so
+      # two workers would silently double every limit and split every dashboard
+      # number. Observed live (two workers answered different requests with
+      # different counters). The image defaults to 2; free tier overrides to 1.
+      - key: AEGIS_WORKERS
+        value: 1
+      # The only copy of audit history at this tier. Fill in the dashboard.
+      - key: AEGIS_AUDIT_S3_BUCKET
+        sync: false
+      - key: AEGIS_AUDIT_S3_PREFIX
+        value: aegis-audit/
+      - key: GMI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

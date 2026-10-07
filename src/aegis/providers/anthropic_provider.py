@@ -28,8 +28,7 @@ class AnthropicProvider(BaseProvider):
         start = time.perf_counter()
 
         system = "\n".join(m["content"] for m in messages if m["role"] == "system")
-        convo = [{"role": m["role"], "content": m["content"]}
-                 for m in messages if m["role"] in ("user", "assistant")]
+        convo = [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] in ("user", "assistant")]
 
         payload = {
             "model": model if model.startswith("claude") else "claude-3-5-haiku-latest",

@@ -209,8 +209,7 @@ def test_render_production_without_redis_fails():
 def console_tree(tmp_path, monkeypatch):
     """A writable copy of just the files the console check reads."""
     src = ROOT / "src" / "aegis"
-    for rel in ("static/dashboard.css", "static/dashboard.js",
-                "templates/dashboard.html", "api/middleware.py"):
+    for rel in ("static/dashboard.css", "static/dashboard.js", "templates/dashboard.html", "api/middleware.py"):
         dst = tmp_path / "src" / "aegis" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text((src / rel).read_text())
@@ -231,16 +230,16 @@ def test_console_loading_a_cdn_stylesheet_fails(console_tree):
     """The real regression risk: someone re-adds a CDN <link> for convenience,
     which breaks air-gapped deployments and re-opens the CSP."""
     t = _template(console_tree)
-    t.write_text(t.read_text().replace(
-        "</head>", '<link rel="stylesheet" href="https://cdn.example.com/x.css"></head>', 1))
+    t.write_text(
+        t.read_text().replace("</head>", '<link rel="stylesheet" href="https://cdn.example.com/x.css"></head>', 1)
+    )
     prod_guard.check_console_surface()
     assert any("remote stylesheet" in f for f in prod_guard.failures)
 
 
 def test_console_with_an_inline_style_fails(console_tree):
     t = _template(console_tree)
-    t.write_text(t.read_text().replace(
-        "</body>", '<div style="color:red">x</div></body>', 1))
+    t.write_text(t.read_text().replace("</body>", '<div style="color:red">x</div></body>', 1))
     prod_guard.check_console_surface()
     assert any("inline style" in f for f in prod_guard.failures)
 
@@ -266,7 +265,41 @@ def test_csp_regaining_unsafe_inline_fails(console_tree):
     # The shipped file already mentions it in the docstring; only the quoted
     # directive form is a regression.
     assert "'unsafe-inline'" not in text
-    mw.write_text(text.replace("\"script-src 'self'; \"",
-                               "\"script-src 'self' 'unsafe-inline'; \"", 1))
+    mw.write_text(text.replace("\"script-src 'self'; \"", "\"script-src 'self' 'unsafe-inline'; \"", 1))
     prod_guard.check_console_surface()
     assert any("unsafe-inline" in f for f in prod_guard.failures)
+
+
+# --- the free-tier blueprint must stay free and honest ------------------------
+
+
+def test_shipped_render_free_passes():
+    prod_guard.check_render_free_blueprint()
+    assert prod_guard.failures == []
+
+
+def test_render_free_with_disk_fails():
+    text = (ROOT / "render-free.yaml").read_text()
+    disk_yaml = (
+        "    healthCheckPath: /healthz\n    disk:\n      name: audit-log\n      mountPath: /data\n      sizeGB: 1"
+    )
+    with_disk = text.replace("    healthCheckPath: /healthz", disk_yaml, 1)
+    render_free = ROOT / "render-free.yaml"
+    render_free.write_text(with_disk)
+    try:
+        prod_guard.check_render_free_blueprint()
+        assert any("disk" in f for f in prod_guard.failures)
+    finally:
+        render_free.write_text(text)
+
+
+def test_render_free_production_fails():
+    text = (ROOT / "render-free.yaml").read_text()
+    broken = text.replace("value: development", "value: production", 1)
+    render_free = ROOT / "render-free.yaml"
+    render_free.write_text(broken)
+    try:
+        prod_guard.check_render_free_blueprint()
+        assert any("Redis" in f for f in prod_guard.failures)
+    finally:
+        render_free.write_text(text)

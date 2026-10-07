@@ -7,6 +7,4 @@ outside HTTP.
 
 import contextvars
 
-request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "aegis_request_id", default="-"
-)
+request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar("aegis_request_id", default="-")

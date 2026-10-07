@@ -17,8 +17,25 @@ from aegis.rag.ingest import Chunk
 _RRF_K = 60
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOP = {
-    "the", "a", "an", "is", "are", "of", "to", "in", "and", "or",
-    "for", "on", "with", "as", "by", "it", "this", "that", "be",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "of",
+    "to",
+    "in",
+    "and",
+    "or",
+    "for",
+    "on",
+    "with",
+    "as",
+    "by",
+    "it",
+    "this",
+    "that",
+    "be",
 }
 
 
@@ -98,14 +115,17 @@ class HybridRetriever:
         """
         agg: dict[str, dict] = {}
         for ch in self._chunks.values():
-            entry = agg.setdefault(ch.source, {
-                "source": ch.source,
-                "doc_id": ch.doc_id,
-                "chunks": 0,
-                "tokens": 0,
-                "embedded_chunks": 0,
-                "preview": ch.text[:160],
-            })
+            entry = agg.setdefault(
+                ch.source,
+                {
+                    "source": ch.source,
+                    "doc_id": ch.doc_id,
+                    "chunks": 0,
+                    "tokens": 0,
+                    "embedded_chunks": 0,
+                    "preview": ch.text[:160],
+                },
+            )
             entry["chunks"] += 1
             entry["tokens"] += ch.token_estimate
             if ch.id in self._embs:
@@ -192,19 +212,15 @@ class HybridRetriever:
 
         if strategy == "bm25":
             order = sorted(bm25, key=lambda c: bm25[c], reverse=True)[:top_k]
-            return [Retrieved(chunk=self._chunks[c], score=round(bm25[c], 6), matched_by="bm25")
-                    for c in order]
+            return [Retrieved(chunk=self._chunks[c], score=round(bm25[c], 6), matched_by="bm25") for c in order]
         if strategy == "vector":
             order = sorted(vec, key=lambda c: vec[c], reverse=True)[:top_k]
-            return [Retrieved(chunk=self._chunks[c], score=round(vec[c], 6), matched_by="vector")
-                    for c in order]
+            return [Retrieved(chunk=self._chunks[c], score=round(vec[c], 6), matched_by="vector") for c in order]
         if strategy != "hybrid":
             raise ValueError(f"unknown retrieval strategy: {strategy}")
 
-        bm25_rank = {cid: r for r, cid in enumerate(
-            sorted(bm25, key=lambda c: bm25[c], reverse=True), start=1)}
-        vec_rank = {cid: r for r, cid in enumerate(
-            sorted(vec, key=lambda c: vec[c], reverse=True), start=1)}
+        bm25_rank = {cid: r for r, cid in enumerate(sorted(bm25, key=lambda c: bm25[c], reverse=True), start=1)}
+        vec_rank = {cid: r for r, cid in enumerate(sorted(vec, key=lambda c: vec[c], reverse=True), start=1)}
 
         candidates = set(bm25_rank) | set(vec_rank)
         fused: dict[str, tuple[float, set[str]]] = {}
@@ -221,8 +237,6 @@ class HybridRetriever:
 
         ranked = sorted(fused.items(), key=lambda kv: kv[1][0], reverse=True)[:top_k]
         return [
-            Retrieved(chunk=self._chunks[cid],
-                      score=round(score, 6),
-                      matched_by="+".join(sorted(sources)))
+            Retrieved(chunk=self._chunks[cid], score=round(score, 6), matched_by="+".join(sorted(sources)))
             for cid, (score, sources) in ranked
         ]

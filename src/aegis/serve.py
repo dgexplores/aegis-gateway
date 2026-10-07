@@ -47,6 +47,17 @@ def resolve_workers() -> int:
         sys.exit(f"serve: AEGIS_WORKERS={raw!r} is not a valid worker count")
 
 
+def _resolve_int(var: str, default: int, minimum: int = 0) -> int:
+    """Env int with a floor; non-numeric exits instead of silently mis-serving."""
+    raw = os.environ.get(var, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        sys.exit(f"serve: {var}={raw!r} is not a valid integer")
+
+
 def main() -> None:
     # 0.0.0.0 is the PaaS standard — Render, Railway, Fly, Heroku all require
     # binding all interfaces so their reverse proxy can reach the container.
@@ -56,9 +67,23 @@ def main() -> None:
     # the gateway refuses to run without in production. Default to a single
     # worker so a dependency-free development deployment works out of the box.
     workers = resolve_workers()
+    # Bounded lifetimes keep a long-lived process honest: recycled workers cap
+    # slow memory growth, keep-alive bounds idle connections behind a proxy,
+    # graceful shutdown bounds drain time so deploys never hang forever.
+    max_requests = _resolve_int("AEGIS_UVICORN_MAX_REQUESTS", 0)
+    keep_alive = _resolve_int("AEGIS_UVICORN_TIMEOUT_KEEP_ALIVE", 5, minimum=1)
+    graceful = _resolve_int("AEGIS_UVICORN_GRACEFUL_SHUTDOWN", 30, minimum=1)
 
     print(f"aegis-gateway: serving on {host}:{port} (workers={workers})", flush=True)
-    uvicorn.run("aegis.main:app", host=host, port=port, workers=workers)
+    uvicorn.run(
+        "aegis.main:app",
+        host=host,
+        port=port,
+        workers=workers,
+        timeout_keep_alive=keep_alive,
+        limit_max_requests=max_requests or None,
+        timeout_graceful_shutdown=graceful,
+    )
 
 
 if __name__ == "__main__":

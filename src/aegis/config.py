@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     port: int = 8080
 
     audit_hmac_key: str = "dev-audit-key-not-for-production-usage!"
+    #: Retired signing keys, comma separated, accepted for *verification only*.
+    #: See the rotation procedure in docs/PRODUCTION-READINESS.md item 1.3.
+    audit_hmac_key_previous: str = ""
     vault_hmac_key: str = "dev-vault-key-not-for-production-usage!"
 
     # No built-in tenant. A gateway with no configured tenant authenticates
@@ -78,11 +81,60 @@ class Settings(BaseSettings):
     # because /dashboard is unauthenticated and would otherwise serve a working
     # credential to anyone who can reach the port.
     demo_api_key: str = ""
+    # Admin portal login. An operator signing in during an incident should not
+    # have to find a scoped key and paste it into a form, so /admin also accepts
+    # an id and password and hands back a signed session cookie. Empty means
+    # "fall back to the bearer token only" — the pre-existing behaviour, which
+    # is what keeps monitoring scripts working.
+    admin_username: str = ""
+    admin_password: str = ""
+    # Signs the admin session cookie. Kept separate from the audit HMAC key so
+    # rotating one does not invalidate evidence written under the other.
+    admin_session_key: str = ""
+    # Session lifetime. Short on purpose: it bounds the damage of a cookie that
+    # leaks out of a shared screen or a screenshot.
+    admin_session_ttl: int = 28800
+    # Break-glass: a second secret required *in the moment* to pull the kill
+    # switch, on top of an existing portal session. The kill switch is the only
+    # control that stops every tenant at once, so it gets a second factor that
+    # is not the admin password — otherwise compromising the portal is
+    # compromising the ability to halt the whole gateway. Unset leaves the kill
+    # switch working exactly as before, and the admin UI says it is unguarded
+    # rather than implying a protection that is not there.
+    breakglass_password: str = ""
+    # Failed step-up attempts allowed per actor before the endpoint starts
+    # refusing regardless of the password.
+    breakglass_attempts: int = 5
     # Audit evidence: encrypted payload copies + S3 archive on rotation.
     # Empty encrypt key disables payload copies (hash-only, current behavior).
     audit_encrypt_key: str = ""
     audit_s3_bucket: str = ""
     audit_s3_prefix: str = "aegis-audit/"
+    # How many rotated segments to keep on local disk once they are safely in
+    # object storage. 0 keeps every segment, which is the safe default: pruning
+    # a segment that was never archived is the same data loss as the rotation
+    # bug, just slower. Set it only alongside AEGIS_AUDIT_S3_BUCKET.
+    audit_keep_segments: int = 0
+    # Max age in days for a rotated segment on local disk. 0 disables: age
+    # alone never prunes. Like keep_segments, the archived gate applies — an
+    # old segment that never reached object storage is kept, because pruning
+    # it would be silent data loss with a schedule attached.
+    audit_keep_days: float = 0
+    # Group-commit window in ms for audit appends. 0 disables: every append
+    # fsyncs alone. Above 0, threads arriving within one window share a single
+    # fsync; ack still waits for it, so durability is unchanged and p50 pays
+    # up to one window. Measured on a laptop at c=50: a 2ms window *lost* 20%
+    # (solo ~380 rps vs batched ~300) because the window sleep exceeds the
+    # per-record hold it saves. Enable only past saturation, where mean
+    # lock-wait dominates mean hold in the loadtest server-side report — and
+    # re-measure; the window is a bet, not a default.
+    audit_batch_window_ms: float = 0
+    # Payload TTL in days for encrypted audit payload copies. 0 keeps them
+    # forever (current behavior). Above 0, the reconciler nulls copies older
+    # than this on its tick and audits the purge itself. Hashes stay, so the
+    # chain still verifies — only recoverable content goes. This is data
+    # minimization, not erasure: seq, hashes and linkage are retained.
+    audit_payload_keep_days: float = 0
     # Embeddings: legacy (default, zero-dep hash_vec path) | hash | gmi | openai.
     embed_provider: str = "legacy"
     embed_model: str = ""
@@ -117,12 +169,14 @@ class Settings(BaseSettings):
         from aegis.security.audit import payload_cipher_alg
 
         if self.audit_encrypt_key and payload_cipher_alg(self.audit_encrypt_key) != "fernet":
-            return [(
-                "AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not installed, so audit "
-                "payloads would be base64-encoded (readable to anyone with the file), not "
-                "encrypted. `cryptography` is a core dependency, so this means a broken "
-                "environment — reinstall it, or unset the key to store digests only."
-            )]
+            return [
+                (
+                    "AEGIS_AUDIT_ENCRYPT_KEY is set but `cryptography` is not installed, so audit "
+                    "payloads would be base64-encoded (readable to anyone with the file), not "
+                    "encrypted. `cryptography` is a core dependency, so this means a broken "
+                    "environment — reinstall it, or unset the key to store digests only."
+                )
+            ]
         return []
 
     @staticmethod
@@ -139,6 +193,18 @@ class Settings(BaseSettings):
                 "(mint one with: python scripts/gen_tenant.py --id acme --scopes chat+rag)"
             )
             return problems
+        # One key, two tenants. The Authenticator refuses to start on this, so
+        # this check is about the *message* an operator gets rather than whether
+        # the problem is caught.
+        by_digest: dict[str, str] = {}
+        for tid, (key_hash, _scopes) in tenants.items():
+            claimed_by = by_digest.setdefault(key_hash.lower(), tid)
+            if claimed_by != tid:
+                problems.append(
+                    f"AEGIS_TENANTS: tenants '{claimed_by}' and '{tid}' share one API key hash "
+                    "— the second would silently inherit the first one's access; mint a key each "
+                    "with scripts/gen_tenant.py"
+                )
         for tid, (key_hash, _scopes) in tenants.items():
             if key_hash.lower() == EMPTY_KEY_HASH:
                 problems.append(

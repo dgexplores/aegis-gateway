@@ -107,8 +107,13 @@ class RagService:
             "index_size": store.size,
         }
 
-    def _persist_best_effort(self, tenant: str, source: str, chunks: list,  # type: ignore[no-untyped-def]
-                             embeddings: dict | None = None) -> bool:
+    def _persist_best_effort(
+        self,
+        tenant: str,
+        source: str,
+        chunks: list,  # type: ignore[no-untyped-def]
+        embeddings: dict | None = None,
+    ) -> bool:
         """Write-through to Postgres; False when absent/unreachable (memory kept)."""
         if self._pg is None:
             return False
@@ -187,12 +192,10 @@ class RagService:
                 persisted = self._pg.delete_source(tenant, source)
             except Exception as exc:  # noqa: BLE001 — translated to an honest 503
                 raise RagPersistError(
-                    f"could not remove '{source}' from durable storage; "
-                    f"nothing was deleted ({type(exc).__name__})"
+                    f"could not remove '{source}' from durable storage; nothing was deleted ({type(exc).__name__})"
                 ) from exc
         removed = store.remove_source(source)
-        log.info("rag delete tenant=%s source=%s chunks=%d persisted=%s",
-                 tenant, source, removed, persisted)
+        log.info("rag delete tenant=%s source=%s chunks=%d persisted=%s", tenant, source, removed, persisted)
         return {
             "source": source,
             "chunks_removed": removed,
@@ -209,9 +212,7 @@ class RagService:
                 try:
                     persisted = (persisted or 0) + self._pg.delete_source(tenant, doc["source"])
                 except Exception as exc:  # noqa: BLE001 — surfaced, not swallowed
-                    raise RagPersistError(
-                        f"could not clear durable storage ({type(exc).__name__})"
-                    ) from exc
+                    raise RagPersistError(f"could not clear durable storage ({type(exc).__name__})") from exc
         count = store.size
         self._stores.pop(tenant, None)
         return {"tenant": tenant, "chunks_removed": count, "persisted_removed": persisted}
@@ -219,16 +220,15 @@ class RagService:
     def prepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
         self.refresh(tenant)
         results: list[Retrieved] = self._for(tenant).retrieve(question, top_k=self.top_k)
-        context_lines = [
-            f"[{r.chunk.source}#chunk{r.chunk.seq}] {r.chunk.text}" for r in results
-        ]
+        context_lines = [f"[{r.chunk.source}#chunk{r.chunk.seq}] {r.chunk.text}" for r in results]
         system_prompt = (
-            "You answer strictly from the provided context blocks. "
-            "Cite sources as [source#chunkN]. If the context lacks the answer, say so.\n\n"
-            + "\n".join(context_lines)
-        ) if context_lines else (
-            "No indexed context is available. Say that you don't have indexed information "
-            "for this question."
+            (
+                "You answer strictly from the provided context blocks. "
+                "Cite sources as [source#chunkN]. If the context lacks the answer, say so.\n\n"
+                + "\n".join(context_lines)
+            )
+            if context_lines
+            else ("No indexed context is available. Say that you don't have indexed information for this question.")
         )
         citations = [
             {

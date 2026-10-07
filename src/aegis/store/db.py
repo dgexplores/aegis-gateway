@@ -46,8 +46,7 @@ LOAD_SQL = "SELECT tenant, source, seq, chunk_id, text FROM rag_chunks"
 LOAD_EMB_SQL = "SELECT tenant, source, seq, chunk_id, text, embedding FROM rag_chunks"
 LIST_SOURCE_IDS_SQL = "SELECT source, chunk_id FROM rag_chunks WHERE tenant = %s"
 LOAD_SOURCE_SQL = "SELECT source, seq, chunk_id, text FROM rag_chunks WHERE tenant = %s AND source = %s"
-LOAD_SOURCE_EMB_SQL = ("SELECT source, seq, chunk_id, text, embedding FROM rag_chunks "
-                       "WHERE tenant = %s AND source = %s")
+LOAD_SOURCE_EMB_SQL = "SELECT source, seq, chunk_id, text, embedding FROM rag_chunks WHERE tenant = %s AND source = %s"
 DELETE_SOURCE_SQL = "DELETE FROM rag_chunks WHERE tenant = %s AND source = %s"
 
 
@@ -73,8 +72,13 @@ class PgChunkStore:
             except Exception:  # noqa: BLE001 — old servers stay lexical-only
                 log.warning("embedding column unavailable, lexical-only schema")
 
-    def save(self, tenant: str, chunks: list[Chunk], conn=None,  # type: ignore[no-untyped-def]
-             embeddings: dict[str, list[float]] | None = None):
+    def save(
+        self,
+        tenant: str,
+        chunks: list[Chunk],
+        conn=None,  # type: ignore[no-untyped-def]
+        embeddings: dict[str, list[float]] | None = None,
+    ):
         own = conn is None
         if own:
             conn = self._connect()
@@ -88,8 +92,7 @@ class PgChunkStore:
                         cur.execute(SAVE_SQL, (tenant, c.source, c.seq, c.id, c.text))
                     else:
                         try:
-                            cur.execute(SAVE_EMB_SQL, (tenant, c.source, c.seq, c.id,
-                                                       c.text, _json.dumps(emb)))
+                            cur.execute(SAVE_EMB_SQL, (tenant, c.source, c.seq, c.id, c.text, _json.dumps(emb)))
                         except Exception:  # noqa: BLE001 — old schema without column
                             cur.execute(SAVE_SQL, (tenant, c.source, c.seq, c.id, c.text))
             return len(chunks)
@@ -130,8 +133,7 @@ class PgChunkStore:
             with conn.cursor() as cur:
                 if keep_ids:
                     cur.execute(
-                        "DELETE FROM rag_chunks WHERE tenant = %s AND source = %s "
-                        "AND NOT (chunk_id = ANY(%s))",
+                        "DELETE FROM rag_chunks WHERE tenant = %s AND source = %s AND NOT (chunk_id = ANY(%s))",
                         (tenant, source, list(keep_ids)),
                     )
                 else:
@@ -186,8 +188,19 @@ class PgChunkStore:
             else:
                 src, seq, chunk_id, text = row[:4]
                 emb = None
-            out.append((Chunk(id=chunk_id, doc_id=doc_id, source=src, text=text,
-                              seq=seq, token_estimate=max(1, len(text) // 4)), emb))
+            out.append(
+                (
+                    Chunk(
+                        id=chunk_id,
+                        doc_id=doc_id,
+                        source=src,
+                        text=text,
+                        seq=seq,
+                        token_estimate=max(1, len(text) // 4),
+                    ),
+                    emb,
+                )
+            )
         return out
 
     def load(self, conn=None) -> list:  # type: ignore[no-untyped-def]
@@ -219,8 +232,20 @@ class PgChunkStore:
                 tenant, source, seq, chunk_id, text = row[:5]
                 emb = None
             doc_id = hashlib.sha256(source.encode()).hexdigest()[:12]
-            out.append((tenant, Chunk(id=chunk_id, doc_id=doc_id, source=source, text=text,
-                                      seq=seq, token_estimate=max(1, len(text) // 4)), emb))
+            out.append(
+                (
+                    tenant,
+                    Chunk(
+                        id=chunk_id,
+                        doc_id=doc_id,
+                        source=source,
+                        text=text,
+                        seq=seq,
+                        token_estimate=max(1, len(text) // 4),
+                    ),
+                    emb,
+                )
+            )
         return out
 
     def bootstrap(self, stores: dict[str, HybridRetriever], conn=None) -> int:  # type: ignore[no-untyped-def]

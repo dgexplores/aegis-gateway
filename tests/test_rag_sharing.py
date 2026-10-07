@@ -21,15 +21,13 @@ class SharedFakePg:
         return len(chunks)
 
     def delete_source(self, tenant, source):
-        doomed = [k for k, (s, _, _) in self.rows.items()
-                  if k[0] == tenant and s == source]
+        doomed = [k for k, (s, _, _) in self.rows.items() if k[0] == tenant and s == source]
         for k in doomed:
             del self.rows[k]
         return len(doomed)
 
     def prune_source(self, tenant, source, keep_ids):
-        doomed = [k for k, (s, _, _) in self.rows.items()
-                  if k[0] == tenant and s == source and k[1] not in keep_ids]
+        doomed = [k for k, (s, _, _) in self.rows.items() if k[0] == tenant and s == source and k[1] not in keep_ids]
         for k in doomed:
             del self.rows[k]
         return len(doomed)
@@ -50,8 +48,14 @@ class SharedFakePg:
         for (t, cid), (s, seq, text) in self.rows.items():
             if t == tenant and s == source:
                 doc_id = hashlib.sha256(s.encode()).hexdigest()[:12]
-                out.append((Chunk(id=cid, doc_id=doc_id, source=s, text=text,
-                                  seq=seq, token_estimate=max(1, len(text) // 4)), None))
+                out.append(
+                    (
+                        Chunk(
+                            id=cid, doc_id=doc_id, source=s, text=text, seq=seq, token_estimate=max(1, len(text) // 4)
+                        ),
+                        None,
+                    )
+                )
         return out
 
 
@@ -66,34 +70,31 @@ def _two_services_sharing_pg():
 def test_ingest_on_one_instance_visible_to_another_sharing_postgres():
     """The split-brain: worker A ingests, worker B must answer from it."""
     first, second = _two_services_sharing_pg()
-    first.ingest("The zebra migration schedule is published annually.", "zebra.md",
-                 tenant="acme")
+    first.ingest("The zebra migration schedule is published annually.", "zebra.md", tenant="acme")
 
     ctx = second.prepare("zebra migration", tenant="acme")
 
-    assert any(c["source"] == "zebra.md" for c in ctx.citations), \
-        "sibling worker's document must be retrievable"
+    assert any(c["source"] == "zebra.md" for c in ctx.citations), "sibling worker's document must be retrievable"
 
 
 def test_delete_on_one_instance_hidden_from_another_sharing_postgres():
     """Deletes must propagate too, or B resurrects what A removed."""
     first, second = _two_services_sharing_pg()
-    first.ingest("The zebra migration schedule is published annually.", "zebra.md",
-                 tenant="acme")
+    first.ingest("The zebra migration schedule is published annually.", "zebra.md", tenant="acme")
     assert second.prepare("zebra migration", tenant="acme").citations
     first.delete_document("acme", "zebra.md")
 
     ctx = second.prepare("zebra migration", tenant="acme")
 
-    assert all(c["source"] != "zebra.md" for c in ctx.citations), \
+    assert all(c["source"] != "zebra.md" for c in ctx.citations), (
         "sibling worker must stop serving the deleted document"
+    )
 
 
 def test_memory_mode_reads_stay_local_without_postgres():
     """No PG attached: today's behavior is unchanged, no sync attempted."""
     first, second = RagService(), RagService()
-    first.ingest("The zebra migration schedule is published annually.", "zebra.md",
-                 tenant="acme")
+    first.ingest("The zebra migration schedule is published annually.", "zebra.md", tenant="acme")
 
     ctx = second.prepare("zebra migration", tenant="acme")
 

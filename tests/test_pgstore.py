@@ -82,6 +82,7 @@ def test_bootstrap_idempotent_on_rebuild():
 def test_rag_configure_defaults_to_memory():
     assert RagService().configure("") == "memory"
 
+
 def test_rag_write_through_failure_never_blocks_ingest():
     class BoomStore:
         def save(self, *args, **kwargs):
@@ -124,8 +125,7 @@ def test_refresh_failure_keeps_serving_memory():
 
     svc = RagService()
     svc._pg = BoomStore()
-    svc.ingest("The zebra migration schedule is published annually.", "zebra.md",
-               tenant="acme")
+    svc.ingest("The zebra migration schedule is published annually.", "zebra.md", tenant="acme")
     out = svc.refresh(tenant="acme")
     assert out == {"synced": 0, "dropped": 0}
     ctx = svc.prepare("zebra migration", tenant="acme")

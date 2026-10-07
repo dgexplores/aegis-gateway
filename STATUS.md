@@ -10,7 +10,7 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 260
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 527
 tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
 Kubernetes, Render) all boot. What remains is not correctness work: it is
 **eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
@@ -59,10 +59,76 @@ tamper-evident chain and per-tenant documents. **Nothing surfaced any of it.**
   Postgres delete runs first and raises; memory is only touched after it succeeds.
   The reverse order would report success and be silently undone by `bootstrap()` on
   the next restart. BM25 statistics are *rebuilt* on delete, not decremented.
-- **Capability console** (`/dashboard`) — five views: Console (multi-turn with a
-  seven-stage pipeline trace and "what the model received"), Knowledge, Evidence,
-  Ops, and a Capability tour of ten checks that drive the real API. Self-contained:
-  no CDN, no web fonts, no framework, zero inline script/style.
+- **Two surfaces.** `/dashboard` is the user surface and it is a *chat* surface:
+  one question box, and a read-only list of what the assistant can see. No
+  document-input form, no per-row delete, and not even a tab bar — the "Ask
+  surface" was never a tab, so the one-item tablist underneath it was decoration
+  that misreported the page's structure. Loading a corpus is corpus
+  *administration* and belongs to an operator, not to the person asking about
+  their holiday. `/admin` is the fleet surface, six tabs: Overview (counter
+  window stated, because the counters are in-process and per-pod), Tenants,
+  Chain, Attacks, **Controls**, and the Capability tour. Both load the same
+  `dashboard.js`, so no renderer is forked.
+- **Operator controls, from the portal.** `POST /admin/controls/*` — kill switch
+  (refuse everyone), pause/resume a tenant, waive/revoke a tenant's *soft* band,
+  and hold a provider's circuit open or closed. No shell, no `kubectl`, no
+  `redis-cli`. Three properties worth naming:
+  - The **soft-band waiver cannot waive the hard band.** There is no endpoint
+    that could, and `test_operator_controls.py` asserts a hard injection is still
+    blocked with the provider never called *while the tenant is allowlisted*. An
+    allowlist that could switch off injection detection would be a hole in the
+    one guarantee this product makes.
+  - Decisions live in **Redis**, so they reach every replica and survive a
+    restart. Without it they degrade to per-process state and the tab says
+    **this pod only** rather than implying otherwise.
+  - Pausing a tenant that does not exist returns **404**, so a typo cannot look
+    like a successful containment. Every action is audited with the operator's
+    id on it.
+  - The **kill switch has its own second factor** (`AEGIS_BREAKGLASS_PASSWORD`),
+    separate from the admin password so a compromised portal is not the same as
+    the ability to halt every tenant. Restoring traffic is never gated — an
+    incident must not end with a gateway nobody can switch back on. The secret
+    is rate limited per actor, and both the successful use and the refused
+    attempt are audited, because a stranger reaching for this from a hijacked
+    session should not read like the operator who was asked to. Unset warns
+    rather than blocks, and the admin UI says in as many words that the control
+    is unguarded; shipping the demo secret fails the production guard.
+- **Admin portal login** — an id and a password answering with a signed, HttpOnly,
+  SameSite=Strict session cookie, so an operator mid-incident is not pasting a
+  scoped key into a form, and an XSS on the page does not hand over the session.
+  The same routes still accept an `admin`-scoped bearer token, so turning the
+  login on cannot break an existing scraper. A failed login is **not** audited:
+  it is not evidence, and logging the guess would turn the chain into an oracle
+  for hunting valid ids. Shipping the published demo pair **fails the production
+  guard** in both deploy artifacts.
+- **Measured, not assumed: load and key hygiene.** `make loadtest` boots a
+  gateway with the `echo` provider and reports percentiles. Single-process
+  ceiling **~1,400 rps** at concurrency 50 (p50 26 ms, p99 122 ms), and it is
+  the GIL rather than one hot spot: the audit `fsync` is 0.019 ms of a ~0.7 ms
+  request and HMAC 0.73 µs. `authenticate()` is O(tenants) per request by
+  design (timing-safe scan) and measured flat from 1 to 100 tenants. None of it
+  includes provider latency — a real model took 3–8 s, so gateway overhead is
+  noise and concurrency, not rps, is the axis that matters.
+- **One key can no longer identify two tenants.** `Authenticator` keyed its
+  lookup by key hash, so two tenants sharing a hash meant the second `dict`
+  assignment silently overwrote the first: one tenant vanished and its callers
+  were served as the other, with its scopes. Replayed against the old code, a
+  shared key resolved to `globex` with `chat+rag+admin` while `acme` disappeared
+  — cross-tenant privilege escalation with no error anywhere. Now refused at
+  construction in **every** environment (a cross-tenant hole should not be gated
+  on a deployment mode) and reported by the production boot check.
+- **`hidden` actually hides.** A pre-existing CSS bug: the browser's
+  `[hidden] { display: none }` is a UA-stylesheet rule, so *any* author rule
+  setting `display` beat it. Only `.view[hidden]` was handled, so the admin key
+  editor sat on screen while `el.hidden` reported `true` — the DOM and the
+  screen disagreed, and nothing could see it. Fixed with one global
+  `[hidden] { display: none !important }` plus a test.
+- **Attacks view** — every hard block and soft refusal, read from the chain. The
+  band comes from the *signed event name*, so it holds on a chain written without
+  payload copies; score and labels need `AEGIS_AUDIT_ENCRYPT_KEY` and render as
+  "not retained" when it is absent. No "add to blocklist" action, on purpose.
+  Self-contained on both surfaces: no CDN, no web fonts, no framework, zero
+  inline script/style.
 - **Strict CSP** — `script-src 'self'; style-src 'self'; font-src 'self';
   form-action 'none'`, no `unsafe-inline`, no remote origins. That is only possible
   *because* the console ships its own assets, which also makes it air-gap-safe.
@@ -82,7 +148,7 @@ EVAL GATE   12/12 passed
 RAG EVAL    recall@4=100%  MRR=1.0  no drift vs baseline
 PII-EVAL    all must-recall cases masked
 PROD-GUARD  PASSED (10 checks)
-PYTEST      260 passed
+PYTEST      466 passed, 5 live skipped
 VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green
 ```
 
@@ -92,7 +158,30 @@ pass (a 13th admin probe is skipped without an admin-scoped key) ·
 
 ---
 
+## 3a. Cleared since the last status
+
+- **Deploy secrets fail closed.** `docker-compose.yml` requires the admin
+  username, password, session key and break-glass secret via `:?`, so a boot
+  without them stops instead of silently falling back to bearer-only auth.
+  `prod_guard.py` also fails the build if any shipped artifact carries a
+  `REPLACE_ME` / `change-me` value in those fields — a placeholder password is a
+  *published* password, which is worse than a missing one. The k8s Secret ships
+  the keys absent with commented guidance rather than as placeholders.
+- **Restore drill.** `make restore-drill` (`scripts/restore_drill.py`) copies an
+  archived chain to its operational path and reads it back through the same
+  `verify()` / `tail_records()` an `/admin/audit` request uses. 12 tests attack it
+  with a forged event, tenant and timestamp, a removed record, a reordering and a
+  mismatched HMAC key, and require each to fail. It states the two things it
+  cannot cover — tail loss, which needs an `--expect-head` anchor, and payload
+  contents, which are not stored at all without `AEGIS_AUDIT_ENCRYPT_KEY`.
+- RTO/RPO are written down in the README as a table, including the two rows that
+  read *none*: the RAG corpus and the Redis counters have no recovery story yet.
+
 ## 4. What is left
+
+The full path from here to a defensible production claim — ordered, gated, and
+with the items that are blocked on something other than work marked as such — is
+in [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md).
 
 ### 4.1 Eval corpus depth — partly landed, still the top item
 
@@ -120,10 +209,12 @@ injection vectors (encoded, multi-turn, role-tag smuggling).
 
 | ID | Issue | Consequence |
 |---|---|---|
-| **M6** | `audit.append` fsyncs on the event loop; embedding providers use synchronous `httpx.post` inside async handlers | Throughput ceiling under concurrency. Partly mitigated (`asyncio.to_thread` on the audit path) but the embeddings call is still blocking |
+| **M6** | `audit.append` fsyncs on the event loop; embedding providers use synchronous `httpx.post` inside async handlers | Throughput ceiling under concurrency. Partly mitigated (`asyncio.to_thread` on the audit path) but the embeddings call is still blocking. The fsync-per-record is load-bearing: a SIGKILL mid-request test confirms nothing is torn without it |
 | **H7** | `/metrics` is readable by any tenant and the series carry per-tenant labels | Cross-tenant disclosure. Tightening to `admin` breaks existing scrape configs, so it needs a deliberate rollout |
-| **M12** | Each pod has its own audit chain; there is no single ledger | Reconciling N chains is manual. The S3 archive is the intended answer |
-| **M13** | `/readyz` re-reads the whole audit file | Cost grows with chain length; a probe should not do full verification |
+| **M12** | *Partly closed.* Segments now assemble into one ledger with proven continuity, served on `/admin/audit`, reassembled on a 60s timer that logs at ERROR; each pod still writes its own chain, there is no sequence global across pods, and archived segments are not pulled back | A lost segment is now detected rather than looking like a second pod. Reconciling pods still needs archived segments pulled back and a cross-pod sequence |
+| ~~**M13**~~ | **Closed.** `/readyz` calls `probe()`, which reads the tail record and does one HMAC instead of re-reading every line. Measured: flat at ~0.05ms from 100 to 10,000 records, while a full `verify()` goes 0.38ms → 31.7ms (609× at 10k). Regression test asserts the probe never re-verifies the chain | — |
+| ~~**M14**~~ | **Closed.** Rotated segments now prune by age via `AEGIS_AUDIT_KEEP_DAYS` (0 = disabled, the default). Same archived gate as count-based pruning: an old segment with no object-storage copy stays, because age is not a reason to lose evidence | — |
+| **M15** | Serve lifecycle bounded by config: `AEGIS_UVICORN_MAX_REQUESTS` (worker recycle, default 0 = off), `AEGIS_UVICORN_TIMEOUT_KEEP_ALIVE` (default 5s), `AEGIS_UVICORN_GRACEFUL_SHUTDOWN` (default 30s). Every audit append reports lock-wait and hold seconds to `aegis_audit_*` counters (mean = sum / `aegis_audit_append_total`), so lock-contention vs slow-disk answers from server data, not client wall-clock | Slow-leak worker growth and hang-forever deploys now bounded; audit cost visible in metrics |
 | **M10** | No stale-chunk policy for RAG | A re-ingested document's old chunks can linger |
 | **M4** | Injection false positives are measured now, but only against a hand-authored corpus | 200 prompts, 0 false positives, worst case 0.65 against a 0.70 block line. Real traffic would be a stronger sample, and a benign prompt at 0.68 would still be refused |
 | **H1 / H2** | The audit log stores hashes by default; payloads only when `AEGIS_AUDIT_ENCRYPT_KEY` is set | Documented explicitly in the README, so the claim matches the artifact — but "prove what the AI said" requires setting the key |
@@ -156,6 +247,13 @@ changes the deployed architecture.
 
 ---
 
+## 4a. Runbook
+
+[`docs/RUNBOOK.md`](docs/RUNBOOK.md) — the kill switch, a corrupt chain, a
+provider outage, a suspected admin compromise, and the audit key rotation, each
+with what makes it worse. It ends with the things it *cannot* help with yet, so
+nobody spends an incident reading it.
+
 ## 5. How to run it
 
 ```bash
@@ -167,7 +265,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 260 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 527 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```

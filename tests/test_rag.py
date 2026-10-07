@@ -43,10 +43,8 @@ def test_rrf_prefers_dual_matches():
     chunks = chunk_document(SAMPLE, "handbook")
     r = HybridRetriever()
     r.index(chunks)
-    dual = [h for h in r.retrieve("expense reimbursement limit $75", top_k=5)
-            if h.matched_by == "bm25+vector"]
-    single = [h for h in r.retrieve("expense reimbursement limit $75", top_k=5)
-              if "+" not in h.matched_by]
+    dual = [h for h in r.retrieve("expense reimbursement limit $75", top_k=5) if h.matched_by == "bm25+vector"]
+    single = [h for h in r.retrieve("expense reimbursement limit $75", top_k=5) if "+" not in h.matched_by]
     if dual and single:
         assert max(h.score for h in dual) > max(h.score for h in single)
 
