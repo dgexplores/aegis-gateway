@@ -303,3 +303,15 @@ def test_render_free_production_fails():
         assert any("Redis" in f for f in prod_guard.failures)
     finally:
         render_free.write_text(text)
+
+
+def test_render_free_requires_payload_ttl():
+    text = (ROOT / "render-free.yaml").read_text()
+    broken = text.replace("value: 90", "value: 0", 1)
+    render_free = ROOT / "render-free.yaml"
+    render_free.write_text(broken)
+    try:
+        prod_guard.check_render_free_blueprint()
+        assert any("PAYLOAD_KEEP_DAYS" in f for f in prod_guard.failures)
+    finally:
+        render_free.write_text(text)
