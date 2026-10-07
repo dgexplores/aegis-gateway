@@ -66,6 +66,11 @@ services:
       # different counters). The image defaults to 2; free tier overrides to 1.
       - key: AEGIS_WORKERS
         value: 1
+      # Payload TTL in days: encrypted audit copies older than this are
+      # nullified on the reconcile tick (hashes stay, chain still verifies).
+      # 90 days is data minimization with room for incident review.
+      - key: AEGIS_AUDIT_PAYLOAD_KEEP_DAYS
+        value: 90
       # The only copy of audit history at this tier. Fill in the dashboard.
       - key: AEGIS_AUDIT_S3_BUCKET
         sync: false

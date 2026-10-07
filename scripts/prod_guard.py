@@ -474,6 +474,9 @@ def check_render_free_blueprint() -> None:
         fail("render-free.yaml runs production without Redis — limits would silently multiply per worker")
     if str((env.get("AEGIS_WORKERS") or {}).get("value")) != "1":
         fail("render-free.yaml must pin AEGIS_WORKERS=1 — without Redis, two workers silently double every limit")
+    ttl = str((env.get("AEGIS_AUDIT_PAYLOAD_KEEP_DAYS") or {}).get("value") or "0")
+    if ttl == "0":
+        fail("render-free.yaml must set AEGIS_AUDIT_PAYLOAD_KEEP_DAYS — free tier keeps payloads forever by default")
     if not any(f.startswith("render-free.yaml") for f in failures):
         ok("render-free.yaml is honest free tier: no disk, no paid services, archive wired")
 
