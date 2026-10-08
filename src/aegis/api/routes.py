@@ -916,14 +916,12 @@ async def admin_overview(tenant: Tenant = Depends(get_tenant), gateway: Gateway 
     # questions that matter (lock contention vs slow disk).
     audit_cost = {
         "appends": appends,
-        "mean_hold_ms": round(metrics.total("aegis_audit_append_seconds_total") / appends * 1000, 3)
-        if appends
-        else 0.0,
-        "mean_lock_wait_ms": round(metrics.total("aegis_audit_lock_wait_seconds_total") / appends * 1000, 3)
-        if appends
-        else 0.0,
+        "mean_hold_ms": metrics.mean("aegis_audit_append_seconds_total", "aegis_audit_append_total", scale=1000.0),
+        "mean_lock_wait_ms": metrics.mean(
+            "aegis_audit_lock_wait_seconds_total", "aegis_audit_append_total", scale=1000.0
+        ),
         "batches": batches,
-        "mean_batch_size": round(metrics.total("aegis_audit_batch_size_total") / batches, 2) if batches else 0.0,
+        "mean_batch_size": metrics.mean("aegis_audit_batch_size_total", "aegis_audit_batch_total", ndigits=2),
     }
     return {
         "generated_at": time.time(),
