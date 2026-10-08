@@ -350,6 +350,11 @@ def check_console_surface() -> None:
         ok("console is self-contained (local assets only, strict CSP, no inline script/style)")
 
 
+def _web_env(web: dict) -> dict:
+    """Env entries of a Render web service, keyed by variable name."""
+    return {e.get("key"): e for e in (web.get("envVars") or [])}
+
+
 def check_render_blueprint() -> None:
     """The Render blueprint must be bootable as shipped.
 
@@ -380,7 +385,7 @@ def check_render_blueprint() -> None:
     if not web.get("healthCheckPath"):
         fail("render.yaml: web service has no healthCheckPath — a deploy could never be judged healthy")
 
-    env = {e.get("key"): e for e in (web.get("envVars") or [])}
+    env = _web_env(web)
 
     def value(key: str) -> str:
         entry = env.get(key) or {}
@@ -464,7 +469,7 @@ def check_render_free_blueprint() -> None:
     if paid_extras or doc.get("databases"):
         fail(f"render-free.yaml wires paid pieces ({paid_extras or 'databases'}) — the free deploy is not free")
 
-    env = {e.get("key"): e for e in (web.get("envVars") or [])}
+    env = _web_env(web)
     bucket = env.get("AEGIS_AUDIT_S3_BUCKET") or {}
     if "value" in bucket and bucket["value"]:
         fail("render-free.yaml hardcodes AEGIS_AUDIT_S3_BUCKET — buckets are per-operator, fill in dashboard")
