@@ -1,9 +1,17 @@
 # AEGIS — a safe way to put AI in front of your staff
 
+[![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
+[![Keep-warm](https://github.com/dgexplores/aegis-gateway/actions/workflows/keepwarm.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/keepwarm.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/dgexplores/aegis-gateway/blob/main/LICENSE)
+
 > **Every question an employee asks an AI assistant goes through one door first.**
 > AEGIS checks it, hides anything personal before it leaves your network, answers
 > only from your own HR documents with the source cited, and writes a record you
 > can stand behind later.
+
+**Try it live right now:** [dashboard](https://aegis-gateway-free.onrender.com/dashboard) ·
+key `demo-sk-aegis-2024` (public demo key, pre-filled) · attack it, then check the audit trail.
+Cold start takes ~30–60s after idle; the [keep-warm runs](https://github.com/dgexplores/aegis-gateway/actions/workflows/keepwarm.yml) show uptime history.
 
 Self-hosted and open source. Your policies and employee data stay on your
 infrastructure. The only thing that leaves is the model call you asked for.
@@ -12,6 +20,28 @@ infrastructure. The only thing that leaves is the model call you asked for.
 and every claim has a screenshot. **If you need to run it,** the setup is under
 [Run it yourself](#run-it-yourself) and the full engineering detail is in
 [`docs/REFERENCE.md`](docs/REFERENCE.md). You can skip everything in between.
+
+---
+
+## The 60-second brief (for recruiters and reviewers)
+
+**What it is:** a self-hosted AI gateway (Python/FastAPI) — prompt-injection defense,
+PII vault, cited RAG answers, hash-chained tamper-evident audit log, per-tenant
+budgets, operator kill-switches. One deploy, live: link above.
+
+**Engineering signal, all verifiable:**
+- [528 tests](https://github.com/dgexplores/aegis-gateway/tree/main/tests), [10 CI jobs](https://github.com/dgexplores/aegis-gateway/actions) green — lint, types, red-team, evals, PII, prod-guard
+- [Crash-safety proven](https://github.com/dgexplores/aegis-gateway/blob/main/tests/test_audit_crash_safety.py): SIGKILL mid-request, 60/60 records linked, zero torn writes
+- [Red-team 12/12 blocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/redteam.py), [200/200 benign unblocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/benign_eval.py), retrieval recall 100%
+- [STATUS.md](STATUS.md): every known gap listed with severity, including what is *not* done
+- [Load-measured](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/loadtest.py), including published negative results (see [M6/M15](STATUS.md))
+
+**Repo map:** [`src/aegis/`](https://github.com/dgexplores/aegis-gateway/tree/main/src/aegis) (gateway) ·
+[`tests/`](https://github.com/dgexplores/aegis-gateway/tree/main/tests) (suite) ·
+[`scripts/`](https://github.com/dgexplores/aegis-gateway/tree/main/scripts) (red-team, evals, loadtest, drills) ·
+[`deploy/k8s/`](https://github.com/dgexplores/aegis-gateway/tree/main/deploy/k8s) + [`Dockerfile`](Dockerfile) + [`docker-compose.yml`](docker-compose.yml) + [`render.yaml`](render.yaml) + [`render-free.yaml`](render-free.yaml) (deploy) ·
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (ADRs) · [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md) (gaps→gates) · [`docs/RUNBOOK.md`](docs/RUNBOOK.md) (operations) ·
+[`ROADMAP.md`](ROADMAP.md) (direction) · [`CODE_REVIEW_AEGIS_GATEWAY.md`](CODE_REVIEW_AEGIS_GATEWAY.md) (independent review record)
 
 ---
 
@@ -217,8 +247,8 @@ No. Each team's history is separate. Only an administrator sees across teams,
 and only by signing in as one.
 
 **Will this get in the way of people?**
-Deliberately not. The blocked-message tests include 34 ordinary, non-malicious
-messages, and the current false-positive rate is **0 out of 34**. Someone asking
+Deliberately not. The blocked-message tests include 200 ordinary, non-malicious
+messages, and the current false-positive rate is **0 out of 200**. Someone asking
 an unusual but innocent question should get an answer, not a lecture.
 
 **Does it cost anything?**
@@ -226,16 +256,17 @@ It runs on your own server. The only cost is the AI service you already use.
 Budgets are per team, so usage can't surprise you.
 
 **Is it proven, or claimed?**
-We'd rather show you. 407 automated checks, 12 out of 12 attacks blocked, 34
-out of 34 false positives avoided, and 100% of test questions answered from the
+We'd rather show you. 528 automated checks, 12 out of 12 attacks blocked, 200
+out of 200 false positives avoided, and 100% of test questions answered from the
 right document. Every screenshot in this README is a real run, and the tour
 above re-runs the claims live while you watch.
 
 **Is it production-ready?**
-Not yet, and we'd rather say so. It has never been deployed to a real
-environment, it has no database connection configured, and some of the
-multi-server behaviour is unfinished. [`STATUS.md`](STATUS.md) lists exactly
-what is done and what is not. Please read it before promising this to anyone.
+A live demo runs 24/7 (link at the top of this page, free tier). That proves the code serves real traffic — not that it is production.
+Production still needs: a paid tier with disk (or an S3 bucket for audit history),
+a real model provider key, and Postgres + Redis wired. [`STATUS.md`](STATUS.md)
+lists exactly what is done and what is not, including published negative load-test
+results. Please read it before promising this to anyone.
 
 ---
 
