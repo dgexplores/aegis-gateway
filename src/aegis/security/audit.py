@@ -144,6 +144,18 @@ def archive_to_s3(path: Path, bucket: str, prefix: str = "aegis-audit/") -> str 
         return None
 
 
+def _report_append(batched: bool, count: int, wait_s: float, hold_s: float) -> None:
+    """One place for append cost counters, shared by the solo and batch paths."""
+    from aegis.metrics import metrics
+
+    prefix = "aegis_audit_batch" if batched else "aegis_audit_append"
+    metrics.inc(f"{prefix}_total")
+    if batched:
+        metrics.inc(f"{prefix}_size_total", float(count))
+    metrics.inc(f"{prefix}_lock_wait_seconds_total", wait_s)
+    metrics.inc(f"{prefix}_seconds_total", hold_s)
+
+
 class AuditChain:
     def __init__(
         self,
@@ -487,11 +499,7 @@ class AuditChain:
             records = self._write_batch([item])
             hold_s = time.perf_counter() - start_hold
         # Outside the lock: recording must never extend the critical section.
-        from aegis.metrics import metrics
-
-        metrics.inc("aegis_audit_append_total")
-        metrics.inc("aegis_audit_lock_wait_seconds_total", wait_s)
-        metrics.inc("aegis_audit_append_seconds_total", hold_s)
+        _report_append(batched=False, count=1, wait_s=wait_s, hold_s=hold_s)
         return records[0]
 
     def _append_batched(self, item: tuple) -> AuditRecord:
@@ -536,12 +544,7 @@ class AuditChain:
                 s["error"] = exc
                 s["done"].set()
             raise
-        from aegis.metrics import metrics
-
-        metrics.inc("aegis_audit_batch_total")
-        metrics.inc("aegis_audit_batch_size_total", float(len(batch)))
-        metrics.inc("aegis_audit_batch_lock_wait_seconds_total", wait_s)
-        metrics.inc("aegis_audit_batch_seconds_total", hold_s)
+        _report_append(batched=True, count=len(batch), wait_s=wait_s, hold_s=hold_s)
         for s, record in zip(batch, records, strict=True):
             s["record"] = record
             s["done"].set()
