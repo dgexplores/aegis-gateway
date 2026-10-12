@@ -10,7 +10,7 @@ license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",
-    "uvicorn[standard]>=0.52.4",
+    "uvicorn[standard]>=0.54.0",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "httpx>=0.27",
@@ -36,7 +36,7 @@ archive = [
     "boto3>=1.34",
 ]
 backends = [
-    "psycopg[binary]>=3.1",
+    "psycopg[binary]>=3.3.6",
     # The deployed image installs this extra (see Dockerfile), and the free
     # tier keeps its only audit history in object storage — so the archive
     # dependency ships with the image, not as a forgotten extra.
