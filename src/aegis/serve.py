@@ -37,16 +37,6 @@ def resolve_port() -> int:
     return get_settings().port
 
 
-def resolve_workers() -> int:
-    raw = os.environ.get("AEGIS_WORKERS", "").strip()
-    if not raw:
-        return 1
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        sys.exit(f"serve: AEGIS_WORKERS={raw!r} is not a valid worker count")
-
-
 def _resolve_int(var: str, default: int, minimum: int = 0) -> int:
     """Env int with a floor; non-numeric exits instead of silently mis-serving."""
     raw = os.environ.get(var, "").strip()
@@ -56,6 +46,10 @@ def _resolve_int(var: str, default: int, minimum: int = 0) -> int:
         return max(minimum, int(raw))
     except ValueError:
         sys.exit(f"serve: {var}={raw!r} is not a valid integer")
+
+
+def resolve_workers() -> int:
+    return _resolve_int("AEGIS_WORKERS", 1, minimum=1)
 
 
 def main() -> None:
