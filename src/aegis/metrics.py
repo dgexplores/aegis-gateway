@@ -46,6 +46,18 @@ class Metrics:
         """
         self._counters.clear()
 
+    def mean(self, sum_name: str, count_name: str, scale: float = 1.0, ndigits: int = 3) -> float:
+        """Mean of a sum counter over a count counter. 0 when empty.
+
+        Sums only, no percentiles — the registry holds counters, so a mean is
+        what a dashboard can honestly show (e.g. sum seconds × 1000 over
+        appends for mean milliseconds).
+        """
+        count = self.total(count_name)
+        if not count:
+            return 0.0
+        return round(self.total(sum_name) / count * scale, ndigits)
+
     def total(self, name: str, **match: str) -> float:
         """Sum every series of `name` whose labels contain `match`.
 
