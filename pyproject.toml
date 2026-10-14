@@ -20,7 +20,7 @@ dependencies = [
     # the AI said" — and without this the payload copy falls back to base64, so
     # the feature is off by default and never exercised in CI. A security
     # primitive that silently degrades is worse than a heavier dependency.
-    "cryptography>=42.0",
+    "cryptography>=50.0.2",
 ]
 
 [project.scripts]
