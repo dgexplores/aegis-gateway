@@ -10,7 +10,7 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 528
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 531
 tests**, the eval corpora reached their target depths (**200** grounded queries,
 **40** banded attack vectors); `make verify` is fully green. What remains is not
 correctness work: it is **production-traffic sampling and real-model judging**,
@@ -150,7 +150,7 @@ EVAL GATE   206/206 passed
 RAG EVAL    recall@4=100%  MRR=0.975  no drift vs baseline (200 cases)
 PII-EVAL    all must-recall cases masked
 PROD-GUARD  PASSED
-PYTEST      523 passed, 5 live skipped (528 collected)
+PYTEST      526 passed, 5 live skipped (531 collected)
 VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green
 ```
 
@@ -215,13 +215,13 @@ production-traffic sampling remain open (M3/M4).
 
 | ID | Issue | Consequence |
 |---|---|---|
-| **M6** | `audit.append` fsyncs on the event loop; embedding providers use synchronous `httpx.post` inside async handlers | Throughput ceiling under concurrency. Partly mitigated (`asyncio.to_thread` on the audit path) but the embeddings call is still blocking. The fsync-per-record is load-bearing: a SIGKILL mid-request test confirms nothing is torn without it |
-| **H7** | `/metrics` is readable by any tenant and the series carry per-tenant labels | Cross-tenant disclosure. Tightening to `admin` breaks existing scrape configs, so it needs a deliberate rollout |
-| **M12** | *Partly closed.* Segments now assemble into one ledger with proven continuity, served on `/admin/audit`, reassembled on a 60s timer that logs at ERROR; each pod still writes its own chain, there is no sequence global across pods, and archived segments are not pulled back | A lost segment is now detected rather than looking like a second pod. Reconciling pods still needs archived segments pulled back and a cross-pod sequence |
+| ~~**M6**~~ | **Closed 2026-10-16.** `rag_service.prepare` ran sync embedding I/O inline on the event loop (`routes.py` → `retrieve` → `httpx.post`). Now: `POST /v1/rag/query` awaits `aprepare` (refresh in a worker thread, retrieval via `aretrieve`); retriever gained `aindex`/`aretrieve` preferring provider `aembed` with thread fallback for legacy providers; `tests/test_rag_async.py` asserts a 300 ms slow provider never stalls the loop. Sync `prepare`/`retrieve`/`index` unchanged. HTTP-client pooling per provider still open (one `AsyncClient` per call) | — |
+| **H7** | *Code landed; rollout open.* `/metrics` now requires auth and renders full series for `admin` scope, caller-tenant-only otherwise (`routes.py`, `metrics.render(tenant=)`, covered by `test_api.py`). What remains is the deliberate rollout: point Prometheus scrapes at an admin-scoped token | Cross-tenant disclosure until scrapes move; tightening further would break existing scrape configs |
+| **M12** | *Partly closed.* Segments assemble into one ledger with proven continuity, served on `/admin/audit`, reassembled on a 60s timer; archive pull-back exists (`sync_from_archive` on boot + tick). Still open: sequence numbers are per-pod (no global cross-pod order) and peer fetch covers only the configured bucket, not sibling replicas | A lost segment is detected rather than looking like a second pod. Full reconcile needs a global sequence (or documented pod-local seq) plus replica fan-out |
 | ~~**M13**~~ | **Closed.** `/readyz` calls `probe()`, which reads the tail record and does one HMAC instead of re-reading every line. Measured: flat at ~0.05ms from 100 to 10,000 records, while a full `verify()` goes 0.38ms → 31.7ms (609× at 10k). Regression test asserts the probe never re-verifies the chain | — |
 | ~~**M14**~~ | **Closed.** Rotated segments now prune by age via `AEGIS_AUDIT_KEEP_DAYS` (0 = disabled, the default). Same archived gate as count-based pruning: an old segment with no object-storage copy stays, because age is not a reason to lose evidence | — |
 | **M15** | Serve lifecycle bounded by config: `AEGIS_UVICORN_MAX_REQUESTS` (worker recycle, default 0 = off), `AEGIS_UVICORN_TIMEOUT_KEEP_ALIVE` (default 5s), `AEGIS_UVICORN_GRACEFUL_SHUTDOWN` (default 30s). Every audit append reports lock-wait and hold seconds to `aegis_audit_*` counters (mean = sum / `aegis_audit_append_total`), so lock-contention vs slow-disk answers from server data, not client wall-clock | Slow-leak worker growth and hang-forever deploys now bounded; audit cost visible in metrics |
-| **M10** | No stale-chunk policy for RAG | A re-ingested document's old chunks can linger |
+| ~~**M10**~~ | **Closed.** Re-ingest now drops the old generation first (`remove_source` before `index`, durable prune, `refresh` re-hash aware; `test_documents.py` covers replace + prune). Known edge, documented: ingest is remove-then-index (a crash between the two transiently loses the doc) and `_persist_best_effort` swallows prune failures (memory pruned, PG stale until `refresh` converges) | — |
 | **M4** | Injection false positives are measured now, but only against a hand-authored corpus | 200 prompts, 0 false positives, worst case 0.65 against a 0.70 block line. Real traffic would be a stronger sample, and a benign prompt at 0.68 would still be refused |
 | **H1 / H2** | The audit log stores hashes by default; payloads only when `AEGIS_AUDIT_ENCRYPT_KEY` is set | Documented explicitly in the README, so the claim matches the artifact — but "prove what the AI said" requires setting the key |
 | **L6** | The repo has never been `ruff format`ed (~40 files) | The format check is non-blocking; making it blocking is a large unrelated diff |
@@ -271,7 +271,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 528 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 531 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```

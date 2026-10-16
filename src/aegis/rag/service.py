@@ -2,6 +2,7 @@
 cited prompts. Context blocks are formatted as [source:id] lines so both the
 model and the eval judge can verify groundedness."""
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -220,6 +221,20 @@ class RagService:
     def prepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
         self.refresh(tenant)
         results: list[Retrieved] = self._for(tenant).retrieve(question, top_k=self.top_k)
+        return self._assemble(question, tenant, results)
+
+    async def aprepare(self, question: str, tenant: str = "default") -> RagAnswerContext:
+        """Async twin of `prepare` for the request path (M6).
+
+        `refresh` hits Postgres synchronously and retrieval may call an
+        embedding API, so refresh runs in a worker thread while retrieval
+        uses the provider's own `aembed` when it exists.
+        """
+        await asyncio.to_thread(self.refresh, tenant)
+        results: list[Retrieved] = await self._for(tenant).aretrieve(question, top_k=self.top_k)
+        return self._assemble(question, tenant, results)
+
+    def _assemble(self, question: str, tenant: str, results: list[Retrieved]) -> RagAnswerContext:
         context_lines = [f"[{r.chunk.source}#chunk{r.chunk.seq}] {r.chunk.text}" for r in results]
         system_prompt = (
             (

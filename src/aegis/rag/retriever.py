@@ -6,6 +6,7 @@ a deterministic feature-hashing vectorizer — good enough to demonstrate hybrid
 fusion and swap-ready for real embeddings (sentence-transformers / provider API)
 via the same interface. Every result carries provenance for citation."""
 
+import asyncio
 import hashlib
 import math
 import re
@@ -99,6 +100,46 @@ class HybridRetriever:
                 vecs = self._embed.embed([c.text for c in fresh])
                 for ch, vec in zip(fresh, vecs, strict=False):
                     self._embs[ch.id] = vec
+            except Exception:  # noqa: BLE001,S110 — embeddings optional, lexical path keeps serving
+                pass
+        return added
+
+    async def _aembed_texts(self, texts: list[str]) -> list[list[float]] | None:
+        """Fetch embeddings without blocking the event loop (M6).
+
+        Prefers the provider's async `aembed` when it has one; otherwise the
+        sync `embed` runs in a worker thread. Returns None without a provider.
+        """
+        if self._embed is None:
+            return None
+        aembed = getattr(self._embed, "aembed", None)
+        if callable(aembed):
+            return await aembed(texts)
+        return await asyncio.to_thread(self._embed.embed, texts)
+
+    async def aindex(self, chunks: list[Chunk]) -> int:
+        """Async twin of `index`: identical semantics, non-blocking embed fetch."""
+        added = 0
+        fresh: list[Chunk] = []
+        for ch in chunks:
+            if ch.id in self._chunks:
+                continue
+            tokens = tokenize(ch.text)
+            tf = Counter(tokens)
+            self._chunks[ch.id] = ch
+            self._tf[ch.id] = tf
+            self._vecs[ch.id] = _hash_vec(tokens)
+            for term in tf:
+                self._doc_freq[term] += 1
+            self._total_docs += 1
+            added += 1
+            fresh.append(ch)
+        if fresh and self._embed is not None:
+            try:
+                vecs = await self._aembed_texts([c.text for c in fresh])
+                if vecs is not None:
+                    for ch, vec in zip(fresh, vecs, strict=False):
+                        self._embs[ch.id] = vec
             except Exception:  # noqa: BLE001,S110 — embeddings optional, lexical path keeps serving
                 pass
         return added
@@ -201,6 +242,27 @@ class HybridRetriever:
         sims = ((cid, _cosine(qv, vec)) for cid, vec in self._vecs.items())
         return {cid: sim for cid, sim in sims if sim > 0.01}
 
+    async def _avector_scores(self, query_tokens: list[str]) -> dict[str, float]:
+        """Async twin of `_vector_scores`: provider calls never run on the loop."""
+        if self._embed is not None and self._embs:
+            try:
+                from aegis.rag.embeddings import cosine
+
+                vecs = await self._aembed_texts([" ".join(query_tokens)])
+                if vecs is not None:
+                    qv = vecs[0]
+                    escores = {cid: cosine(qv, vec) for cid, vec in self._embs.items()}
+                    real = {cid: sim for cid, sim in escores.items() if sim > 0.01}
+                    if real:
+                        return real
+            except Exception:  # noqa: BLE001,S110 — fall back to hashed vectors
+                pass
+        hqv = _hash_vec(query_tokens)
+        if not hqv:
+            return {}
+        sims = ((cid, _cosine(hqv, vec)) for cid, vec in self._vecs.items())
+        return {cid: sim for cid, sim in sims if sim > 0.01}
+
     def retrieve(self, query: str, top_k: int = 5, strategy: str = "hybrid") -> list[Retrieved]:
         """Retrieve top-k chunks. Strategy selects the experiment arm:
 
@@ -209,6 +271,43 @@ class HybridRetriever:
         qtokens = tokenize(query)
         bm25 = self._bm25_scores(qtokens)
         vec = self._vector_scores(qtokens)
+
+        if strategy == "bm25":
+            order = sorted(bm25, key=lambda c: bm25[c], reverse=True)[:top_k]
+            return [Retrieved(chunk=self._chunks[c], score=round(bm25[c], 6), matched_by="bm25") for c in order]
+        if strategy == "vector":
+            order = sorted(vec, key=lambda c: vec[c], reverse=True)[:top_k]
+            return [Retrieved(chunk=self._chunks[c], score=round(vec[c], 6), matched_by="vector") for c in order]
+        if strategy != "hybrid":
+            raise ValueError(f"unknown retrieval strategy: {strategy}")
+
+        bm25_rank = {cid: r for r, cid in enumerate(sorted(bm25, key=lambda c: bm25[c], reverse=True), start=1)}
+        vec_rank = {cid: r for r, cid in enumerate(sorted(vec, key=lambda c: vec[c], reverse=True), start=1)}
+
+        candidates = set(bm25_rank) | set(vec_rank)
+        fused: dict[str, tuple[float, set[str]]] = {}
+        for cid in candidates:
+            score = 0.0
+            sources: set[str] = set()
+            if cid in bm25_rank:
+                score += 1 / (_RRF_K + bm25_rank[cid])
+                sources.add("bm25")
+            if cid in vec_rank:
+                score += 1 / (_RRF_K + vec_rank[cid])
+                sources.add("vector")
+            fused[cid] = (score, sources)
+
+        ranked = sorted(fused.items(), key=lambda kv: kv[1][0], reverse=True)[:top_k]
+        return [
+            Retrieved(chunk=self._chunks[cid], score=round(score, 6), matched_by="+".join(sorted(sources)))
+            for cid, (score, sources) in ranked
+        ]
+
+    async def aretrieve(self, query: str, top_k: int = 5, strategy: str = "hybrid") -> list[Retrieved]:
+        """Async twin of `retrieve`: identical ranking, non-blocking I/O (M6)."""
+        qtokens = tokenize(query)
+        bm25 = self._bm25_scores(qtokens)
+        vec = await self._avector_scores(qtokens)
 
         if strategy == "bm25":
             order = sorted(bm25, key=lambda c: bm25[c], reverse=True)[:top_k]
