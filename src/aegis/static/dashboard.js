@@ -1074,13 +1074,13 @@ async function refreshOverview() {
 
     // A red breaker is the most urgent fact in the system, so it is a chip with
     // a word in it rather than a colour alone.
-    const BRK = { closed: 'ok', open: 'bad', half_open: 'warn' };
+    const BRK = { closed: "ok", open: "bad", half_open: "warn" };
     $('#ovHealth').innerHTML = (d.breakers || []).map((b) => {
-      const kind = BRK[b.state] || 'warn';
+      const kind = BRK[b.state] || "warn";
       return `<div class="row"><span class="tag ${kind}">${esc(b.provider)}</span>`
         + `<span class="mono small">${esc(b.state)}</span>`
-        + `<span class="spacer"></span><span class="small muted">${b.consecutive_failures} consecutive failure(s)</span></div>`;
-    }).join('') || '<p class="small muted">No providers registered.</p>';
+        + `<span class="spacer"></span><span class="small muted">${b.consecutive_failures} failures</span></div>`;
+    }).join("") || '<p class="small muted">No providers registered.</p>';
 
     const top = Object.entries(d.tenants || {})
       .sort((a, b) => b[1].requests - a[1].requests)

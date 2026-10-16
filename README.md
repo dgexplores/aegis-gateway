@@ -130,6 +130,10 @@ re-checks a log from years ago.
 
 ## When something goes wrong, HR can act — no IT ticket
 
+### Tradeoffs & Design Decisions
+
+**Circuit Breakers vs. Simple Retry Logic:** We implemented circuit breakers to prevent cascading failures. Simple retries risk creating "retry storms" that overwhelm already degrading providers. Instead, our breakers "trip" after a threshold of failures, failing fast to preserve upstream capacity, and then transition to a probing state to attempt recovery. This also provides better operator observability and control compared to silent, self-contained retries.
+
 <p align="center">
   <img src="src/aegis/static/shots/admin-controls.jpg" width="100%" alt="The Controls tab: a global kill switch, a per-tenant pause, a soft-band waiver, and breaker overrides.">
 </p>
