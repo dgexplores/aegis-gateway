@@ -1,20 +1,29 @@
 {
   "hybrid": {
-    "cases": 58,
+    "cases": 200,
     "recall@4": 1.0,
-    "mrr": 1.0,
+    "mrr": 0.975,
     "misses": []
   },
   "bm25": {
-    "cases": 58,
+    "cases": 200,
     "recall@4": 1.0,
-    "mrr": 0.9914,
+    "mrr": 0.9925,
     "misses": []
   },
   "vector": {
-    "cases": 58,
-    "recall@4": 1.0,
-    "mrr": 0.9239,
-    "misses": []
+    "cases": 200,
+    "recall@4": 0.96,
+    "mrr": 0.8729,
+    "misses": [
+      "qa-travel-v2",
+      "qa-travel-v3",
+      "qa-travel-v4",
+      "qa-office-hours-v2",
+      "qa-api-limits-v2",
+      "qa-api-limits-v3",
+      "qa-grievance-v2",
+      "qa-grievance-v3"
+    ]
   }
 }

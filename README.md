@@ -32,7 +32,7 @@ budgets, operator kill-switches. One deploy, live: link above.
 **Engineering signal, all verifiable:**
 - [528 tests](https://github.com/dgexplores/aegis-gateway/tree/main/tests), [10 CI jobs](https://github.com/dgexplores/aegis-gateway/actions) green — lint, types, red-team, evals, PII, prod-guard
 - [Crash-safety proven](https://github.com/dgexplores/aegis-gateway/blob/main/tests/test_audit_crash_safety.py): SIGKILL mid-request, 60/60 records linked, zero torn writes
-- [Red-team 12/12 blocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/redteam.py), [200/200 benign unblocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/benign_eval.py), retrieval recall 100%
+- [Red-team 40/40 contained, 0 leaks](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/redteam.py), [200/200 benign unblocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/benign_eval.py), retrieval recall 100%
 - [STATUS.md](STATUS.md): every known gap listed with severity, including what is *not* done
 - [Load-measured](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/loadtest.py), including published negative results (see [M6/M15](STATUS.md))
 
@@ -256,7 +256,8 @@ It runs on your own server. The only cost is the AI service you already use.
 Budgets are per team, so usage can't surprise you.
 
 **Is it proven, or claimed?**
-We'd rather show you. 528 automated checks, 12 out of 12 attacks blocked, 200
+We'd rather show you. 528 automated checks, 40 out of 40 attacks contained with
+zero leaks (15 hard-blocked, 25 deflected), 200
 out of 200 false positives avoided, and 100% of test questions answered from the
 right document. Every screenshot in this README is a real run, and the tour
 above re-runs the claims live while you watch.

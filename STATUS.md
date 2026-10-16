@@ -11,9 +11,10 @@ AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
 lifecycle, and a reproducible evidence page. The suite grew from **121 → 528
-tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
-Kubernetes, Render) all boot. What remains is not correctness work: it is
-**eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
+tests**, the eval corpora reached their target depths (**200** grounded queries,
+**40** banded attack vectors); `make verify` is fully green. What remains is not
+correctness work: it is **production-traffic sampling and real-model judging**,
+a handful of scheduled hardening items, and choosing a host
 that provides Redis/Postgres.
 
 ---
@@ -143,9 +144,10 @@ tamper-evident chain and per-tenant documents. **Nothing surfaced any of it.**
 
 ```
 $ make verify   # 2026-10-16, fully green
-RED-TEAM    attacks=12  hard-blocked=11  deflected=1  leaked=0
-EVAL GATE   12/12 passed
-RAG EVAL    recall@4=100%  MRR=1.0  no drift vs baseline
+RED-TEAM    attacks=40  hard-blocked=15  deflected=25  leaked=0
+            bands: direct=14, encoded=13, role-tag=7, multi-turn=6
+EVAL GATE   206/206 passed
+RAG EVAL    recall@4=100%  MRR=0.975  no drift vs baseline (200 cases)
 PII-EVAL    all must-recall cases masked
 PROD-GUARD  PASSED
 PYTEST      523 passed, 5 live skipped (528 collected)
@@ -186,27 +188,28 @@ The full path from here to a defensible production claim — ordered, gated, and
 with the items that are blocked on something other than work marked as such — is
 in [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md).
 
-### 4.1 Eval corpus depth — partly landed, still the top item
+### 4.1 Eval corpus depth — landed 2026-10-16
 
 **M1 / M2 / M3.** The three CI gates were plumbing assertions. The first pass at
-this landed in `412a880`. Measured today by running the gates themselves:
+this landed in `412a880`; depth landed 2026-10-16. Measured today by running the
+gates themselves:
 
 | Gate | Was | Now | Roadmap target |
 |---|---|---|---|
 | PII | 1–2 cases per type | **207 cases, ≥20 per type, 9 types**, P=1.00 R=1.00 on every type | ≥20 per type — **met** |
-| Retrieval | tiny corpus, gate could not fail | **52 documents, 58 grounded queries**, recall@4 100% on all three arms, drift baseline in place | ≥50 documents — **met**; ≥200 queries — **not met** |
+| Retrieval | tiny corpus, gate could not fail | **52 documents, 200 grounded queries**, hybrid recall@4 100%, drift baseline regenerated at 200 | ≥50 documents — **met**; ≥200 queries — **met** |
 | Benign FP | no harness | **200 cases, 0 false positives**, blocking at score ≥ 0.7; 67% of cases trip at least one pattern and 35 sit at ≥0.45 | ≥200 prompts — **met** |
-| Injection | 12 vectors | 12 vectors, no band taxonomy | ≥40 across 3 bands — **not met** |
+| Injection | 12 vectors | **40 vectors across 4 bands** (direct=14, encoded=13, role-tag=7, multi-turn=6), 0 leaks | ≥40 across 3 bands — **met** |
 
-`recall@4 = 100%` and `0.00%` FP are now real measurements rather than
-tautologies — the benign tail reaches 0.65 against a 0.70 block line, so the
-weight table is genuinely under test. Two caveats keep this honest: the corpora
-are hand-authored, not sampled from production traffic, and M3's other half is
-still open — the groundedness judge runs against the `echo` stub, so no number
-here is a real-model number yet.
-
-Remaining slice, still **data, not code**: 200 grounded queries, and 40 banded
-injection vectors (encoded, multi-turn, role-tag smuggling).
+`recall@4 = 100%` is now measured over 200 queries rather than 58 — but the
+added 142 are keyword-preserving paraphrases of the original 58 (same
+hand-authored facts, not production traffic), and the groundedness judge still
+runs against the `echo` stub, so no number here is a real-model number yet. The
+new red-team vectors follow the corpus convention (leak strings are
+outcome-words absent from the attack text); 25 of 40 deflect rather than
+hard-block, so the per-band report now shows where detection is thin — encoded
+paraphrase and presupposition vectors score 0.0–0.25. Real-model judging and
+production-traffic sampling remain open (M3/M4).
 
 ### 4.2 Scheduled hardening
 
