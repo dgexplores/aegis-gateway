@@ -5,13 +5,21 @@ Any tampering (edit, delete, reorder) breaks verification — tamper-evidence
 required for regulated-industry AI deployments.
 
 Format: JSONL, one record per line:
-  {seq, ts, tenant, event, payload_sha256, prev_hash, entry_hash, request_id}
-entry_hash = HMAC(key, seq|ts|tenant|event|payload_sha256|prev_hash[|request_id])
+  {seq, ts, tenant, event, payload_sha256, prev_hash, entry_hash, request_id, pod_id}
+entry_hash = HMAC(key, seq|ts|tenant|event|payload_sha256|prev_hash[|request_id][|pod_id])
 
 `request_id` is signed too, but only when present, so chains written before the
 field existed still verify byte-for-byte (their recomputed material is
 unchanged). Without that, adding a correlation column would have invalidated
-every historical chain.
+every historical chain. `pod_id` follows the same rule.
+
+Sequence numbers are pod-local by design: every pod starts at 1 and advances
+its own counter, so continuity is keyed on `(pod_id, seq)`, never on `seq`
+alone. Two pods' chains can never link by head hash, which is how
+`reconcile_segments` tells "second pod" (expected, separate chain) from "lost
+segment" (same pod, sequence break). There is deliberately no global order
+across pods — wall-clock `ts` is the only cross-pod ordering signal, and it is
+approximate.
 
 `tail_records()` is the read side: it hands back the newest N records with each
 signature and link re-checked and the encrypted payload decrypted, so the log is
@@ -59,6 +67,31 @@ class AuditRecord:
     payload_enc: str | None = None
     payload_alg: str = "none"
     request_id: str = ""
+    pod_id: str = ""
+
+
+def resolve_pod_id(explicit: str = "") -> str:
+    """Stable identity for this writer process (M12).
+
+    Precedence: explicit constructor arg → `AEGIS_POD_ID` → `HOSTNAME`
+    (Kubernetes sets it to the pod name) → system hostname → pid fallback.
+    Empty means "unstamped legacy writer", which still verifies.
+    """
+    if explicit:
+        return explicit
+    for var in ("AEGIS_POD_ID", "HOSTNAME"):
+        val = os.environ.get(var, "").strip()
+        if val:
+            return val
+    try:
+        import socket
+
+        host = socket.gethostname().strip()
+        if host:
+            return host
+    except OSError:  # pragma: no cover — hostname essentially always works
+        pass
+    return f"pid-{os.getpid()}"
 
 
 def payload_cipher_alg(key: str) -> str:
@@ -169,6 +202,7 @@ class AuditChain:
         keep_days: float = 0,
         batch_window_ms: float = 0,
         hmac_previous_keys: Sequence[str] = (),
+        pod_id: str = "",
     ) -> None:
         # The signing key is `_keys[0]`. The rest are *accepted* for verification
         # only, and exist so a rotation does not invalidate the records the old
@@ -187,6 +221,7 @@ class AuditChain:
         self.s3_prefix = s3_prefix
         self.keep_segments = keep_segments
         self.keep_days = keep_days
+        self.pod_id = resolve_pod_id(pod_id)
         # Group-commit window in ms. 0 disables: every append fsyncs alone.
         # Above 0, threads arriving within one window share a single fsync
         # (leader-follower, no background thread). Ack still waits for the
@@ -245,6 +280,7 @@ class AuditChain:
         raw.setdefault("payload_enc", None)
         raw.setdefault("payload_alg", "none")
         raw.setdefault("request_id", "")
+        raw.setdefault("pod_id", "")
         return AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
 
     def _refresh_from_tail(self) -> None:
@@ -258,13 +294,15 @@ class AuditChain:
     # -- internals ----------------------------------------------------------
 
     def _entry_hash(
-        self, seq: int, ts: float, tenant: str, event: str, payload_sha256: str, prev_hash: str, request_id: str = ""
+        self, seq: int, ts: float, tenant: str, event: str, payload_sha256: str, prev_hash: str, request_id: str = "", pod_id: str = ""
     ) -> str:
-        """Signed material. `request_id` is appended only when non-empty so
-        pre-existing records (which lack the field) still verify."""
+        """Signed material. `request_id`/`pod_id` are appended only when
+        non-empty so pre-existing records (which lack the fields) still verify."""
         material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
         if request_id:
             material = f"{material}|{request_id}"
+        if pod_id:
+            material = f"{material}|{pod_id}"
         return hmac.new(self._key, material.encode(), hashlib.sha256).hexdigest()
 
     def _entry_hash_under(
@@ -277,10 +315,13 @@ class AuditChain:
         payload_sha256: str,
         prev_hash: str,
         request_id: str = "",
+        pod_id: str = "",
     ) -> str:
         material = f"{seq}|{ts:.6f}|{tenant}|{event}|{payload_sha256}|{prev_hash}"
         if request_id:
             material = f"{material}|{request_id}"
+        if pod_id:
+            material = f"{material}|{pod_id}"
         return hmac.new(key, material.encode(), hashlib.sha256).hexdigest()
 
     def _verify_entry(self, rec: "AuditRecord") -> tuple[bool, int]:
@@ -298,7 +339,7 @@ class AuditChain:
         matched = -1
         for slot, key in enumerate(self._keys):
             expected = self._entry_hash_under(
-                key, rec.seq, rec.ts, rec.tenant, rec.event, rec.payload_sha256, rec.prev_hash, rec.request_id
+                key, rec.seq, rec.ts, rec.tenant, rec.event, rec.payload_sha256, rec.prev_hash, rec.request_id, rec.pod_id
             )
             if hmac.compare_digest(expected, rec.entry_hash):
                 matched = slot
@@ -318,6 +359,7 @@ class AuditChain:
                 raw.setdefault("payload_enc", None)
                 raw.setdefault("payload_alg", "none")
                 raw.setdefault("request_id", "")
+                raw.setdefault("pod_id", "")
                 rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
                 ok, _slot = self._verify_entry(rec)
                 if not ok:
@@ -466,7 +508,7 @@ class AuditChain:
         for tenant, event, payload_sha256, payload_enc, payload_alg, request_id in items:
             ts = time.time()
             self.seq += 1
-            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id)
+            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id, self.pod_id)
             records.append(
                 AuditRecord(
                     seq=self.seq,
@@ -479,6 +521,7 @@ class AuditChain:
                     payload_enc=payload_enc,
                     payload_alg=payload_alg,
                     request_id=request_id,
+                    pod_id=self.pod_id,
                 )
             )
             lines.append(json.dumps(records[-1].__dict__, separators=(",", ":")))
@@ -701,6 +744,7 @@ class AuditChain:
                 raw.setdefault("payload_enc", None)
                 raw.setdefault("payload_alg", "none")
                 raw.setdefault("request_id", "")
+                raw.setdefault("pod_id", "")
                 parsed.append(AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__}))
             except (json.JSONDecodeError, KeyError, TypeError) as exc:
                 # A corrupt line is evidence too — surface it rather than skip.
@@ -798,6 +842,7 @@ def load_verified_records(path: str | Path, hmac_key: str, hmac_previous_keys: S
             raw.setdefault("payload_enc", None)
             raw.setdefault("payload_alg", "none")
             raw.setdefault("request_id", "")
+            raw.setdefault("pod_id", "")
             rec = AuditRecord(**{k: raw[k] for k in AuditRecord.__dataclass_fields__})
             ok, _slot = verifier._verify_entry(rec)
             if not ok:
@@ -1032,6 +1077,14 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_key
     the sequence counter across each assembled chain: sequence numbers only
     advance, so a break is proof that something was dropped. `complete` is the
     single field a caller should gate on.
+
+    Pod attribution (M12): every chain reports the `pods` that wrote it — the
+    distinct non-empty `pod_id` values across its records, or `"unstamped"`
+    when records predate pod stamping. Continuity is keyed on `(pod_id, seq)`,
+    never on `seq` alone: a sequence break inside one pod's records is a lost
+    segment, while two pods' chains overlapping in seq numbers is expected
+    (every pod counts from 1). There is no global cross-pod order; `ts` is the
+    only cross-pod ordering signal and it is approximate.
     """
     verified: dict[str, list[AuditRecord]] = {}
     errors: dict[str, str] = {}
@@ -1072,6 +1125,12 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_key
 
     seq_gaps: list[dict] = []
     starts_mid_sequence: list[dict] = []
+    chain_pods: list[list[str]] = []
+    all_pods: set[str] = set()
+    for chain in chains:
+        pods = sorted({r.pod_id or "unstamped" for name in chain for r in verified[name]})
+        chain_pods.append(pods)
+        all_pods.update(pods)
     all_seqs = [r.seq for recs in verified.values() for r in recs]
     baseline = min(all_seqs) if all_seqs else 0
     for chain in chains:
@@ -1105,6 +1164,8 @@ def reconcile_segments(paths: list[str | Path], hmac_key: str, hmac_previous_key
                 )
     return {
         "chains": chains,
+        "chain_pods": chain_pods,
+        "pods": sorted(all_pods),
         "records": sum(len(verified[n]) for chain in chains for n in chain),
         "errors": errors,
         "seq_gaps": seq_gaps,
