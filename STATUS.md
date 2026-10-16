@@ -1,6 +1,6 @@
 # STATUS — where this project stands
 
-_Last updated: 2026-09-28. This is the handover document: what was done, what is
+_Last updated: 2026-10-16. This is the handover document: what was done, what is
 verified, what is still open, and how to deploy._
 
 ---
@@ -142,13 +142,13 @@ tamper-evident chain and per-tenant documents. **Nothing surfaced any of it.**
 ## 3. What is verified
 
 ```
-$ make verify
+$ make verify   # 2026-10-16, fully green
 RED-TEAM    attacks=12  hard-blocked=11  deflected=1  leaked=0
 EVAL GATE   12/12 passed
 RAG EVAL    recall@4=100%  MRR=1.0  no drift vs baseline
 PII-EVAL    all must-recall cases masked
-PROD-GUARD  PASSED (10 checks)
-PYTEST      466 passed, 5 live skipped
+PROD-GUARD  PASSED
+PYTEST      523 passed, 5 live skipped (528 collected)
 VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green
 ```
 
@@ -159,6 +159,9 @@ pass (a 13th admin probe is skipped without an admin-scoped key) ·
 ---
 
 ## 3a. Cleared since the last status
+
+- **Simplify pass (#56).** Shared append reporter, int resolver, `Metrics.mean`, blueprint env helper — less duplicated code, same gates green.
+- **Free-tier blueprint (#54).** `render-free.yaml`: honest free tier (no disk, no paid services, archive wired); `render.yaml` stays the evaluation blueprint.
 
 - **Deploy secrets fail closed.** `docker-compose.yml` requires the admin
   username, password, session key and break-glass secret via `:?`, so a boot
