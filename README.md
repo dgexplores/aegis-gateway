@@ -339,23 +339,31 @@ doorway between that chatbot (or any internal application) and an AI provider.
 The application keeps its existing user experience; AEGIS adds the controls the
 application should not have to rebuild itself.
 
-```text
-Employee or customer
-        ↓
-Company app (HR bot, support assistant, internal search)
-        ↓
-AEGIS Gateway
-  ├─ authenticates the app or team
-  ├─ enforces rate and budget limits
-  ├─ screens prompts and retrieved documents for injection
-  ├─ masks PII before it leaves the company boundary
-  ├─ retrieves approved company knowledge when requested
-  └─ records an auditable event
-        ↓
-Configured LLM provider (OpenAI, GMI, Anthropic, or echo for local demos)
-        ↓
-Company app receives the guarded answer
+```mermaid
+flowchart LR
+    U[Employee or customer] --> A[Company application<br/>HR bot, support assistant, internal search]
+    D[Approved company documents] --> G
+    O[Platform and security operators] --> G
+    A --> G[AEGIS Gateway]
+    G -->|sanitized request only| P[Configured LLM provider]
+    P --> G
+    G -->|guarded answer| A
+    G --> L[Tamper-evident audit log]
 ```
+
+The gateway authenticates the app or team, enforces rate and budget limits,
+screens prompts and retrieved documents for injection, masks PII before it
+leaves the company boundary, and records what happened. The provider receives
+only the sanitized request; the application receives the guarded answer.
+
+### Who owns each part
+
+| Team | What it owns in the workflow |
+|---|---|
+| **Application team** | Its chatbot or workflow and the AEGIS tenant key; it changes the AI client base URL instead of rebuilding security controls. |
+| **Platform / security team** | The AEGIS deployment, provider credentials, Redis/PostgreSQL, tenant limits, monitoring, and incident controls. |
+| **Knowledge owner** | Which HR policies, support articles, or internal documents are approved for retrieval and when they are updated or removed. |
+| **Operator** | The audit view and emergency actions: pause a tenant, isolate a provider, or activate the kill switch. |
 
 ### Integrate an existing application
 
