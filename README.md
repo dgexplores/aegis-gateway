@@ -332,6 +332,73 @@ docker compose up -d            # gateway + redis + postgres, reads .env
 kubectl apply -f deploy/k8s/    # 3 replicas + HPA, non-root, read-only root filesystem
 ```
 
+## Introduce AEGIS into a company
+
+AEGIS is **not** a replacement for a company chatbot. It is the controlled
+doorway between that chatbot (or any internal application) and an AI provider.
+The application keeps its existing user experience; AEGIS adds the controls the
+application should not have to rebuild itself.
+
+```text
+Employee or customer
+        ↓
+Company app (HR bot, support assistant, internal search)
+        ↓
+AEGIS Gateway
+  ├─ authenticates the app or team
+  ├─ enforces rate and budget limits
+  ├─ screens prompts and retrieved documents for injection
+  ├─ masks PII before it leaves the company boundary
+  ├─ retrieves approved company knowledge when requested
+  └─ records an auditable event
+        ↓
+Configured LLM provider (OpenAI, GMI, Anthropic, or echo for local demos)
+        ↓
+Company app receives the guarded answer
+```
+
+### Integrate an existing application
+
+For a non-streaming application already using the OpenAI Python SDK, point its
+client at AEGIS. The call shape stays the same; AEGIS applies the company's
+configured provider and model-routing policy before making the upstream call.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://aegis.company.internal/v1",
+    api_key="hr-team-aegis-key",
+)
+
+reply = client.chat.completions.create(
+    model="company-default",  # required by the SDK; routing is configured in AEGIS
+    messages=[{"role": "user", "content": "What is our leave policy?"}],
+)
+```
+
+AEGIS accepts this through `POST /v1/chat/completions`. Streaming clients use
+the native `POST /v1/chat/stream` endpoint today.
+
+### Recommended rollout
+
+1. **Start with one low-risk internal workflow** — for example, an HR-policy or
+   IT-helpdesk assistant rather than a customer-facing or decision-making flow.
+2. **Deploy AEGIS in the company environment** — Docker Compose is suitable for
+   a pilot; use the Kubernetes manifests or an equivalent platform setup for a
+   production deployment with Redis and PostgreSQL.
+3. **Create a tenant key for that workflow** with only the scopes it needs, then
+   place it in the application’s secret store rather than in source code.
+4. **Load only approved documents** for the pilot and verify that answers cite
+   the expected source material.
+5. **Watch the dashboard and audit log** for blocked prompts, PII masking,
+   usage, spend, provider health, and any operator action.
+6. **Expand team by team** only after the pilot’s security, cost, and answer
+   quality meet the company’s own acceptance criteria.
+
+In an incident, an operator can pause one tenant, disable an unhealthy provider,
+or use the global kill switch without changing the calling application.
+
 ## How a question is handled
 
 Six steps, each one recorded: **check who is asking** and their limits →
