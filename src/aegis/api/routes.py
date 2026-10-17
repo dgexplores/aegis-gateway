@@ -256,6 +256,11 @@ class ChatRequest(BaseModel):
     use_cache: bool = True
 
 
+class OpenAIChatRequest(ChatRequest):
+    model: str = Field(min_length=1, max_length=256)
+    stream: bool = False
+
+
 class IngestRequest(BaseModel):
     text: str = Field(min_length=1, max_length=200_000)
     source: str = Field(min_length=1, max_length=256)
@@ -372,6 +377,45 @@ async def chat(
         # apart from "AEGIS blocked this for safety" — two very different things
         # to tell a user, and the second must never be phrased as the first.
         "operator": result.get("operator"),
+    }
+
+
+@app.post("/v1/chat/completions")
+async def openai_chat_completions(
+    body: OpenAIChatRequest,
+    response: Response,
+    tenant: Tenant = Depends(get_tenant),
+    gateway: Gateway = Depends(get_gateway),
+) -> dict:
+    """OpenAI SDK-compatible non-streaming chat completion endpoint."""
+    if body.stream:
+        raise HTTPException(status_code=400, detail="streaming is available at /v1/chat/stream")
+
+    result = await chat(
+        ChatRequest(messages=body.messages, max_tokens=body.max_tokens),
+        response,
+        tenant,
+        gateway,
+    )
+    input_tokens = result.get("usage") or 0
+    output_tokens = result.get("output_tokens") or 0
+    return {
+        "id": f"aegis-{result.get('audit_seq', 'blocked')}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": result.get("model") or body.model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": result["answer"]},
+                "finish_reason": "content_filter" if result["blocked"] else "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
     }
 
 

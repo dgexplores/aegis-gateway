@@ -20,7 +20,7 @@ the security model. Nothing on the main page depends on reading this.
 > instead of finding a key in a config file.
 
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
-`528 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
+`532 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
 
 > **Not claiming it's production-ready.** [`STATUS.md`](STATUS.md) lists what is done,
 > what is verified, and what is still open — no Postgres, no deploy, unbuilt S3
@@ -284,7 +284,7 @@ rejected with `400`. That flag is *policy*; it is not what provides the protecti
 ## Verified results (re-run anytime)
 
 ```bash
-make test       # 528 tests
+make test       # 532 tests
 make security   # red-team harness
 make evals      # eval regression gate (12 cases, incl. Hinglish fairness)
 make rag-eval   # retrieval recall/MRR + drift vs baseline
@@ -394,6 +394,7 @@ air-gapped machine.
 | Method | Path | Scope | What it does |
 |---|---|---|---|
 | `POST` | `/v1/chat` | `chat` | Guarded chat (try GMI, fallback echo) — reports hidden PII types, cost tier, proof id and (outside production) the exact payload the provider received |
+| `POST` | `/v1/chat/completions` | `chat` | OpenAI SDK-compatible guarded chat completion |
 | `POST` | `/v1/chat/stream` | `chat` | Same pipeline over SSE |
 | `POST` | `/v1/rag/ingest` | `rag` | Chunk + index a document (Postgres-backed when configured); audited as `doc_ingested` |
 | `POST` | `/v1/rag/query` | `rag` | Retrieve + grounded answer + citations |
