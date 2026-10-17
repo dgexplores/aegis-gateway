@@ -683,6 +683,14 @@ class AuditChain:
         Reads backwards in fixed-size blocks. A whole-file read is what makes
         `/readyz` expensive on a full log; the read API must not repeat that, so
         cost here is O(want) regardless of how large the log has grown.
+
+        `reached_start` means "the oldest line in hand is the file's first line",
+        so the caller may check that row's link against GENESIS. It deliberately
+        does not come from the byte position: the backward read consumes whole
+        blocks, so it can land on offset 0 while the window still holds only the
+        newest `want` lines. Byte position alone would claim the first line was
+        read when it was not, and the oldest row's link would be reported as
+        broken rather than unknown — a tamper alarm on an intact chain.
         """
         try:
             size = self.path.stat().st_size
@@ -694,6 +702,7 @@ class AuditChain:
         lines: list[str] = []
         buf = b""
         pos = size
+        reached_start = False
         with self.path.open("rb") as fh:
             while pos > 0 and len(lines) < want:
                 step = min(block, pos)
@@ -704,14 +713,19 @@ class AuditChain:
                 # The first part continues into earlier file content unless we
                 # just reached offset 0; the last part is always a whole line.
                 buf = parts.pop(0) if pos > 0 else b""
-                for raw in reversed(parts):
+                for offset, raw in enumerate(reversed(parts)):
                     text = raw.decode("utf-8", "replace").strip()
                     if text:
+                        # Only the read that reached offset 0 holds the whole
+                        # file, and then `parts[0]` is its first line — which
+                        # this walk visits last.
+                        if pos == 0 and offset == len(parts) - 1:
+                            reached_start = True
                         lines.append(text)
                         if len(lines) >= want:
                             break
         lines.reverse()
-        return lines, pos == 0
+        return lines, reached_start
 
     def tail_records(self, limit: int = 50, tenant: str = "", event: str = "", with_payload: bool = True) -> dict:
         """Newest-first-selected evidence, with every signature re-verified.
