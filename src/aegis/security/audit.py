@@ -294,7 +294,15 @@ class AuditChain:
     # -- internals ----------------------------------------------------------
 
     def _entry_hash(
-        self, seq: int, ts: float, tenant: str, event: str, payload_sha256: str, prev_hash: str, request_id: str = "", pod_id: str = ""
+        self,
+        seq: int,
+        ts: float,
+        tenant: str,
+        event: str,
+        payload_sha256: str,
+        prev_hash: str,
+        request_id: str = "",
+        pod_id: str = "",
     ) -> str:
         """Signed material. `request_id`/`pod_id` are appended only when
         non-empty so pre-existing records (which lack the fields) still verify."""
@@ -339,7 +347,15 @@ class AuditChain:
         matched = -1
         for slot, key in enumerate(self._keys):
             expected = self._entry_hash_under(
-                key, rec.seq, rec.ts, rec.tenant, rec.event, rec.payload_sha256, rec.prev_hash, rec.request_id, rec.pod_id
+                key,
+                rec.seq,
+                rec.ts,
+                rec.tenant,
+                rec.event,
+                rec.payload_sha256,
+                rec.prev_hash,
+                rec.request_id,
+                rec.pod_id,
             )
             if hmac.compare_digest(expected, rec.entry_hash):
                 matched = slot
@@ -508,7 +524,9 @@ class AuditChain:
         for tenant, event, payload_sha256, payload_enc, payload_alg, request_id in items:
             ts = time.time()
             self.seq += 1
-            entry_hash = self._entry_hash(self.seq, ts, tenant, event, payload_sha256, self.head, request_id, self.pod_id)
+            entry_hash = self._entry_hash(
+                self.seq, ts, tenant, event, payload_sha256, self.head, request_id, self.pod_id
+            )
             records.append(
                 AuditRecord(
                     seq=self.seq,
