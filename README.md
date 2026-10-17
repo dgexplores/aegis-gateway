@@ -30,7 +30,7 @@ PII vault, cited RAG answers, hash-chained tamper-evident audit log, per-tenant
 budgets, operator kill-switches. One deploy, live: link above.
 
 **Engineering signal, all verifiable:**
-- [528 tests](https://github.com/dgexplores/aegis-gateway/tree/main/tests), [10 CI jobs](https://github.com/dgexplores/aegis-gateway/actions) green — lint, types, red-team, evals, PII, prod-guard
+- [532 tests](https://github.com/dgexplores/aegis-gateway/tree/main/tests), [10 CI jobs](https://github.com/dgexplores/aegis-gateway/actions) green — lint, types, red-team, evals, PII, prod-guard
 - [Crash-safety proven](https://github.com/dgexplores/aegis-gateway/blob/main/tests/test_audit_crash_safety.py): SIGKILL mid-request, 60/60 records linked, zero torn writes
 - [Red-team 12/12 blocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/redteam.py), [200/200 benign unblocked](https://github.com/dgexplores/aegis-gateway/blob/main/scripts/benign_eval.py), retrieval recall 100%
 - [STATUS.md](STATUS.md): every known gap listed with severity, including what is *not* done
@@ -256,7 +256,7 @@ It runs on your own server. The only cost is the AI service you already use.
 Budgets are per team, so usage can't surprise you.
 
 **Is it proven, or claimed?**
-We'd rather show you. 528 automated checks, 12 out of 12 attacks blocked, 200
+We'd rather show you. 532 automated checks, 12 out of 12 attacks blocked, 200
 out of 200 false positives avoided, and 100% of test questions answered from the
 right document. Every screenshot in this README is a real run, and the tour
 above re-runs the claims live while you watch.
@@ -312,7 +312,7 @@ curl -s localhost:8080/v1/rag/query -H "Authorization: Bearer $KEY" \
 # → an answer, plus citations: [{source:"hr-policy.md", chunk:0, score:..., matched_by:"bm25+vector"}]
 ```
 
-`make verify` runs every gate described above — lint, types, 528 tests,
+`make verify` runs every gate described above — lint, types, 532 tests,
 red-team, eval regression, retrieval drift, PII, the deployment guard and a
 documentation check.
 
@@ -349,6 +349,7 @@ says which.
 | Method | Path | Access | What it does |
 |---|---|---|---|
 | `POST` | `/v1/chat` | `chat` | Guarded chat, with a fallback provider |
+| `POST` | `/v1/chat/completions` | `chat` | OpenAI SDK-compatible guarded chat |
 | `POST` | `/v1/chat/stream` | `chat` | The same, streamed |
 | `POST` | `/v1/rag/ingest` | `rag` | Add a document to the index |
 | `POST` | `/v1/rag/query` | `rag` | Answer a question from the documents, with sources |
