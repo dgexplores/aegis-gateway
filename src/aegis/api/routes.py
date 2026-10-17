@@ -451,7 +451,7 @@ async def rag_query(
     if "rag" not in tenant.scopes:
         raise HTTPException(status_code=403, detail="scope 'rag' required")
 
-    ctx = rag_service.prepare(body.question, tenant.id)
+    ctx = await rag_service.aprepare(body.question, tenant.id)
     try:
         result = await gateway.handle_chat(
             tenant_id=tenant.id,

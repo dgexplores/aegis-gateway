@@ -115,7 +115,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -e ".[dev]"
-      - name: Red-team harness (12 attacks, 0 leak tolerance)
+      - name: Red-team harness (40 attacks across 4 bands, 0 leak tolerance)
         run: python scripts/redteam.py --corpus scripts/attacks.yaml
       - name: Eval regression gate (>=85%)
         run: python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85

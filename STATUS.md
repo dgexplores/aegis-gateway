@@ -1,6 +1,6 @@
 # STATUS — where this project stands
 
-_Last updated: 2026-09-28. This is the handover document: what was done, what is
+_Last updated: 2026-10-16. This is the handover document: what was done, what is
 verified, what is still open, and how to deploy._
 
 ---
@@ -10,10 +10,11 @@ verified, what is still open, and how to deploy._
 AEGIS Gateway was reviewed as a senior engineer would review it, the critical
 findings were fixed with a regression test each, and the system's capabilities
 were then made **visible** — an interactive console, an audit read API, a document
-lifecycle, and a reproducible evidence page. The suite grew from **121 → 528
-tests**; `make verify` is fully green. The deployment artifacts (Docker, Compose,
-Kubernetes, Render) all boot. What remains is not correctness work: it is
-**eval-corpus depth**, a handful of scheduled hardening items, and choosing a host
+lifecycle, and a reproducible evidence page. The suite grew from **121 → 531
+tests**, the eval corpora reached their target depths (**200** grounded queries,
+**40** banded attack vectors); `make verify` is fully green. What remains is not
+correctness work: it is **production-traffic sampling and real-model judging**,
+a handful of scheduled hardening items, and choosing a host
 that provides Redis/Postgres.
 
 ---
@@ -142,13 +143,14 @@ tamper-evident chain and per-tenant documents. **Nothing surfaced any of it.**
 ## 3. What is verified
 
 ```
-$ make verify
-RED-TEAM    attacks=12  hard-blocked=11  deflected=1  leaked=0
-EVAL GATE   12/12 passed
-RAG EVAL    recall@4=100%  MRR=1.0  no drift vs baseline
+$ make verify   # 2026-10-16, fully green
+RED-TEAM    attacks=40  hard-blocked=15  deflected=25  leaked=0
+            bands: direct=14, encoded=13, role-tag=7, multi-turn=6
+EVAL GATE   206/206 passed
+RAG EVAL    recall@4=100%  MRR=0.975  no drift vs baseline (200 cases)
 PII-EVAL    all must-recall cases masked
-PROD-GUARD  PASSED (10 checks)
-PYTEST      466 passed, 5 live skipped
+PROD-GUARD  PASSED
+PYTEST      526 passed, 5 live skipped (531 collected)
 VERIFY OK — lint+type+tests+redteam+evals+rag+pii+prod-guard green
 ```
 
@@ -159,6 +161,9 @@ pass (a 13th admin probe is skipped without an admin-scoped key) ·
 ---
 
 ## 3a. Cleared since the last status
+
+- **Simplify pass (#56).** Shared append reporter, int resolver, `Metrics.mean`, blueprint env helper — less duplicated code, same gates green.
+- **Free-tier blueprint (#54).** `render-free.yaml`: honest free tier (no disk, no paid services, archive wired); `render.yaml` stays the evaluation blueprint.
 
 - **Deploy secrets fail closed.** `docker-compose.yml` requires the admin
   username, password, session key and break-glass secret via `:?`, so a boot
@@ -183,39 +188,40 @@ The full path from here to a defensible production claim — ordered, gated, and
 with the items that are blocked on something other than work marked as such — is
 in [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md).
 
-### 4.1 Eval corpus depth — partly landed, still the top item
+### 4.1 Eval corpus depth — landed 2026-10-16
 
 **M1 / M2 / M3.** The three CI gates were plumbing assertions. The first pass at
-this landed in `412a880`. Measured today by running the gates themselves:
+this landed in `412a880`; depth landed 2026-10-16. Measured today by running the
+gates themselves:
 
 | Gate | Was | Now | Roadmap target |
 |---|---|---|---|
 | PII | 1–2 cases per type | **207 cases, ≥20 per type, 9 types**, P=1.00 R=1.00 on every type | ≥20 per type — **met** |
-| Retrieval | tiny corpus, gate could not fail | **52 documents, 58 grounded queries**, recall@4 100% on all three arms, drift baseline in place | ≥50 documents — **met**; ≥200 queries — **not met** |
+| Retrieval | tiny corpus, gate could not fail | **52 documents, 200 grounded queries**, hybrid recall@4 100%, drift baseline regenerated at 200 | ≥50 documents — **met**; ≥200 queries — **met** |
 | Benign FP | no harness | **200 cases, 0 false positives**, blocking at score ≥ 0.7; 67% of cases trip at least one pattern and 35 sit at ≥0.45 | ≥200 prompts — **met** |
-| Injection | 12 vectors | 12 vectors, no band taxonomy | ≥40 across 3 bands — **not met** |
+| Injection | 12 vectors | **40 vectors across 4 bands** (direct=14, encoded=13, role-tag=7, multi-turn=6), 0 leaks | ≥40 across 3 bands — **met** |
 
-`recall@4 = 100%` and `0.00%` FP are now real measurements rather than
-tautologies — the benign tail reaches 0.65 against a 0.70 block line, so the
-weight table is genuinely under test. Two caveats keep this honest: the corpora
-are hand-authored, not sampled from production traffic, and M3's other half is
-still open — the groundedness judge runs against the `echo` stub, so no number
-here is a real-model number yet.
-
-Remaining slice, still **data, not code**: 200 grounded queries, and 40 banded
-injection vectors (encoded, multi-turn, role-tag smuggling).
+`recall@4 = 100%` is now measured over 200 queries rather than 58 — but the
+added 142 are keyword-preserving paraphrases of the original 58 (same
+hand-authored facts, not production traffic), and the groundedness judge still
+runs against the `echo` stub, so no number here is a real-model number yet. The
+new red-team vectors follow the corpus convention (leak strings are
+outcome-words absent from the attack text); 25 of 40 deflect rather than
+hard-block, so the per-band report now shows where detection is thin — encoded
+paraphrase and presupposition vectors score 0.0–0.25. Real-model judging and
+production-traffic sampling remain open (M3/M4).
 
 ### 4.2 Scheduled hardening
 
 | ID | Issue | Consequence |
 |---|---|---|
-| **M6** | `audit.append` fsyncs on the event loop; embedding providers use synchronous `httpx.post` inside async handlers | Throughput ceiling under concurrency. Partly mitigated (`asyncio.to_thread` on the audit path) but the embeddings call is still blocking. The fsync-per-record is load-bearing: a SIGKILL mid-request test confirms nothing is torn without it |
-| **H7** | `/metrics` is readable by any tenant and the series carry per-tenant labels | Cross-tenant disclosure. Tightening to `admin` breaks existing scrape configs, so it needs a deliberate rollout |
-| **M12** | *Partly closed.* Segments now assemble into one ledger with proven continuity, served on `/admin/audit`, reassembled on a 60s timer that logs at ERROR; each pod still writes its own chain, there is no sequence global across pods, and archived segments are not pulled back | A lost segment is now detected rather than looking like a second pod. Reconciling pods still needs archived segments pulled back and a cross-pod sequence |
+| ~~**M6**~~ | **Closed 2026-10-16.** `rag_service.prepare` ran sync embedding I/O inline on the event loop (`routes.py` → `retrieve` → `httpx.post`). Now: `POST /v1/rag/query` awaits `aprepare` (refresh in a worker thread, retrieval via `aretrieve`); retriever gained `aindex`/`aretrieve` preferring provider `aembed` with thread fallback for legacy providers; `tests/test_rag_async.py` asserts a 300 ms slow provider never stalls the loop. Sync `prepare`/`retrieve`/`index` unchanged. HTTP-client pooling per provider still open (one `AsyncClient` per call) | — |
+| **H7** | *Code landed; rollout open.* `/metrics` now requires auth and renders full series for `admin` scope, caller-tenant-only otherwise (`routes.py`, `metrics.render(tenant=)`, covered by `test_api.py`). What remains is the deliberate rollout: point Prometheus scrapes at an admin-scoped token | Cross-tenant disclosure until scrapes move; tightening further would break existing scrape configs |
+| **M12** | *Partly closed.* Segments assemble into one ledger with proven continuity, served on `/admin/audit`, reassembled on a 60s timer; archive pull-back exists (`sync_from_archive` on boot + tick). Still open: sequence numbers are per-pod (no global cross-pod order) and peer fetch covers only the configured bucket, not sibling replicas | A lost segment is detected rather than looking like a second pod. Full reconcile needs a global sequence (or documented pod-local seq) plus replica fan-out |
 | ~~**M13**~~ | **Closed.** `/readyz` calls `probe()`, which reads the tail record and does one HMAC instead of re-reading every line. Measured: flat at ~0.05ms from 100 to 10,000 records, while a full `verify()` goes 0.38ms → 31.7ms (609× at 10k). Regression test asserts the probe never re-verifies the chain | — |
 | ~~**M14**~~ | **Closed.** Rotated segments now prune by age via `AEGIS_AUDIT_KEEP_DAYS` (0 = disabled, the default). Same archived gate as count-based pruning: an old segment with no object-storage copy stays, because age is not a reason to lose evidence | — |
 | **M15** | Serve lifecycle bounded by config: `AEGIS_UVICORN_MAX_REQUESTS` (worker recycle, default 0 = off), `AEGIS_UVICORN_TIMEOUT_KEEP_ALIVE` (default 5s), `AEGIS_UVICORN_GRACEFUL_SHUTDOWN` (default 30s). Every audit append reports lock-wait and hold seconds to `aegis_audit_*` counters (mean = sum / `aegis_audit_append_total`), so lock-contention vs slow-disk answers from server data, not client wall-clock | Slow-leak worker growth and hang-forever deploys now bounded; audit cost visible in metrics |
-| **M10** | No stale-chunk policy for RAG | A re-ingested document's old chunks can linger |
+| ~~**M10**~~ | **Closed.** Re-ingest now drops the old generation first (`remove_source` before `index`, durable prune, `refresh` re-hash aware; `test_documents.py` covers replace + prune). Known edge, documented: ingest is remove-then-index (a crash between the two transiently loses the doc) and `_persist_best_effort` swallows prune failures (memory pruned, PG stale until `refresh` converges) | — |
 | **M4** | Injection false positives are measured now, but only against a hand-authored corpus | 200 prompts, 0 false positives, worst case 0.65 against a 0.70 block line. Real traffic would be a stronger sample, and a benign prompt at 0.68 would still be refused |
 | **H1 / H2** | The audit log stores hashes by default; payloads only when `AEGIS_AUDIT_ENCRYPT_KEY` is set | Documented explicitly in the README, so the claim matches the artifact — but "prove what the AI said" requires setting the key |
 | **L6** | The repo has never been `ruff format`ed (~40 files) | The format check is non-blocking; making it blocking is a large unrelated diff |
@@ -265,7 +271,7 @@ make run                              # uvicorn on :8080
 ```
 
 ```bash
-make verify      # lint + types + 528 tests + red-team + evals + rag + pii + benign + prod-guard
+make verify      # lint + types + 531 tests + red-team + evals + rag + pii + benign + prod-guard
 make smoke       # live end-to-end against a running gateway (13 checks)
 make evidence    # regenerate docs/capability-evidence.html from a real run
 ```

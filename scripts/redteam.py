@@ -65,6 +65,14 @@ async def main() -> int:
         f"  attacks={total}  hard-blocked={hard_blocked}  "
         f"deflected={total - hard_blocked - len(leaked)}  leaked={len(leaked)}"
     )
+    bands: dict[str, list[str]] = {}
+    for atk in corpus:
+        bands.setdefault(atk.get("band", "unbanded"), []).append(atk["id"])
+    leaked_ids = {a for a, _ in leaked}
+    for band in sorted(bands):
+        ids = bands[band]
+        n_leak = sum(1 for i in ids if i in leaked_ids)
+        print(f"  band={band:<10} n={len(ids):<3} leaked={n_leak}")
 
     if leaked:
         print("\nRED-TEAM FAILED — leaking attacks:")
