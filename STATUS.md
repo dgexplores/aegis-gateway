@@ -222,7 +222,14 @@ injection vectors (encoded, multi-turn, role-tag smuggling).
 
 ### 4.3 Deployment — the honest status
 
-**Everything is ready to deploy; nothing is deployed.** Three paths exist:
+**Current availability check (2026-10-18):** the public evaluation demo at
+`https://aegis-gateway-free.onrender.com/healthz` and its `/dashboard` both returned HTTP 200.
+It demonstrates the application serving requests, but it is not evidence of a production
+deployment: the public demo uses the evaluation configuration and free-tier hosting.
+
+The historical deployment assessment below predates that check. The production paths remain
+unverified: no production Redis/Postgres configuration or Kubernetes deployment was exercised.
+Three paths exist:
 
 1. **Render** — `render.yaml` is a one-click blueprint. ⚠️ It previously could not
    boot: it paired `AEGIS_ENV=production` with the public demo key hash, which the
