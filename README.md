@@ -20,6 +20,8 @@ and its local state can reset. Real providers require credentials and separate
 verification; a working echo demonstration does not establish a successful
 external model integration.
 
+![Gateway overview](docs/gateway-overview.png)
+
 ## The two-minute reviewer walkthrough
 
 1. Open the request console and use a fictional example. If the deployment
