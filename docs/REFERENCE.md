@@ -22,7 +22,7 @@ the security model. Nothing on the main page depends on reading this.
 [![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
 `532 tests` · `red-team 12/12 blocked` · `eval gate 64/64` · `retrieval recall 100%` · `1,419 rps @ p99 122ms`
 
-> **Not claiming it's production-ready.** [`STATUS.md`](STATUS.md) lists what is done,
+> **Not claiming it's production-ready.** [`STATUS.md`](../STATUS.md) lists what is done,
 > what is verified, and what is still open — no Postgres, no deploy, unbuilt S3
 > archive. This README tells the same story where you'd actually look for it.
 
@@ -318,7 +318,7 @@ retrieved document being blocked, and the audit read re-verifying.
 
 **Stack:** Python 3.11–3.14 · FastAPI · Pydantic v2 · httpx · Redis (shared limits, required in production) · Postgres (RAG source-of-truth, optional, pgvector-ready) · Docker/Kubernetes · GitHub Actions (tests on 3.11/3.12/3.14, red-team + eval + retrieval-drift gates, live Postgres roundtrip proof; no heavy ML deps to run).
 
-**Roadmap:** see [`ROADMAP.md`](ROADMAP.md) — three objectives with measurable exit
+**Roadmap:** see [`ROADMAP.md`](../ROADMAP.md) — three objectives with measurable exit
 criteria. The short version: make the quality gates measure quality instead of
 plumbing, collapse the per-pod audit chains into one ledger, and ship the evidence
 as a signed artifact a customer can verify offline. Also tracked: a bandit router
