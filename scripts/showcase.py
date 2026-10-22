@@ -74,7 +74,7 @@ def main() -> int:
                     time.sleep(0.1)
                 else:
                     raise RuntimeError("Showcase server did not become ready.")
-                policies = json.loads((ROOT / "examples/showcase/policies.json").read_text())
+                policies = json.loads((ROOT / "src/aegis/static/showcase-policies.json").read_text())
                 for source, text in policies.items():
                     response = client.post("/v1/rag/ingest", json={"source": source, "text": text})
                     response.raise_for_status()

@@ -11,7 +11,7 @@ provider-failure and audit-tampering observations. The generated report uses
 recording/failing providers and makes no model API calls. It is a fixture-based
 engineering demonstration, not a security certification.
 
-The local suite after showcase changes recorded 530 passed, 5 skipped. The
+The local suite after showcase changes recorded 533 passed, 5 skipped. The
 verification ledger below records the earlier landing-page run in its original
 scope.
 

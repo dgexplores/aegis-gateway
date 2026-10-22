@@ -217,3 +217,47 @@ def test_console_escapes_development_key_and_omits_it_in_production(client, monk
     monkeypatch.setattr(settings, "env", "production")
     html = client.get("/dashboard").text
     assert "fictional-" not in html
+
+
+def test_public_showcase_serves_recorded_fictional_evidence_under_csp(client):
+    response = client.get("/showcase")
+    assert response.status_code == 200
+    assert "Recorded run: 7 of 7 fixture checks passed" in response.text
+    assert "<style>" not in response.text
+    assert "/static/showcase-evidence.css" in response.text
+    assert client.get("/static/showcase-evidence.css").status_code == 200
+    assert client.get("/static/recruiter-evidence.json").json()["checks"]
+
+
+def test_demo_seed_requires_opt_in_and_preserves_existing_tenant_documents(client, monkeypatch):
+    from aegis.api.routes import seed_demo_policies
+    from aegis.rag.service import RagService
+
+    store = RagService()
+    monkeypatch.setattr("aegis.api.routes.rag_service", store)
+    settings = STATE["gateway"].settings
+    monkeypatch.setattr(settings, "env", "development")
+    monkeypatch.setattr(settings, "demo_api_key", API_KEY)
+    assert seed_demo_policies(settings) == 0
+    monkeypatch.setattr(settings, "demo_seed_policies", True)
+    assert seed_demo_policies(settings) == 3
+    assert store.list_documents("other-company")["documents"] == []
+    store.ingest("Updated leave policy: 25 days.", "northstar-leave.md", "acme")
+    assert seed_demo_policies(settings) == 0
+    assert "25 days" in store.prepare("leave policy", "acme").system_prompt
+    monkeypatch.setattr(settings, "demo_api_key", "unmatched-fictional-key")
+    assert seed_demo_policies(settings) == 0
+
+
+def test_demo_seed_never_runs_in_production(client, monkeypatch):
+    from aegis.api.routes import seed_demo_policies
+    from aegis.rag.service import RagService
+
+    store = RagService()
+    monkeypatch.setattr("aegis.api.routes.rag_service", store)
+    settings = STATE["gateway"].settings
+    monkeypatch.setattr(settings, "env", "production")
+    monkeypatch.setattr(settings, "demo_api_key", API_KEY)
+    monkeypatch.setattr(settings, "demo_seed_policies", True)
+    assert seed_demo_policies(settings) == 0
+    assert store.size == 0

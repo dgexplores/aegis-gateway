@@ -1,6 +1,7 @@
 """FastAPI application: /v1/chat, /v1/rag/*, admin + health endpoints."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import secrets
@@ -127,6 +128,28 @@ async def _audit_reconciler(gateway: Gateway, interval: float = 60.0) -> None:
         await asyncio.sleep(interval)
 
 
+def seed_demo_policies(settings: Settings) -> int:
+    """Seed only an opted-in development demo tenant, never production or other tenants."""
+    if settings.env != "development" or not settings.demo_seed_policies or not settings.demo_api_key:
+        return 0
+    digest = hashlib.sha256(settings.demo_api_key.encode()).hexdigest()
+    targets = [
+        tid for tid, (key_hash, scopes) in settings.tenant_map().items() if key_hash == digest and "rag" in scopes
+    ]
+    if len(targets) != 1:
+        return 0
+    tenant = targets[0]
+    existing = {doc["source"] for doc in rag_service.list_documents(tenant)["documents"]}
+    path = Path(__file__).parent.parent / "static" / "showcase-policies.json"
+    policies = json.loads(path.read_text(encoding="utf-8"))
+    count = 0
+    for source, text in policies.items():
+        if source not in existing:
+            rag_service.ingest(text, source, tenant)
+            count += 1
+    return count
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if "gateway" not in STATE:
@@ -144,6 +167,10 @@ async def lifespan(app: FastAPI):
         # reuse test-injected gateway (pytest fixtures)
         if "settings" not in STATE:
             STATE["settings"] = STATE["gateway"].settings
+
+    seeded = await asyncio.to_thread(seed_demo_policies, STATE["gateway"].settings)
+    if seeded:
+        log.info("loaded %d fictional policies for the configured evaluation tenant", seeded)
 
     # A starting process is not draining. See DrainMiddleware.end_drain.
     if (starting_drain := current_drain()) is not None:
@@ -1297,6 +1324,12 @@ async def root():
     reader is never asked to care about the argument before they can touch
     the thing — and the console is never buried under marketing copy."""
     return _serve_template("landing.html")
+
+
+@app.get("/showcase", include_in_schema=False)
+async def recruiter_showcase():
+    """Recorded engineering experiments; no tenant or live audit data is exposed."""
+    return _serve_template("showcase.html")
 
 
 DEMO_PLACEHOLDER = "__AEGIS_DEMO_SLOT__"

@@ -34,7 +34,7 @@ The launcher checks that the corresponding OPENAI_API_KEY, ANTHROPIC_API_KEY or 
 python scripts/showcase.py --provider openai --check --report work/showcase-real.json
 ```
 
-This verifies retrieval, masking, blocking and provider identity. Read the returned policy_answer and compare it with examples/showcase/policies.json; successful transport and a citation do not establish answer correctness. Do not describe a real-model presentation as verified until this check and answer review succeed in your environment.
+This verifies retrieval, masking, blocking and provider identity. Read the returned policy_answer and compare it with src/aegis/static/showcase-policies.json; successful transport and a citation do not establish answer correctness. Do not describe a real-model presentation as verified until this check and answer review succeed in your environment.
 
 For a reproducible controls-only check:
 
@@ -90,7 +90,7 @@ Avoid “enterprise-ready,” “prevents all data leaks,” “blocks every inj
 
 ## Verification recorded for this change
 
-On 2026-10-22: the full local suite passed with **530 passed, 5 live-provider
+On 2026-10-22: the full local suite passed with **533 passed, 5 live-provider
 checks skipped**. Ruff lint and format checks, mypy and JavaScript syntax checks
 passed. The isolated echo HTTP journey passed retrieval, policy allowance,
 provider identity, email masking and pre-provider attack refusal checks. Browser

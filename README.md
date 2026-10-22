@@ -9,6 +9,7 @@ patterns, masks recognized personal data, calls a configured provider and record
 the decision. The browser console exposes the response alongside its evidence.
 
 [Open the public demo](https://aegis-gateway-free.onrender.com/) ·
+[Recruiter showcase](https://aegis-gateway-free.onrender.com/showcase) ·
 [Request console](https://aegis-gateway-free.onrender.com/dashboard) ·
 [API documentation](https://aegis-gateway-free.onrender.com/docs) ·
 [Source](https://github.com/dgexplores/aegis-gateway)
@@ -139,7 +140,7 @@ separate from the optional lint, type and evaluation targets listed here.
 
 ## Verified results and their limits
 
-The local suite recorded **530 passed, 5 skipped** on 2026-10-22. The skipped
+The local suite recorded **533 passed, 5 skipped** on 2026-10-22. The skipped
 checks are live-provider tests that need a configured endpoint, model and key.
 The suite includes mocked provider contracts, tenant boundaries, console assets,
 audit recovery and security-related regression cases.
