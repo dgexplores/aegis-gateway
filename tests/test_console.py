@@ -247,6 +247,16 @@ def test_demo_seed_requires_opt_in_and_preserves_existing_tenant_documents(clien
     assert "25 days" in store.prepare("leave policy", "acme").system_prompt
     monkeypatch.setattr(settings, "demo_api_key", "unmatched-fictional-key")
     assert seed_demo_policies(settings) == 0
+    # Existing public evaluation deployments need no new secret or dashboard change.
+    from aegis.config import DEMO_KEY_HASH
+
+    monkeypatch.setattr(settings, "demo_api_key", "demo-sk-aegis-2024")
+    monkeypatch.setattr(settings, "tenants", f"public-demo:{DEMO_KEY_HASH}:chat+rag")
+    monkeypatch.setattr(settings, "demo_seed_policies", False)
+    assert seed_demo_policies(settings) == 0
+    monkeypatch.setattr(settings, "demo_seed_policies", None)
+    assert seed_demo_policies(settings) == 3
+    assert len(store.list_documents("public-demo")["documents"]) == 3
 
 
 def test_demo_seed_never_runs_in_production(client, monkeypatch):

@@ -57,7 +57,7 @@ services:
       - key: AEGIS_TENANTS
         value: demo:e3e18b6e9c3d49198e61396c5e4439668591ec224bac1ef1c2736661d80763ef:chat+rag+admin
       - key: AEGIS_DEMO_SEED_POLICIES
-        value: true
+        value: "true"
       - key: AEGIS_DEMO_API_KEY
         value: demo-sk-aegis-2024
       - key: AEGIS_PROVIDERS

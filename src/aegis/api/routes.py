@@ -23,7 +23,7 @@ from aegis.api.middleware import (
     current_drain,
 )
 from aegis.budget import BudgetExceeded
-from aegis.config import Settings, get_settings
+from aegis.config import DEMO_KEY_HASH, Settings, get_settings
 from aegis.gateway import Gateway, build_gateway
 from aegis.metrics import metrics
 from aegis.providers.registry import AllProvidersDown
@@ -130,9 +130,13 @@ async def _audit_reconciler(gateway: Gateway, interval: float = 60.0) -> None:
 
 def seed_demo_policies(settings: Settings) -> int:
     """Seed only an opted-in development demo tenant, never production or other tenants."""
-    if settings.env != "development" or not settings.demo_seed_policies or not settings.demo_api_key:
+    if settings.env != "development" or not settings.demo_api_key:
         return 0
     digest = hashlib.sha256(settings.demo_api_key.encode()).hexdigest()
+    if settings.demo_seed_policies is not True and not (
+        settings.demo_seed_policies is None and digest == DEMO_KEY_HASH
+    ):
+        return 0
     targets = [
         tid for tid, (key_hash, scopes) in settings.tenant_map().items() if key_hash == digest and "rag" in scopes
     ]
