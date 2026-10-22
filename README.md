@@ -22,6 +22,21 @@ external model integration.
 
 ![Gateway overview](docs/gateway-overview.png)
 
+## For recruiters and technical reviewers
+
+Start with the **[engineering case study](docs/RECRUITER-CASE-STUDY.md)**:
+inspect actual provider payloads, refuse a poisoned retrieved document, inject a
+provider failure, and alter an audit-log copy to see verification fail.
+
+```bash
+make recruiter-evidence
+```
+
+This generates a readable report and JSON observations from the real gateway,
+retrieval and audit code with recording/failing test providers. Seven fixture
+checks run without a model API. The evidence target also runs in `make verify`.
+It demonstrates control behaviour; real-model quality is a separate evaluation.
+
 ## Start with one use case: a company policy assistant
 
 **For developers and IT teams building internal AI assistants.** Employees ask

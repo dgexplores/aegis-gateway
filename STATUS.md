@@ -18,6 +18,17 @@ that provides Redis/Postgres.
 
 ---
 
+## Engineering review evidence
+
+`make recruiter-evidence` runs seven fixture experiments through the real
+pipeline with recording/failing providers and generates HTML plus JSON.
+It checks actual provider payloads, refused user and retrieved-document attacks,
+tenant service-state separation, injected provider failure and an altered audit
+copy. The target is included in `make verify`. See
+[the engineering case study](docs/RECRUITER-CASE-STUDY.md) for the method,
+trade-offs and interview walkthrough. These are controlled experiments, not
+real-model quality or production-reliability measurements.
+
 ## Showcase update — 2026-10-22
 
 AEGIS is presented as a gateway for developers and IT teams building internal

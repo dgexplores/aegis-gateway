@@ -42,6 +42,14 @@ For a reproducible controls-only check:
 python scripts/showcase.py --check --report work/showcase-echo.json
 ```
 
+## For a technical interview
+
+Use [the engineering case study](RECRUITER-CASE-STUDY.md) and run
+`make recruiter-evidence`. Spend the technical portion on the observed provider
+payload, poisoned context, failure injection and audit-copy alteration. The
+policy assistant supplies the application context. This is the stronger path
+for backend, security and AI platform discussions.
+
 ## A three-minute presentation
 
 1. **Explain the problem (20 seconds).** “An internal assistant needs more than model access: who can use it, what leaves the application, and what happened when a request was refused.” Point to the employee → gateway → provider relationship on the landing page.
