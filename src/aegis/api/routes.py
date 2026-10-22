@@ -6,6 +6,7 @@ import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 from typing import Callable
 
@@ -1312,7 +1313,19 @@ def _render_dashboard(html: str) -> str:
     gateway: Gateway | None = STATE.get("gateway")
     settings = gateway.settings if gateway is not None else get_settings()
     demo_key = "" if settings.env == "production" else settings.demo_api_key
-    return html.replace(DEMO_PLACEHOLDER, demo_key)
+    real_providers = [name for name in gateway.registry if name != "echo"] if gateway else []
+    mode = "AI provider configured" if real_providers else "Controls demo · echo"
+    detail = (
+        "A real provider is configured. Check each response’s provider label: echo may be used if the provider fails."
+        if real_providers
+        else "Echo returns test output, not an AI-generated policy answer. "
+        "You can still inspect screening, masking and retrieval."
+    )
+    return (
+        html.replace(DEMO_PLACEHOLDER, escape(demo_key, quote=True))
+        .replace("__AEGIS_MODE_SLOT__", mode)
+        .replace("__AEGIS_MODE_DETAIL_SLOT__", detail)
+    )
 
 
 @app.get("/dashboard", include_in_schema=False)

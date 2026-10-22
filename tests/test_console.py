@@ -191,3 +191,29 @@ def test_console_escapes_interpolated_values():
     for raw in ("${d.source}", "${r.event}", "${row.tenant}"):
         idx = js.find(raw)
         assert idx == -1 or "esc(" in js[max(0, idx - 30) : idx], f"{raw} is interpolated without escaping"
+
+
+def test_console_identifies_echo_from_runtime_registry(client):
+    html = client.get("/dashboard").text
+    assert "Controls demo · echo" in html
+    assert "Echo returns test output, not an AI-generated policy answer." in html
+    assert "__AEGIS_MODE_" not in html
+
+
+def test_console_does_not_claim_configured_provider_was_used(client, monkeypatch):
+    gateway = STATE["gateway"]
+    # Rendering describes configuration only; actual response identity must still be checked.
+    monkeypatch.setitem(gateway.registry, "openai", gateway.registry["echo"])
+    html = client.get("/dashboard").text
+    assert "AI provider configured" in html
+    assert "echo may be used if the provider fails" in html
+
+
+def test_console_escapes_development_key_and_omits_it_in_production(client, monkeypatch):
+    settings = STATE["gateway"].settings
+    monkeypatch.setattr(settings, "demo_api_key", 'fictional-" autofocus onfocus="alert(1)')
+    html = client.get("/dashboard").text
+    assert 'value="fictional-&quot; autofocus onfocus=&quot;alert(1)"' in html
+    monkeypatch.setattr(settings, "env", "production")
+    html = client.get("/dashboard").text
+    assert "fictional-" not in html

@@ -1,4 +1,4 @@
-# AEGIS — inspect the path between your app and AI
+# AEGIS — controls for internal AI assistants
 
 **A Python/FastAPI gateway for request screening, detected-PII masking, tenant
 controls, provider routing and verifiable audit records.**
@@ -22,16 +22,42 @@ external model integration.
 
 ![Gateway overview](docs/gateway-overview.png)
 
-## The two-minute reviewer walkthrough
+## Start with one use case: a company policy assistant
 
-1. Open the request console and use a fictional example. If the deployment
-   supplies a demo key, it is filled in; otherwise enter your own scoped key.
-2. Compare a normal request with a supported injection example. Inspect the
-   decision, reasons and privacy-handling information rather than only the answer.
-3. Ask a question over the configured sample documents and inspect its citations.
-4. Review the audit surface with an appropriately scoped operator credential.
-   Check the chain verification result; the staff console does not grant itself
-   corpus-management or operator permissions.
+**For developers and IT teams building internal AI assistants.** Employees ask
+about fictional company policies; the team inspects access decisions, recognized
+personal-data masking, provider handling and audit records. The assistant is the
+example application; AEGIS is the gateway underneath it.
+
+After installing the project (see below), start a prepared showcase:
+
+```bash
+python scripts/showcase.py
+```
+
+Open the printed local URL. Three fictional Northstar policies are loaded,
+credentials are generated for this run, and existing .env/data are left alone.
+The default is echo: a controls demonstration, not AI-generated policy answers.
+For real answers, export a provider key and run `python scripts/showcase.py --provider openai` (also supports anthropic and gmi). Inspect the actual provider
+on every response because the gateway can fall back to echo.
+
+```bash
+python scripts/showcase.py --check --report work/showcase-echo.json
+```
+
+The check exercises retrieval, masking, blocking and provider identity against a
+real local HTTP server. Repeat with `--provider openai` for a configured model;
+then manually review the policy answer against the source.
+
+**[Presenter script, real-provider setup and pilot onboarding](docs/SHOWCASE.md)**
+
+1. Ask about vacation days and inspect the retrieved source and provider.
+2. Select **Try privacy check** and inspect the sanitized outbound message.
+3. Select **Try attack attempt** and inspect a refusal before a provider call.
+4. Open **Admin → Chain** with scoped operator access and review the records.
+
+This is a working gateway prototype with a local showcase. Company-pilot
+readiness requires separate provider, data, persistence and operational checks.
 
 ## What problem does it address?
 
@@ -98,7 +124,7 @@ separate from the optional lint, type and evaluation targets listed here.
 
 ## Verified results and their limits
 
-The local suite recorded **527 passed, 5 skipped** on 2026-10-22. The skipped
+The local suite recorded **530 passed, 5 skipped** on 2026-10-22. The skipped
 checks are live-provider tests that need a configured endpoint, model and key.
 The suite includes mocked provider contracts, tenant boundaries, console assets,
 audit recovery and security-related regression cases.
