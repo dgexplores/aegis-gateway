@@ -19,6 +19,14 @@ python scripts/showcase.py
 
 Open http://127.0.0.1:8080/dashboard. The launcher loads three fictional policies, creates a fresh local credential, and isolates the server from your existing .env, documents and audit files. No external services are needed. The credential is deliberately available to the local console, so the launcher binds only to loopback. Closing it removes its temporary state. Restart for a clean presentation.
 
+### Public evaluation readiness
+
+The published evaluation key in development mode loads missing fictional sample
+policies at startup, including after a free-host cold start. Existing documents
+with those source names are preserved. This never runs in production.
+`AEGIS_DEMO_SEED_POLICIES=false` disables it; explicitly setting it to true can
+opt another configured development demo tenant in.
+
 ### For actual AI answers
 
 Export the chosen provider's API key in your terminal using your normal secret-management method. Keep it off screen. Then select that provider explicitly:
@@ -72,7 +80,7 @@ For a first pilot, choose one team, a small approved policy corpus, one model pr
 ## If something goes wrong on stage
 
 - Port already occupied: restart with --port 8090 and open the printed URL.
-- No documents: use the launcher URL and key; it seeds only its isolated showcase tenant. The ordinary public deployment does not automatically receive these documents.
+- No documents: use the launcher URL and key; it seeds only its isolated showcase tenant. The public evaluation deployment loads these fictional policies on startup; refresh its document list after a cold start.
 - Echo in real-provider mode: stop and fix the provider credentials/quota or connection; present controls-only if needed. Never call echo an AI-generated answer.
 - Missing context: inspect the listed policies and ask the exact starter question first.
 - A real-model answer is unsupported: show the source and acknowledge the mismatch. A retrieval citation is context, not proof of correctness.
