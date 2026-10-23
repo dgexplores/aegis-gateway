@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     # because /dashboard is unauthenticated and would otherwise serve a working
     # credential to anyone who can reach the port.
     demo_api_key: str = ""
+    # None enables samples only for the published evaluation key; False always disables.
+    # Explicit True opts another development demo tenant in. Never seeds production.
+    demo_seed_policies: bool | None = None
     # Admin portal login. An operator signing in during an incident should not
     # have to find a scoped key and paste it into a form, so /admin also accepts
     # an id and password and hands back a signed session cookie. Empty means

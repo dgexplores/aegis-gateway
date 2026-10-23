@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AEGIS · Inspect the path between your app and AI</title>
+  <title>AEGIS · Controls for your internal AI assistant</title>
   <meta name="description" content="A Python AI gateway with request screening, detected-PII masking, tenant controls and a verifiable audit trail. Explore the working demo and its limitations.">
   <meta name="theme-color" content="#213b64">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23213b64'/%3E%3Ctext x='32' y='45' font-family='sans-serif' font-size='35' fill='white' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
@@ -13,16 +13,16 @@
 <a class="skip" href="#main">Skip to main content</a>
 <header class="site-header">
   <a class="wordmark" href="/" aria-label="AEGIS home"><span class="mark" aria-hidden="true">A</span>AEGIS<span class="wordmark-label">AI GATEWAY</span></a>
-  <nav aria-label="Main navigation"><a href="#workflow">How it works</a><a href="#review">For reviewers</a><a class="nav-source" href="https://github.com/dgexplores/aegis-gateway">Source ↗</a><a class="button button-small" href="/dashboard">Open console <span aria-hidden="true">↗</span></a></nav>
+  <nav aria-label="Main navigation"><a href="#workflow">How it works</a><a href="#audience">Who uses it</a><a href="#review">Evidence</a><a class="nav-source" href="https://github.com/dgexplores/aegis-gateway">Source ↗</a><a class="button button-small" href="/dashboard">Open console <span aria-hidden="true">↗</span></a></nav>
 </header>
 <main id="main">
 <section class="hero" aria-labelledby="hero-heading">
   <div class="hero-copy">
-    <p class="eyebrow"><span aria-hidden="true"></span> CONTROL THE REQUEST. KEEP THE RECORD.</p>
-    <h1 id="hero-heading">An AI request needs<br>more than<br><em>an answer.</em></h1>
-    <p class="hero-description">See what your application sends, apply your access and privacy controls, and keep a record of the decision.</p>
-    <div class="hero-actions"><a class="button" href="/dashboard">Inspect a request <span aria-hidden="true">↗</span></a><a class="text-link" href="#workflow">Follow its path <span aria-hidden="true">↓</span></a></div>
-    <p class="demo-note"><strong>About the demo</strong> The default echo provider is deterministic. It demonstrates gateway controls, not a model's intelligence. Real providers require configuration.</p>
+    <p class="eyebrow"><span aria-hidden="true"></span> FOR TEAMS BUILDING INTERNAL AI ASSISTANTS</p>
+    <h1 id="hero-heading">Your company’s AI.<br>Your controls.<br><em>A record you can inspect.</em></h1>
+    <p class="hero-description">AEGIS sits between your application and its AI provider. Control access, mask recognized personal data and inspect request decisions. Start with a company policy assistant: one concrete example of the gateway at work.</p>
+    <div class="hero-actions"><a class="button" href="/dashboard">Try the policy assistant <span aria-hidden="true">↗</span></a><a class="text-link" href="#workflow">See how it works <span aria-hidden="true">↓</span></a></div>
+    <p class="demo-note"><strong>About the demo</strong> The public demo demonstrates request controls with echo, a deterministic test provider. For AI-generated policy answers, run the showcase with a real provider. The console identifies the provider used for each response.</p>
   </div>
   <figure class="request-map" aria-labelledby="request-map-title">
     <div class="map-top"><span id="request-map-title">REQUEST CONTROL PATH</span><span class="map-mode">ILLUSTRATION</span></div>
@@ -36,6 +36,10 @@
   </figure>
 </section>
 <section class="engineering-strip" aria-label="Implementation stack"><span>PYTHON / FASTAPI</span><span>TENANT CONTROLS</span><span>PII PSEUDONYMIZATION</span><span>HASH-CHAINED AUDIT</span><span>TESTED FAILURE PATHS</span></section>
+<section id="audience" class="review-section" aria-labelledby="audience-heading">
+  <div class="section-heading"><div><p class="eyebrow">A CONCRETE FIRST USE CASE</p><h2 id="audience-heading">An internal policy assistant, with controls.</h2></div><p>Built for developers and IT teams integrating AI.<br>Employees use the assistant; operators manage the gateway.</p></div>
+  <div class="review-grid"><article><span class="review-label">EMPLOYEE</span><h3>Ask about company policies</h3><p>Ask a leave or expense question over a fictional company’s sample documents. With a real provider, review the answer alongside retrieved sources.</p></article><article><span class="review-label">DEVELOPER / IT</span><h3>Inspect the boundary</h3><p>See which request was allowed or refused, which supported personal-data types were masked, and which provider handled the response.</p></article><article><span class="review-label">OPERATOR</span><h3>Review the evidence</h3><p>Use scoped operator access to inspect audit records and verification results. The employee console does not grant operator permissions.</p></article></div>
+</section>
 <section id="workflow" class="workflow" aria-labelledby="workflow-heading">
   <div class="section-heading"><div><p class="eyebrow">ONE REQUEST, VISIBLE DECISIONS</p><h2 id="workflow-heading">Follow the whole path.</h2></div><p>Controls are useful when you can explain what they did.<br>Open the console to inspect the actual response and record.</p></div>
   <ol class="request-stages">
@@ -46,14 +50,14 @@
   </ol>
 </section>
 <section class="product-view" aria-labelledby="product-heading">
-  <div class="product-copy"><p class="eyebrow">THE WORKING CONSOLE</p><h2 id="product-heading">Ask a question.<br>Then inspect<br>what happened.</h2><p>The dashboard puts the response beside its policy signals, privacy handling and available source evidence.</p><p>Try a normal question, then a supported injection example. Compare the resulting decisions.</p><a class="text-link" href="/dashboard">Open the request console <span aria-hidden="true">↗</span></a></div>
+  <div class="product-copy"><p class="eyebrow">THE WORKING CONSOLE</p><h2 id="product-heading">One policy question.<br>Two perspectives.</h2><p>An employee asks about leave or expenses. A developer or IT administrator inspects the request decision, detected personal data and retrieved sources.</p><p>Use the guided examples to compare a policy request, fictional personal data and an attack attempt. AEGIS is the gateway; this assistant is the example application.</p><a class="text-link" href="/dashboard">Open the request console <span aria-hidden="true">↗</span></a></div>
   <figure class="console-shot"><div class="window-bar"><span aria-hidden="true">● ● ●</span><span>AEGIS / REQUEST CONSOLE</span><span>REFERENCE SCREENSHOT</span></div><img src="/static/shots/ask-answered.jpg" width="1280" height="1000" loading="lazy" alt="Reference screenshot of the AEGIS console with an HR question, cited answer and request evidence."><figcaption>Screenshot from an earlier local demonstration. Your deployment's provider, documents and controls determine its response.</figcaption></figure>
 </section>
 <section id="review" class="review-section" aria-labelledby="review-heading">
-  <div class="section-heading"><div><p class="eyebrow">FOR TECHNICAL REVIEWERS</p><h2 id="review-heading">The engineering is inspectable.</h2></div><a class="text-link" href="https://github.com/dgexplores/aegis-gateway#readme">Read the engineering brief ↗</a></div>
-  <div class="review-grid"><article><span class="review-label">WHAT TO LOOK AT</span><h3>Boundaries and failure paths</h3><p>Review authentication, tenant isolation, provider contracts, budget enforcement and audit recovery. The repository includes tests and operational drills.</p><a href="https://github.com/dgexplores/aegis-gateway/tree/main/tests">Explore the tests ↗</a></article><article><span class="review-label">WHAT IS MEASURED</span><h3>Local verification, scoped honestly</h3><p>The latest recorded local suite completed with 527 passed and 5 live-provider tests skipped. That does not establish real-provider quality or hosted uptime.</p><a href="https://github.com/dgexplores/aegis-gateway/blob/main/docs/PORTFOLIO-BRIEF.md">See verification boundaries ↗</a></article><article><span class="review-label">WHAT REMAINS</span><h3>Security has no perfect detector</h3><p>Pattern screening can miss attacks and personal data. Free-tier storage and shared-state limitations matter. Evaluate your deployment before using real data.</p><a href="https://github.com/dgexplores/aegis-gateway/blob/main/STATUS.md">Read known limitations ↗</a></article></div>
+  <div class="section-heading"><div><p class="eyebrow">FOR TECHNICAL REVIEWERS</p><h2 id="review-heading">The engineering is inspectable.</h2></div><a class="text-link" href="/showcase">View the engineering showcase ↗</a></div>
+  <div class="review-grid"><article><span class="review-label">OBSERVE THE BOUNDARY</span><h3>Inspect what reaches the provider</h3><p>Compare a direct request with the guarded payload. Then retrieve a poisoned document and verify that the recording provider receives zero new calls.</p><a href="https://github.com/dgexplores/aegis-gateway/blob/main/scripts/recruiter_demo.py">Reproduce the experiments ↗</a></article><article><span class="review-label">EXERCISE THE FAILURE</span><h3>Break it, then inspect the result</h3><p>Inject a provider failure and observe the fallback call. Edit an audit record in a copy and see verification reject it. The evidence report includes observed values and source fingerprints.</p><a href="https://github.com/dgexplores/aegis-gateway/blob/main/docs/RECRUITER-CASE-STUDY.md">Read the trade-offs ↗</a></article><article><span class="review-label">WHAT REMAINS</span><h3>Security has no perfect detector</h3><p>Pattern screening can miss attacks and personal data. Free-tier storage and shared-state limitations matter. Evaluate your deployment before using real data.</p><a href="https://github.com/dgexplores/aegis-gateway/blob/main/STATUS.md">Read known limitations ↗</a></article></div>
 </section>
-<section class="closing"><div><p class="eyebrow">START WITH ONE REQUEST</p><h2>Make the decision<br>visible.</h2></div><div><a class="button" href="/dashboard">Open console <span aria-hidden="true">↗</span></a><p>Use synthetic examples.<br>Inspect the result before making a claim.</p></div></section>
+<section class="closing"><div><p class="eyebrow">START WITH ONE REQUEST</p><h2>Try one complete<br>request journey.</h2></div><div><a class="button" href="/dashboard">Open console <span aria-hidden="true">↗</span></a><p>Use synthetic examples.<br>Inspect the result before making a claim.</p></div></section>
 </main>
 <footer><a class="wordmark" href="/">AEGIS<span class="wordmark-label">AI GATEWAY</span></a><nav aria-label="Footer navigation"><a href="https://github.com/dgexplores/aegis-gateway">Source</a><a href="/docs">API docs</a><a href="/healthz">Health</a><a href="/readyz">Readiness</a></nav><p>Deepak Gangwar · AI-assisted development · MIT</p></footer>
 </body>

@@ -20,3 +20,6 @@ audit.jsonl.1
 
 # playwright-mcp scratch (screenshots, console logs, snapshots)
 .playwright-mcp/
+
+# Reproducible local evidence outputs
+/work/

@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence loadtest restore-drill docker-build docker-up gen-tenant check-secrets
+.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence loadtest restore-drill docker-build docker-up gen-tenant check-secrets recruiter-evidence
 
 install:
 	pip install -e ".[dev]"
@@ -60,8 +60,8 @@ benign-eval:
 fuzz:
 	PYTHONPATH=src python scripts/fuzz_attacks.py --count 200
 
-verify: lint type test security evals rag-eval pii-eval benign-eval prod-guard docs-check
-	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+benign+prod-guard+docs green"
+verify: lint type test security evals rag-eval pii-eval benign-eval prod-guard docs-check recruiter-evidence
+	@echo "VERIFY OK — lint+type+tests+redteam+evals+rag+pii+benign+prod-guard+docs+boundary-evidence green"
 
 docs-check:  ## do the README's numbers and screenshots still match the repo?
 	python scripts/docs_check.py
@@ -119,3 +119,6 @@ docker-build:
 
 docker-up:
 	docker compose up -d
+
+recruiter-evidence:  ## measured payload, failure and tamper experiments; no external model
+	python scripts/recruiter_demo.py --output-dir work/recruiter-evidence

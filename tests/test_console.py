@@ -191,3 +191,83 @@ def test_console_escapes_interpolated_values():
     for raw in ("${d.source}", "${r.event}", "${row.tenant}"):
         idx = js.find(raw)
         assert idx == -1 or "esc(" in js[max(0, idx - 30) : idx], f"{raw} is interpolated without escaping"
+
+
+def test_console_identifies_echo_from_runtime_registry(client):
+    html = client.get("/dashboard").text
+    assert "Controls demo · echo" in html
+    assert "Echo returns test output, not an AI-generated policy answer." in html
+    assert "__AEGIS_MODE_" not in html
+
+
+def test_console_does_not_claim_configured_provider_was_used(client, monkeypatch):
+    gateway = STATE["gateway"]
+    # Rendering describes configuration only; actual response identity must still be checked.
+    monkeypatch.setitem(gateway.registry, "openai", gateway.registry["echo"])
+    html = client.get("/dashboard").text
+    assert "AI provider configured" in html
+    assert "echo may be used if the provider fails" in html
+
+
+def test_console_escapes_development_key_and_omits_it_in_production(client, monkeypatch):
+    settings = STATE["gateway"].settings
+    monkeypatch.setattr(settings, "demo_api_key", 'fictional-" autofocus onfocus="alert(1)')
+    html = client.get("/dashboard").text
+    assert 'value="fictional-&quot; autofocus onfocus=&quot;alert(1)"' in html
+    monkeypatch.setattr(settings, "env", "production")
+    html = client.get("/dashboard").text
+    assert "fictional-" not in html
+
+
+def test_public_showcase_serves_recorded_fictional_evidence_under_csp(client):
+    response = client.get("/showcase")
+    assert response.status_code == 200
+    assert "Recorded run: 7 of 7 fixture checks passed" in response.text
+    assert "<style>" not in response.text
+    assert "/static/showcase-evidence.css" in response.text
+    assert client.get("/static/showcase-evidence.css").status_code == 200
+    assert client.get("/static/recruiter-evidence.json").json()["checks"]
+
+
+def test_demo_seed_requires_opt_in_and_preserves_existing_tenant_documents(client, monkeypatch):
+    from aegis.api.routes import seed_demo_policies
+    from aegis.rag.service import RagService
+
+    store = RagService()
+    monkeypatch.setattr("aegis.api.routes.rag_service", store)
+    settings = STATE["gateway"].settings
+    monkeypatch.setattr(settings, "env", "development")
+    monkeypatch.setattr(settings, "demo_api_key", API_KEY)
+    assert seed_demo_policies(settings) == 0
+    monkeypatch.setattr(settings, "demo_seed_policies", True)
+    assert seed_demo_policies(settings) == 3
+    assert store.list_documents("other-company")["documents"] == []
+    store.ingest("Updated leave policy: 25 days.", "northstar-leave.md", "acme")
+    assert seed_demo_policies(settings) == 0
+    assert "25 days" in store.prepare("leave policy", "acme").system_prompt
+    monkeypatch.setattr(settings, "demo_api_key", "unmatched-fictional-key")
+    assert seed_demo_policies(settings) == 0
+    # Existing public evaluation deployments need no new secret or dashboard change.
+    from aegis.config import DEMO_KEY_HASH
+
+    monkeypatch.setattr(settings, "demo_api_key", "demo-sk-aegis-2024")
+    monkeypatch.setattr(settings, "tenants", f"public-demo:{DEMO_KEY_HASH}:chat+rag")
+    monkeypatch.setattr(settings, "demo_seed_policies", False)
+    assert seed_demo_policies(settings) == 0
+    monkeypatch.setattr(settings, "demo_seed_policies", None)
+    assert seed_demo_policies(settings) == 3
+    assert len(store.list_documents("public-demo")["documents"]) == 3
+
+
+def test_demo_seed_never_runs_in_production(client, monkeypatch):
+    from aegis.api.routes import seed_demo_policies
+    from aegis.rag.service import RagService
+
+    store = RagService()
+    monkeypatch.setattr("aegis.api.routes.rag_service", store)
+    settings = STATE["gateway"].settings
+    monkeypatch.setattr(settings, "env", "production")
+    monkeypatch.setattr(settings, "demo_api_key", API_KEY)
+    monkeypatch.setattr(settings, "demo_seed_policies", True)
+    assert seed_demo_policies(settings) == 0
+    assert store.size == 0

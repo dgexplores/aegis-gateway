@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>AEGIS Console — run the gateway yourself</title>
+<title>AEGIS — Policy assistant showcase</title>
 <meta name="description" content="The AEGIS console: send a prompt, watch injection screening, PII vaulting, provider routing and the sealed audit record for that turn, then run the capability tour against the live API."/>
 <meta name="theme-color" content="#2d5da1"/>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232d5da1'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='34' font-weight='bold' fill='white' text-anchor='middle'%3E%C3%86%3C/text%3E%3C/svg%3E"/>
@@ -40,9 +40,15 @@
 <section class="console-section" aria-labelledby="ask-title">
   <div class="section-inner">
     <header class="section-head">
-      <h2 id="ask-title" class="section-title">Ask</h2>
-      <p class="section-sub">Ask about leave, pay, expenses or any policy. Answers come from your own documents, and you can see which one.</p>
+      <h2 id="ask-title" class="section-title">Company policy assistant</h2>
+      <p class="section-sub">A working example of the AEGIS gateway for developers and IT teams. Ask about fictional company policies, then inspect how the request was handled.</p>
     </header>
+    <aside class="showcase-guide" aria-label="Showcase guide">
+      <div><span class="pill info">__AEGIS_MODE_SLOT__</span><p>__AEGIS_MODE_DETAIL_SLOT__</p></div>
+      <ol><li><strong>Policy question</strong> — try vacation days and review the retrieved source.</li><li><strong>Privacy check</strong> — send a fictional email and inspect the masked provider input.</li><li><strong>Attack attempt</strong> — inspect a refusal before a provider call.</li></ol>
+      <div class="quick"><button class="btn sm" id="privacyExample" type="button">Try privacy check</button><button class="btn sm" id="attackExample" type="button">Try attack attempt</button><a class="btn sm ghost" href="https://github.com/dgexplores/aegis-gateway/blob/main/docs/SHOWCASE.md">Presenter guide ↗</a></div>
+      <p class="tiny muted">Use fictional data. For a prepared local demo with sample policies, run <code>python scripts/showcase.py</code>. Operator review is available through Admin with an appropriately scoped key.</p>
+    </aside>
     <div class="console-grid">
       <div class="console-main">
         <div class="card composer-card">
@@ -70,7 +76,7 @@
           </div>
           <div class="card-body">
             <div id="thread" class="thread">
-              <p class="small muted" id="threadEmpty">Pick a question above, or type your own. Answers cite the document they came from.</p>
+              <p class="small muted" id="threadEmpty">Start with a policy question, or try a guided privacy or attack example. Inspect the provider label and retrieved sources beside each response.</p>
             </div>
           </div>
         </div>
@@ -118,7 +124,7 @@
       <div class="card-head">
         <div class="grow">
           <h3 id="docs-title">Your documents</h3>
-          <p class="small muted">Answers above are written from these, and cite which one.</p>
+          <p class="small muted">Available sources for policy questions. Retrieved sources show what was supplied as context; they do not by themselves verify the answer.</p>
         </div>
         <span id="ragBackendPill" class="pill">—</span>
         <button id="docsRefresh" class="btn sm" type="button">Refresh</button>

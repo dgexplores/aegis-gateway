@@ -1034,3 +1034,50 @@ td.num, th.num { text-align: right; font-family: var(--font-mono); font-variant-
 /* The console opens on the product, so it starts tight under the nav rather
    than below a hero it no longer has. */
 .page-console .console-section { padding-top: 5.5rem; }
+
+/* The guide follows the request journey; it remains readable on small screens. */
+.showcase-guide { border: 1px solid var(--blue); border-radius: 16px; padding: 22px; margin-bottom: 24px; }
+.showcase-guide p { margin: 10px 0; max-width: 85ch; }
+.showcase-guide ol { padding-left: 22px; line-height: 1.8; }
+.showcase-guide .quick { flex-wrap: wrap; }
+.showcase-guide code { overflow-wrap: anywhere; }
+
+/* Shared visual language with the gateway overview: a calm instrument panel.
+   Keep status colors and their verified contrast; remove decorative tilts. */
+.page-console {
+  --font-head: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --tilt-a: 0deg;
+  --tilt-b: 0deg;
+  --tilt-c: 0deg;
+  --tilt-d: 0deg;
+  --shadow-sm: 0 1px 3px #18314f0d;
+  --shadow: 0 4px 16px #18314f0d;
+  --shadow-lg: 0 8px 24px #18314f14;
+  background-image: none;
+  font-size: 16px;
+}
+.page-console .nav { transform: none; border-width: 1px; border-radius: 12px; }
+.page-console .nav-mark { transform: none; border-radius: 8px; }
+.page-console .card, .page-console .bubble, .page-console .evidence,
+.page-console .pane, .page-console .metric-tile, .page-console .tour-item {
+  border-width: 1px; border-radius: 12px; transform: none;
+}
+.page-console .btn, .page-console .tab {
+  border-width: 1px; border-radius: 7px; transform: none;
+}
+.page-console .btn:hover { transform: translateY(-1px); }
+.page-console .pill { border-width: 1px; border-radius: 6px; white-space: normal; }
+.page-console textarea, .page-console input, .page-console select {
+  border-width: 1px; border-radius: 8px; box-shadow: none;
+}
+.page-console .console-section { padding-top: 3rem; }
+.page-console .section-head { margin-bottom: 1.5rem; }
+.page-console .section-sub { max-width: 75ch; margin-top: 12px; font-size: 1rem; }
+.page-console .card-head { border-bottom-width: 1px; }
+.page-console .bubble:hover, .page-console .turn.user .bubble:hover { transform: none; }
+.page-console .showcase-guide { background: var(--paper-2); }
+@media (max-width: 600px) {
+  .page-console .showcase-guide { padding: 16px; }
+  .page-console .section-title { font-size: 1.8rem; }
+}

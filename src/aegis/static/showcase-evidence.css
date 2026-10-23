@@ -1,0 +1,8 @@
+
+*{box-sizing:border-box}body{margin:0;background:#f3f7fb;color:#18314f;font:16px/1.65 system-ui,sans-serif}
+main{max-width:1000px;margin:auto;padding:48px 24px}header{border-bottom:2px solid #245bc7;padding-bottom:24px}
+h1{font-size:clamp(32px,5vw,52px);line-height:1.12;letter-spacing:-1.5px}h2{font-size:23px;margin:8px 0}
+.kicker,.status{font:13px ui-monospace,monospace;letter-spacing:1px;color:#245bc7}
+article{margin:24px 0;padding:26px;border:1px solid #cbd8e8;background:white;border-radius:10px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:20px;background:#edf3fa;font:13px/1.6 ui-monospace,monospace}
+.why,footer{color:#536a82}a{color:#245bc7}@media print{article{break-inside:avoid}main{padding:0}}

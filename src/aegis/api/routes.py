@@ -1,11 +1,13 @@
 """FastAPI application: /v1/chat, /v1/rag/*, admin + health endpoints."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import secrets
 import time
 from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 from typing import Callable
 
@@ -21,7 +23,7 @@ from aegis.api.middleware import (
     current_drain,
 )
 from aegis.budget import BudgetExceeded
-from aegis.config import Settings, get_settings
+from aegis.config import DEMO_KEY_HASH, Settings, get_settings
 from aegis.gateway import Gateway, build_gateway
 from aegis.metrics import metrics
 from aegis.providers.registry import AllProvidersDown
@@ -126,6 +128,32 @@ async def _audit_reconciler(gateway: Gateway, interval: float = 60.0) -> None:
         await asyncio.sleep(interval)
 
 
+def seed_demo_policies(settings: Settings) -> int:
+    """Seed only an opted-in development demo tenant, never production or other tenants."""
+    if settings.env != "development" or not settings.demo_api_key:
+        return 0
+    digest = hashlib.sha256(settings.demo_api_key.encode()).hexdigest()
+    if settings.demo_seed_policies is not True and not (
+        settings.demo_seed_policies is None and digest == DEMO_KEY_HASH
+    ):
+        return 0
+    targets = [
+        tid for tid, (key_hash, scopes) in settings.tenant_map().items() if key_hash == digest and "rag" in scopes
+    ]
+    if len(targets) != 1:
+        return 0
+    tenant = targets[0]
+    existing = {doc["source"] for doc in rag_service.list_documents(tenant)["documents"]}
+    path = Path(__file__).parent.parent / "static" / "showcase-policies.json"
+    policies = json.loads(path.read_text(encoding="utf-8"))
+    count = 0
+    for source, text in policies.items():
+        if source not in existing:
+            rag_service.ingest(text, source, tenant)
+            count += 1
+    return count
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if "gateway" not in STATE:
@@ -143,6 +171,10 @@ async def lifespan(app: FastAPI):
         # reuse test-injected gateway (pytest fixtures)
         if "settings" not in STATE:
             STATE["settings"] = STATE["gateway"].settings
+
+    seeded = await asyncio.to_thread(seed_demo_policies, STATE["gateway"].settings)
+    if seeded:
+        log.info("loaded %d fictional policies for the configured evaluation tenant", seeded)
 
     # A starting process is not draining. See DrainMiddleware.end_drain.
     if (starting_drain := current_drain()) is not None:
@@ -1298,6 +1330,12 @@ async def root():
     return _serve_template("landing.html")
 
 
+@app.get("/showcase", include_in_schema=False)
+async def recruiter_showcase():
+    """Recorded engineering experiments; no tenant or live audit data is exposed."""
+    return _serve_template("showcase.html")
+
+
 DEMO_PLACEHOLDER = "__AEGIS_DEMO_SLOT__"
 
 
@@ -1312,7 +1350,19 @@ def _render_dashboard(html: str) -> str:
     gateway: Gateway | None = STATE.get("gateway")
     settings = gateway.settings if gateway is not None else get_settings()
     demo_key = "" if settings.env == "production" else settings.demo_api_key
-    return html.replace(DEMO_PLACEHOLDER, demo_key)
+    real_providers = [name for name in gateway.registry if name != "echo"] if gateway else []
+    mode = "AI provider configured" if real_providers else "Controls demo · echo"
+    detail = (
+        "A real provider is configured. Check each response’s provider label: echo may be used if the provider fails."
+        if real_providers
+        else "Echo returns test output, not an AI-generated policy answer. "
+        "You can still inspect screening, masking and retrieval."
+    )
+    return (
+        html.replace(DEMO_PLACEHOLDER, escape(demo_key, quote=True))
+        .replace("__AEGIS_MODE_SLOT__", mode)
+        .replace("__AEGIS_MODE_DETAIL_SLOT__", detail)
+    )
 
 
 @app.get("/dashboard", include_in_schema=False)
