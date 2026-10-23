@@ -11,7 +11,9 @@
 # artifact ships it, which looks at where a credential would actually be used
 # rather than where it is mentioned.
 #
-# Delete this file once the branch is merged and the history is squashed.
+# Historical public-demo fingerprints only. Review individually; do not add
+# broad path/rule exemptions or real credentials. Retain while these commits
+# remain reachable in the history scanned by CI.
 
 17ccbb518bb57fddc7c3ea9a69f5776082bd0c63:Makefile:curl-auth-header:16
 17ccbb518bb57fddc7c3ea9a69f5776082bd0c63:Makefile:curl-auth-header:20

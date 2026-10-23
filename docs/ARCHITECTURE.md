@@ -77,8 +77,8 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
   compares it to the signed digest. One extra anchor row is read so the oldest
   *returned* row is still link-checkable; when the window does not reach the
   file start, the oldest row reports `link_ok: null` (unknown) rather than
-  fabricating assurance. Reads never write, so reading cannot disturb the
-  chain. Tenant-scoped by default; cross-tenant requires `admin`.
+  fabricating assurance. The row reader does not mutate returned records; the admin read/export
+  endpoints append access-audit events. Tenant-scoped by default; cross-tenant requires `admin`.
 - ADR-6 document lifecycle: deleting a document is **durable-first**. The
   Postgres `DELETE` runs first and *raises* on failure (`RagPersistError` →
   `503`); the in-memory index is only mutated after the durable delete
@@ -87,8 +87,9 @@ hard-block, provider never called. Scan errors fail CLOSED at API layer.
   removal rebuilds BM25 `_doc_freq`/`_total_docs` from the surviving term
   frequencies instead of decrementing them — a decrement drifts and a deleted
   document keeps skewing rankings forever.
-- ADR-4 echo fallback always last: guarantees liveness (never 503 on valid
-  input when fallback exists), keeps evals/red-team deterministic.
+- ADR-4 echo fallback always last: provides a deterministic test fallback. It is not an intelligent backup
+  model or an availability guarantee; limits, controls and audit/storage failures
+  can still prevent a successful request.
 - ADR-7 multi-pod ledger reconciliation (M12): each pod keeps its own chain
   (no single writer to become a single point of failure). Rotation seals a
   monotonically numbered segment — never overwriting an earlier one — and

@@ -515,8 +515,8 @@ function traceStages(meta) {
     {
       name: 'Audit',
       state: meta.seq == null ? 'skipped' : 'pass',
-      detail: meta.seq == null ? 'no record' : `record #${meta.seq} appended to the hash chain`,
-      note: 'signed, chained, and readable from the Evidence tab',
+      detail: meta.seq == null ? 'sequence not returned in this response' : `record #${meta.seq} appended to the hash chain`,
+      note: 'review retained records in the operator Chain view',
     },
   ];
 }
@@ -563,7 +563,9 @@ function outboundNode(meta) {
 
   const hint = document.createElement('p');
   hint.className = 'tiny muted';
-  hint.textContent = meta.pii.length
+  hint.textContent = meta.blocked
+    ? 'No outbound payload was sent for this refusal.'
+    : meta.pii.length
     ? `Anything shown as «…» is a vault pseudonym. The provider never received the real value.`
     : `Compare this with what you typed — it is the same text, after the scan and the vault.`;
   frag.appendChild(hint);
