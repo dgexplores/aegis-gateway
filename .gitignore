@@ -23,3 +23,14 @@ audit.jsonl.1
 
 # Reproducible local evidence outputs
 /work/
+
+# Private configuration, local data and generated media
+.env.*
+!.env.example
+.DS_Store
+/audit*.jsonl*
+*.pem
+*.key
+*.p12
+*.pfx
+/outputs/

@@ -15,17 +15,14 @@ a gate is an intention, and intentions are not progress.
 
 ---
 
-## The honest headline
+## Deployment boundary
 
-The single largest risk to this product is not a missing feature. It is that
-**it has never been deployed anywhere real.**
-
-Everything in Wave 1 is reasoning about behaviour that has only ever been
-observed in-process, on a laptop, against a stub provider. Until a real
-environment runs it for a sustained period, "production grade" is a prediction.
-Not a wrong one — the design is sound and the gates are real — but a prediction.
-
-So Wave 0 is not a formality. It is the gate that every later claim rests on.
+A public Render evaluation service is deployed and exposes the console, API and
+recorded recruiter evidence. The public provider is echo. Sustained company
+operation with a real model, approved data, persistent backends and recovery
+acceptance remains unverified. The waves below describe broader operational
+acceptance; a single-process developer pilot does not require a multi-replica
+cluster merely to begin integration.
 
 ---
 

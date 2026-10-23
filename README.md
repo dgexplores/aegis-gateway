@@ -1,203 +1,177 @@
-# AEGIS — controls for internal AI assistants
+# AEGIS — an inspectable gateway for AI applications
 
-**A Python/FastAPI gateway for request screening, detected-PII masking, tenant
-controls, provider routing and verifiable audit records.**
+**Put tenant access, request screening, recognized-PII masking and audit records
+between your application's backend and its AI provider.**
 
-AEGIS puts an inspectable policy boundary between an application and its AI
-providers. It authenticates the caller, checks limits, screens supported prompt
-patterns, masks recognized personal data, calls a configured provider and records
-the decision. The browser console exposes the response alongside its evidence.
+[![CI](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/dgexplores/aegis-gateway/actions/workflows/ci.yml)
 
-[Open the public demo](https://aegis-gateway-free.onrender.com/) ·
-[Recruiter showcase](https://aegis-gateway-free.onrender.com/showcase) ·
-[Request console](https://aegis-gateway-free.onrender.com/dashboard) ·
-[API documentation](https://aegis-gateway-free.onrender.com/docs) ·
-[Source](https://github.com/dgexplores/aegis-gateway)
+[Live showcase](https://aegis-gateway-free.onrender.com/showcase) ·
+[Try the console](https://aegis-gateway-free.onrender.com/dashboard) ·
+[API docs](https://aegis-gateway-free.onrender.com/docs) ·
+[Engineering case study](docs/RECRUITER-CASE-STUDY.md) ·
+[Video script and storyboard](docs/VIDEO-WALKTHROUGH.md)
 
-**Demo boundary:** the default `echo` provider is deterministic. It demonstrates
-request handling and gateway controls, not LLM answer quality. The public demo
-key is intentionally public: use fictional data only. Free hosting can sleep
-and its local state can reset. Real providers require credentials and separate
-verification; a working echo demonstration does not establish a successful
-external model integration.
+## What is it for?
 
-![Gateway overview](docs/gateway-overview.png)
+A development or IT team is adding an internal AI assistant to a website, portal
+or workflow. The application needs to identify callers, limit usage, handle
+sensitive input, manage provider failures and explain request decisions.
+AEGIS exposes those controls through one Python/FastAPI service.
 
-## For recruiters and technical reviewers
+**The example use case is a company policy assistant.** An employee asks about
+leave or expenses. The company's backend sends the question to AEGIS, which
+retrieves tenant-scoped policy context, screens and masks the messages, calls a
+configured provider and records supported decisions. The console makes the
+response and available evidence inspectable.
 
-Start with the **[engineering case study](docs/RECRUITER-CASE-STUDY.md)**:
-inspect actual provider payloads, refuse a poisoned retrieved document, inject a
-provider failure, and alter an audit-log copy to see verification fail.
-
-```bash
-make recruiter-evidence
-```
-
-This generates a readable report and JSON observations from the real gateway,
-retrieval and audit code with recording/failing test providers. Seven fixture
-checks run without a model API. The evidence target also runs in `make verify`.
-It demonstrates control behaviour; real-model quality is a separate evaluation.
-
-## Start with one use case: a company policy assistant
-
-**For developers and IT teams building internal AI assistants.** Employees ask
-about fictional company policies; the team inspects access decisions, recognized
-personal-data masking, provider handling and audit records. The assistant is the
-example application; AEGIS is the gateway underneath it.
-
-After installing the project (see below), start a prepared showcase:
-
-```bash
-python scripts/showcase.py
-```
-
-Open the printed local URL. Three fictional Northstar policies are loaded,
-credentials are generated for this run, and existing .env/data are left alone.
-The default is echo: a controls demonstration, not AI-generated policy answers.
-For real answers, export a provider key and run `python scripts/showcase.py --provider openai` (also supports anthropic and gmi). Inspect the actual provider
-on every response because the gateway can fall back to echo.
-
-```bash
-python scripts/showcase.py --check --report work/showcase-echo.json
-```
-
-The check exercises retrieval, masking, blocking and provider identity against a
-real local HTTP server. Repeat with `--provider openai` for a configured model;
-then manually review the policy answer against the source.
-
-**[Presenter script, real-provider setup and pilot onboarding](docs/SHOWCASE.md)**
-
-1. Ask about vacation days and inspect the retrieved source and provider.
-2. Select **Try privacy check** and inspect the sanitized outbound message.
-3. Select **Try attack attempt** and inspect a refusal before a provider call.
-4. Open **Admin → Chain** with scoped operator access and review the records.
-
-This is a working gateway prototype with a local showcase. Company-pilot
-readiness requires separate provider, data, persistence and operational checks.
-
-## What problem does it address?
-
-An application that calls models directly still needs access controls, privacy
-handling, provider-failure behavior and records explaining what happened. AEGIS
-makes those responsibilities explicit and testable in one service. It is an
-engineering portfolio project, not a claim of production deployment at a client.
-
-## Architecture
+The gateway is the product. The fictional Northstar policy assistant is the
+example application. AEGIS does not train or host a language model.
 
 ```mermaid
 flowchart LR
-    A[Application] --> B[Tenant authentication and limits]
-    B --> C[Prompt screening and detected-PII masking]
-    C --> D[Provider routing and failure handling]
-    D --> E[Response restoration]
-    E --> F[Application response]
-    B --> G[Signed linked audit records]
-    C --> G
-    D --> G
-    E --> G
-    H[Tenant-scoped retrieval] --> C
+    U[Employee / website / workflow] --> B[Your backend]
+    B --> G[AEGIS: authenticate, limit, screen, mask]
+    D[Tenant-scoped documents] --> G
+    G --> P[Configured AI provider]
+    P --> R[Restore response values]
+    R --> B
+    G --> A[Linked audit records]
 ```
 
-| Area | Code to review | Engineering question |
-|---|---|---|
-| HTTP API and console | `src/aegis/api/`, `src/aegis/templates/` | What is authenticated, validated and exposed to staff versus operators? |
-| Request orchestration | `src/aegis/gateway.py`, `src/aegis/router.py` | How do screening, budgets and provider selection interact? |
-| Security controls | `src/aegis/security/` | What does masking detect, what can it miss, and how are records verified? |
-| Provider contracts | `src/aegis/providers/` | How are empty responses, transport failures and different response shapes handled? |
-| Retrieval | `src/aegis/rag/` | How are tenant boundaries, source evidence and retrieval failures represented? |
-| Verification | `tests/`, `scripts/` | What do tests prove, and which external dependencies are skipped? |
+## Try it in two minutes
 
-## Run it locally
+1. Open the [console](https://aegis-gateway-free.onrender.com/dashboard).
+2. Select **Vacation days** and inspect the retrieved source and provider label.
+3. Select **Try privacy check**, then **Show details** to inspect the sanitized
+   outbound message containing an alias for the fictional email.
+4. Select **Try attack attempt** and inspect the refusal.
+5. Open the [engineering showcase](https://aegis-gateway-free.onrender.com/showcase)
+   for recorded payload, poisoned-document, failover and audit-tampering experiments.
 
-Python 3.11 or newer is required. The default development path needs no external
-model, Redis or PostgreSQL server.
+**Public demo mode:** echo produces deterministic test output, not AI-generated
+policy answers. The published demo key is public; use fictional data. Free hosting
+can sleep and reset local state. Missing fictional policies reload at startup.
+
+## Run a prepared local showcase
+
+Requires Python 3.11 or newer. No external model, Redis or Postgres is needed
+for the offline showcase.
 
 ```bash
+git clone https://github.com/dgexplores/aegis-gateway.git
+cd aegis-gateway
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
-cp .env.example .env
-uvicorn aegis.main:app --host 127.0.0.1 --port 8080
+python scripts/showcase.py
 ```
 
-Open `http://127.0.0.1:8080/`. The example configuration uses a public development
-key and placeholder secrets. Keep it local and use synthetic data; replace those
-settings and follow the production checks before enabling a real deployment.
+Open the printed URL. The launcher generates a temporary credential and seeds
+fictional policies in an isolated instance. It leaves your existing `.env` and
+corpus alone. Stop it with Ctrl+C; temporary state is removed.
 
 ```bash
-python -m pytest tests -q
-make lint
-make type
-make security
-make evals
-make rag-eval
-make pii-eval
-make benign-eval
+# Exercise retrieval, masking, refusal and actual provider identity over HTTP.
+python scripts/showcase.py --check --report work/showcase-echo.json
+
+# After securely exporting OPENAI_API_KEY, use an external provider.
+python scripts/showcase.py --provider openai
 ```
 
-Only claim a particular check passed after running it. Test results below are
-separate from the optional lint, type and evaluation targets listed here.
+The launcher also supports `--provider anthropic` and `--provider gmi`, using
+the corresponding exported provider key. A configured provider can fail over
+to echo: inspect the actual response provider. Real-model verification needs
+`--provider openai --check` (or another selected provider) plus manual review
+of the answer against its source. [Full setup and presenter guide](docs/SHOWCASE.md).
 
-## Verified results and their limits
+## Connect a website or workflow
 
-The local suite recorded **533 passed, 5 skipped** on 2026-10-22. The skipped
-checks are live-provider tests that need a configured endpoint, model and key.
-The suite includes mocked provider contracts, tenant boundaries, console assets,
-audit recovery and security-related regression cases.
+Call AEGIS from your backend or a server-side HTTP workflow step. Keep scoped
+AEGIS credentials and provider credentials out of browser code.
 
-This test count is not a security score, a guarantee against prompt injection,
-a measure of model intelligence or evidence of cloud uptime. Historical reports
-in older documentation describe their own runs and fixture sets; they should not
-be combined into a new headline metric.
+```bash
+# AEGIS_BASE_URL and AEGIS_API_KEY refer to your own configured deployment.
+curl --fail-with-body "$AEGIS_BASE_URL/v1/chat" \
+  -H "Authorization: Bearer $AEGIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Explain our leave policy."}]}'
+```
 
-[Portfolio brief and verification boundaries](docs/PORTFOLIO-BRIEF.md) ·
-[Known gaps](STATUS.md) · [Architecture decisions](docs/ARCHITECTURE.md) ·
-[Operations runbook](docs/RUNBOOK.md) ·
-[Production-readiness checklist](docs/PRODUCTION-READINESS.md)
+`/v1/chat` does not retrieve documents. For a document assistant, ingest approved
+policy text through `/v1/rag/ingest` and ask through `/v1/rag/query`.
 
-## Trade-offs worth discussing in an interview
+| Application need | Endpoint | Required scope |
+|---|---|---|
+| Chat request and decision metadata | `POST /v1/chat` | `chat` |
+| OpenAI-style non-streaming response envelope | `POST /v1/chat/completions` | `chat` |
+| Native streaming chat | `POST /v1/chat/stream` | `chat` |
+| Ingest or query tenant documents | `POST /v1/rag/ingest`, `POST /v1/rag/query` | `rag` |
+| List tenant documents | `GET /v1/rag/documents` | `rag` |
+| Operator controls and cross-tenant audit review | `/admin/*` | Appropriately scoped operator access |
 
-**Why a gateway?** It centralizes a policy and evidence boundary that several
-applications can share. It also becomes a critical dependency, so authentication,
-limits, failure handling and operational recovery must be tested together.
+OpenAI-style compatibility is limited: the `model` field does not select a
+provider/model in this endpoint; server-side routing does. Its `stream=true`
+option is rejected. [Working server-side examples and response handling](docs/INTEGRATION.md).
 
-**Does masking guarantee no data leakage?** No. It replaces recognized patterns;
-unknown formats, contextual identifiers and evasion can be missed. Policy,
-provider configuration and data minimization remain necessary. A fictional
-example passing a test is not proof that every sensitive input will be caught.
+## What the engineering demonstrates
 
-**Does the audit chain prove everything that happened?** It detects supported
-changes to retained linked records under the configured key model. Key security,
-retention, backup and completeness affect what can be established later.
+- One pipeline screens and redacts every message role, including retrieved context.
+- Tenant-scoped retrieval, caches and reversible alias maps separate service state.
+- Provider contracts, fallback handling, usage limits and operator controls are explicit.
+- HMAC-signed linked audit records support verification of retained evidence.
+- CI runs lint/type checks, a Python-version test matrix, dependency/secret checks,
+  evaluation gates, integration checks and Docker validation.
+- Delivery tooling builds container images. The public Render evaluation service
+  deploys from `main`; the Kubernetes workflow renders deployment manifests and
+  can run a configured staging smoke test. It does not itself apply those manifests
+  to a company cluster.
 
-**Why use echo?** It provides a reproducible offline test path. External provider
-quality, latency, availability and cost must be measured separately with a real
-provider. The interface labels this distinction rather than presenting an echo
-response as model reasoning.
+Reproduce the experiments and verification:
 
-**What changes when scaling?** Rate limits and budgets need shared state, audit
-writers need coordinated persistence, and the retrieval corpus needs a shared
-backend. Do not extrapolate a single-process free demo to multi-instance safety.
+```bash
+make recruiter-evidence   # HTML + JSON; real pipeline with recording/failing providers
+make verify              # full local verification gates
+```
 
-## Deployment
+The last recorded suite completed with **533 passed, 5 skipped**. The skipped
+checks require a live provider. Seven evidence fixtures inspect downstream
+payloads, refusal side effects, poisoned retrieval, tenant state, failover and an
+altered audit copy. These are scoped experiments, not a security or model-quality
+score. [Current evidence and limits](STATUS.md).
 
-`render-free.yaml` defines the limited free demonstration; `render.yaml` and
-`deploy/` contain more extensive deployment configurations. The runtime obeys
-`PORT`/`AEGIS_PORT`. The free blueprint intentionally uses one worker because
-its in-process limits are not a shared distributed quota.
+## Readiness and important limits
 
-Run `/healthz` and `/readyz`, check actual provider configuration, inspect logs
-and exercise a request after deploying. A public URL or successful build alone
-does not prove every capability is available. Real secrets belong in the hosting
-provider's environment settings, never in this repository.
+| Ready to demonstrate | Requires deployment-specific verification |
+|---|---|
+| Public controls demo and recorded engineering evidence | Real-model answer quality, latency, availability and cost |
+| HTTP APIs for a developer-led integration pilot | Company identity integration, private credentials and approved corpus |
+| Docker, Compose, Render and Kubernetes configurations | Persistent storage, backup/restore, workload limits and operational ownership |
+
+Pattern screening and PII recognition can miss inputs or refuse benign ones.
+A retained HMAC-linked chain does not prove complete history, public-key
+non-repudiation or compliance. Multi-replica state and audit reconciliation need
+separate evaluation. The public demo is not a company production deployment.
+
+[Production-readiness plan](docs/PRODUCTION-READINESS.md) ·
+[Operations runbook](docs/RUNBOOK.md) · [Architecture](docs/ARCHITECTURE.md) ·
+[Roadmap](ROADMAP.md) · [Security reporting](SECURITY.md)
+
+## Repository map
+
+| Location | Purpose |
+|---|---|
+| `src/aegis/api/`, `gateway.py` | HTTP boundary and request orchestration |
+| `src/aegis/security/` | Authentication, screening, masking and audit verification |
+| `src/aegis/providers/`, `rag/` | Provider contracts and tenant-scoped retrieval |
+| `tests/`, `scripts/` | Regression tests, evidence runners and operational drills |
+| `deploy/`, `render*.yaml`, `docker-compose.yml` | Deployment configurations |
+| `docs/` | Integration, case study, walkthrough and design decisions |
+| `docs/archive/` | Historical review; not a current assessment |
 
 ## Ownership and contribution
 
-Portfolio owner: **Deepak Gangwar**. This repository has been developed and
-refined with AI assistance. Source history, tests, design decisions and stated
-limitations are the evidence for the work. It does not claim another team's
-hackathon award or independently authored third-party frameworks.
+Portfolio owner: **Deepak Gangwar**. Developed and refined with AI assistance.
+Contributions should be described through source history, reproducible checks and
+implementation decisions the presenter can explain. MIT licensed; see [LICENSE](LICENSE).
 
-The current landing page is a new locally bundled interface; the working request
-and operator consoles retain their existing controls. MIT licensed; see
-[LICENSE](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and contribution guidance.

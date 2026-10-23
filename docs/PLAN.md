@@ -1,3 +1,7 @@
+> Historical phase plan. Checked items record implementation work, not company
+> production acceptance. Current priorities: [roadmap](../ROADMAP.md).
+> Current evidence and boundaries: [status](../STATUS.md).
+
 # AEGIS Gateway — Systematic Plan
 
 ## Phase 0 — Done (main green)

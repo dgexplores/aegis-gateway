@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fail if real secrets sneaked into git history / worktree. Docs use placeholders only.
+# Check the tracked checkout for JWT-shaped strings and tracked .env files.
+# Full-history scanning is performed separately by the Gitleaks CI job.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
