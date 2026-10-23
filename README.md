@@ -13,11 +13,11 @@ between your application's backend and its AI provider.**
 
 ## Watch the walkthrough
 
-[![Watch the AEGIS walkthrough: use case, privacy check, refusal and integration](docs/media/aegis-walkthrough-poster.png)](https://github.com/dgexplores/aegis-gateway/blob/main/docs/media/aegis-walkthrough.mp4)
+[![Watch the AEGIS walkthrough: use case, privacy check, refusal and integration](src/aegis/static/walkthrough/aegis-walkthrough-poster.png)](https://aegis-gateway-free.onrender.com/static/walkthrough/index.html)
 
-**[Play the 2:21 walkthrough](https://github.com/dgexplores/aegis-gateway/blob/main/docs/media/aegis-walkthrough.mp4)** ·
-[Download MP4](https://raw.githubusercontent.com/dgexplores/aegis-gateway/main/docs/media/aegis-walkthrough.mp4) ·
-[Captions (SRT)](docs/media/aegis-walkthrough.srt) ·
+**[Play the 2:21 walkthrough](https://aegis-gateway-free.onrender.com/static/walkthrough/index.html)** ·
+[Download MP4](https://aegis-gateway-free.onrender.com/static/walkthrough/aegis-walkthrough.mp4) ·
+[Captions (SRT)](src/aegis/static/walkthrough/aegis-walkthrough.srt) ·
 [Script and storyboard](docs/VIDEO-WALKTHROUGH.md)
 
 An edited draft using actual product captures, fictional data and synthetic
