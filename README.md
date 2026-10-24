@@ -9,7 +9,22 @@ between your application's backend and its AI provider.**
 [Try the console](https://aegis-gateway-free.onrender.com/dashboard) ·
 [API docs](https://aegis-gateway-free.onrender.com/docs) ·
 [Engineering case study](docs/RECRUITER-CASE-STUDY.md) ·
-[Video script and storyboard](docs/VIDEO-WALKTHROUGH.md)
+[Watch the walkthrough](#watch-the-walkthrough)
+
+## Watch the walkthrough
+
+[![Watch the AEGIS walkthrough: use case, privacy check, refusal and integration](src/aegis/static/walkthrough/aegis-walkthrough-poster.png)](https://aegis-gateway-free.onrender.com/static/walkthrough/index.html)
+
+**[Play the 2:21 walkthrough](https://aegis-gateway-free.onrender.com/static/walkthrough/index.html)** ·
+[Download MP4](https://aegis-gateway-free.onrender.com/static/walkthrough/aegis-walkthrough.mp4) ·
+[Captions (SRT)](src/aegis/static/walkthrough/aegis-walkthrough.srt) ·
+[Script and storyboard](docs/VIDEO-WALKTHROUGH.md)
+
+An edited draft using actual product captures, fictional data and synthetic
+narration. It covers the company-policy use case, privacy masking, refused
+requests, engineering evidence and backend integration. The public demo uses
+deterministic echo output; the walkthrough does not establish real-model answer
+quality.
 
 ## What is it for?
 
