@@ -197,4 +197,6 @@ Set `AEGIS_PROVIDERS=groq`, `AEGIS_GROQ_API_KEY` privately, and optionally `AEGI
 
 The public deployment runs one worker with a shared demonstration tenant, four requests per minute and a 40,000-token daily allowance. Its counters are process-local and reset on restart; they are not a billing ceiling. The demo key has chat/retrieval scope only. Operator controls require a separate private admin credential. Free-tier audit and index persistence limitations still apply.
 
-Gemini is also supported through its [documented OpenAI-compatible endpoint](https://ai.google.dev/gemini-api/docs/openai/): set `AEGIS_PROVIDERS=gemini`, `AEGIS_GEMINI_API_KEY` privately, and optionally `AEGIS_GEMINI_MODEL` (default `gemini-2.5-flash-lite`). The adapter shares timeout, parsing and fallback behavior with Groq but keeps endpoint, key lookup and provider identity separate.
+Gemini is also supported through its [documented OpenAI-compatible endpoint](https://ai.google.dev/gemini-api/docs/openai/): set `AEGIS_PROVIDERS=gemini`, `AEGIS_GEMINI_API_KEY` privately, and optionally `AEGIS_GEMINI_MODEL` (default `gemini-2.5-flash`). The adapter shares timeout, parsing and fallback behavior with Groq but keeps endpoint, key lookup and provider identity separate.
+
+For the Gemini 2.5 demo, thinking is disabled using the documented `reasoning_effort=none` option, so the small output allowance is used for visible answers. The available account was verified with Flash; Flash-Lite returned a quota error and is not selected.
