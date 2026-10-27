@@ -247,11 +247,29 @@ def _run_reconciler(ledger, ticks=3, interval=0.01):
     from aegis.api.routes import _audit_reconciler
 
     async def drive():
-        task = asyncio.create_task(_audit_reconciler(_StubGateway(ledger), interval=interval))
-        await asyncio.sleep(interval * (ticks + 1))
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        from unittest.mock import patch
+
+        completed = asyncio.Event()
+        sleeps = 0
+        original_sleep = asyncio.sleep
+
+        async def observe_cycle(delay):
+            nonlocal sleeps
+            # The first sleep is boot; later sleeps follow completed polling,
+            # thread-pool work and logging. Wait for real cycles, not 40 ms.
+            if sleeps == ticks:
+                completed.set()
+            sleeps += 1
+            await original_sleep(0)
+
+        with patch("aegis.api.routes.asyncio.sleep", observe_cycle):
+            task = asyncio.create_task(_audit_reconciler(_StubGateway(ledger), interval=interval))
+            try:
+                await asyncio.wait_for(completed.wait(), timeout=5)
+            finally:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     asyncio.run(drive())
 
