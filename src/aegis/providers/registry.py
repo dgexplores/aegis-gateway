@@ -6,6 +6,7 @@ from aegis.providers.anthropic_provider import AnthropicProvider
 from aegis.providers.base import BaseProvider, Completion, ProviderError
 from aegis.providers.echo import EchoProvider
 from aegis.providers.gmi_provider import GMIProvider
+from aegis.providers.groq_provider import GroqProvider
 from aegis.providers.openai_provider import OpenAIProvider
 
 
@@ -22,6 +23,10 @@ def build_registry(settings: Settings, breaker_override_source=None) -> dict[str
             chain.append(OpenAIProvider())
         elif name == "anthropic" and AnthropicProvider().available:
             chain.append(AnthropicProvider())
+        elif name == "groq":
+            groq = GroqProvider(settings.groq_api_key, settings.groq_model)
+            if groq.available:
+                chain.append(groq)
         elif name == "gmi":
             # Pass Settings-sourced key so .env loading via pydantic works even when os.environ not exported
             p = GMIProvider(

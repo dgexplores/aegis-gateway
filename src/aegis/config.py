@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     allow_client_system_prompt: bool = True
 
     providers: str = "echo"
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.3-70b-versatile"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     gmi_api_key: str = ""
