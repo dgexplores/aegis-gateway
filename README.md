@@ -22,9 +22,8 @@ between your application's backend and its AI provider.**
 
 An edited draft using actual product captures, fictional data and synthetic
 narration. It covers the company-policy use case, privacy masking, refused
-requests, engineering evidence and backend integration. The public demo uses
-deterministic echo output; the walkthrough does not establish real-model answer
-quality.
+requests, engineering evidence and backend integration. The public demo now uses Gemini 3.5 Flash-Lite for policy answers, with explicit
+echo fallback. The recorded walkthrough does not establish broad model quality.
 
 ## What is it for?
 
@@ -63,7 +62,8 @@ flowchart LR
 5. Open the [engineering showcase](https://aegis-gateway-free.onrender.com/showcase)
    for recorded payload, poisoned-document, failover and audit-tampering experiments.
 
-**Public demo mode:** echo produces deterministic test output, not AI-generated
+**Public demo mode:** the console labels the provider used for each response.
+The verified deployment uses Gemini 3.5 Flash-Lite. Echo fallback produces deterministic test output, not AI-generated
 policy answers. The published demo key is public; use fictional data. Free hosting
 can sleep and reset local state. Missing fictional policies reload at startup.
 
@@ -200,3 +200,9 @@ The public deployment runs one worker with a shared demonstration tenant, four r
 Gemini is also supported through its [documented OpenAI-compatible endpoint](https://ai.google.dev/gemini-api/docs/openai/): set `AEGIS_PROVIDERS=gemini`, `AEGIS_GEMINI_API_KEY` privately, and optionally `AEGIS_GEMINI_MODEL` (default `gemini-2.5-flash`). The adapter shares timeout, parsing and fallback behavior with Groq but keeps endpoint, key lookup and provider identity separate.
 
 For the Gemini 2.5 demo, thinking is disabled using the documented `reasoning_effort=none` option, so the small output allowance is used for visible answers. The available account was verified with Flash; Flash-Lite returned a quota error and is not selected.
+
+### Live verification on 27 October 2026
+
+The public deployment passed a real cited policy answer (20 vacation days), fictional email masking and supported injection refusal. The public demo key receives 403 from administrator status. All 537 local tests and hosted CI passed; five optional live-provider tests remain separate from offline unit coverage. The seven controlled boundary experiments use recording/failing providers and do not measure general model quality.
+
+The active runtime selects `AEGIS_GEMINI_MODEL=gemini-3.5-flash-lite`, already used successfully by the NeuroAgent demo. The account’s Gemini 2.5 Flash daily quota was exhausted during verification; requests to that model were stopped. Free hosting and provider quotas still affect availability.
