@@ -190,3 +190,9 @@ Contributions should be described through source history, reproducible checks an
 implementation decisions the presenter can explain. MIT licensed; see [LICENSE](LICENSE).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and contribution guidance.
+
+### Groq interview demonstration
+
+Set `AEGIS_PROVIDERS=groq`, `AEGIS_GROQ_API_KEY` privately, and optionally `AEGIS_GROQ_MODEL` (default `llama-3.3-70b-versatile`). This uses Groq’s OpenAI-compatible API with a 25-second timeout. Requests use the gateway’s existing screening, masking, rate limits and token budget. The console reports `groq` for real model output; `echo` remains an explicit fallback, not an AI answer. Streaming uses the common buffered provider adapter.
+
+The public deployment runs one worker with a shared demonstration tenant, four requests per minute and a 40,000-token daily allowance. Its counters are process-local and reset on restart; they are not a billing ceiling. The demo key has chat/retrieval scope only. Operator controls require a separate private admin credential. Free-tier audit and index persistence limitations still apply.
