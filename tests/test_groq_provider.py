@@ -62,7 +62,8 @@ async def test_gemini_identity_endpoint_and_key_isolation(monkeypatch):
 
     async def post(client, url, **kwargs):
         assert url == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-        assert kwargs["json"]["model"] == "gemini-2.5-flash-lite"
+        assert kwargs["json"]["model"] == "gemini-2.5-flash"
+        assert kwargs["json"]["reasoning_effort"] == "none"
         return httpx.Response(
             200,
             request=httpx.Request("POST", url),

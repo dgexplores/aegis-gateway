@@ -22,6 +22,9 @@ class GroqProvider(BaseProvider):
     def available(self) -> bool:
         return bool(self.api_key)
 
+    def extra_parameters(self, model: str) -> dict:
+        return {}
+
     async def complete(self, messages: list[dict], model: str, max_tokens: int) -> Completion:
         if not self.available:
             raise ProviderError(f"{self.env_key} not set")
@@ -32,7 +35,13 @@ class GroqProvider(BaseProvider):
                 response = await client.post(
                     self.api_url,
                     headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={"model": chosen, "messages": messages, "max_tokens": max_tokens, "temperature": 0},
+                    json={
+                        "model": chosen,
+                        "messages": messages,
+                        "max_tokens": max_tokens,
+                        "temperature": 0,
+                        **self.extra_parameters(chosen),
+                    },
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
