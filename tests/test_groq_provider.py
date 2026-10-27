@@ -50,3 +50,29 @@ async def test_upstream_failure_falls_back_without_exposing_secret(monkeypatch):
 def test_unconfigured_groq_is_not_registered(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     assert list(build_registry(Settings(providers="groq", groq_api_key=""))) == ["echo"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_identity_endpoint_and_key_isolation(monkeypatch):
+    from aegis.providers.gemini_provider import GeminiProvider
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "unrelated-groq-key")
+    assert not GeminiProvider().available
+
+    async def post(client, url, **kwargs):
+        assert url == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        assert kwargs["json"]["model"] == "gemini-2.5-flash-lite"
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "choices": [{"message": {"content": "Grounded policy answer"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            },
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    registry = build_registry(Settings(providers="gemini", gemini_api_key="test-only-key"))
+    result, name = await complete_with_failover(registry, [], "echo-economy", 128)
+    assert name == result.provider == "gemini"
