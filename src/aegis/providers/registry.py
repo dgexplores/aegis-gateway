@@ -5,6 +5,7 @@ from aegis.config import Settings
 from aegis.providers.anthropic_provider import AnthropicProvider
 from aegis.providers.base import BaseProvider, Completion, ProviderError
 from aegis.providers.echo import EchoProvider
+from aegis.providers.gemini_provider import GeminiProvider
 from aegis.providers.gmi_provider import GMIProvider
 from aegis.providers.groq_provider import GroqProvider
 from aegis.providers.openai_provider import OpenAIProvider
@@ -23,6 +24,10 @@ def build_registry(settings: Settings, breaker_override_source=None) -> dict[str
             chain.append(OpenAIProvider())
         elif name == "anthropic" and AnthropicProvider().available:
             chain.append(AnthropicProvider())
+        elif name == "gemini":
+            gemini = GeminiProvider(settings.gemini_api_key, settings.gemini_model)
+            if gemini.available:
+                chain.append(gemini)
         elif name == "groq":
             groq = GroqProvider(settings.groq_api_key, settings.groq_model)
             if groq.available:
