@@ -154,7 +154,7 @@ class Vault:
             text = text.replace(token, real)
             # Providers may omit the guillemets; match only a complete known token.
             bare_token = re.escape(token[1:-1])
-            text = re.sub(rf"(?<!\w){bare_token}(?!\w)", lambda _, original=real: original, text)
+            text = re.sub(rf"(?<!\w){bare_token}(?!\w)", real, text)
         return text
 
 
