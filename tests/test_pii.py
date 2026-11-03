@@ -48,3 +48,31 @@ def test_different_key_different_pseudonym():
     v1 = build_vault(KEY)
     v2 = build_vault("another-key-entirely")
     assert v1._pseudonym("a@b.com") != v2._pseudonym("a@b.com")
+
+
+def test_restore_provider_response_without_guillemets():
+    v = build_vault(KEY)
+    token = v.redact("alex@example.test")[1:-1]
+    assert v.restore(f"Your email address is {token}.") == "Your email address is alex@example.test."
+
+
+def test_restore_bare_token_does_not_replace_identifier_substrings():
+    v = build_vault(KEY)
+    token = v.redact("alex@example.test")[1:-1]
+    for value in (f"x{token}", f"{token}x", f"_{token}_"):
+        assert v.restore(value) == value
+
+
+def test_restore_bare_token_is_scoped_to_its_vault():
+    owner = build_vault(KEY)
+    token = owner.redact("alex@example.test")[1:-1]
+    other = build_vault("other-tenant-key")
+    other.redact("alex@example.test")
+    assert other.restore(token) == token
+
+
+def test_restore_multiple_bare_tokens():
+    v = build_vault(KEY)
+    first = v.redact("alex@example.test")[1:-1]
+    second = v.redact("sam@example.test")[1:-1]
+    assert v.restore(f"{first}, {second}") == "alex@example.test, sam@example.test"
