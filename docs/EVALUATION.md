@@ -24,8 +24,8 @@ counts, configuration, package versions, source fingerprint, commit and working
 tree status. It does not serialize environment variables or API keys. Reports
 contain dataset and answer text: use fictional data and keep private evaluations
 in appropriately protected storage. Generated runs live under ignored `work/`.
-Existing report directories cannot be overwritten. CI uploads the golden run
-as `evaluation-report`, including evidence from a failed gate.
+Existing report directories cannot be overwritten. CI runs the golden gate;
+HTML and JSON reports are generated locally when `--report-dir` is supplied.
 
 ## What the score means
 
