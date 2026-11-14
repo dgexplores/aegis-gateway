@@ -148,6 +148,12 @@ make recruiter-evidence   # HTML + JSON; real pipeline with recording/failing pr
 make verify              # full local verification gates
 ```
 
+For an inspectable evaluation run, use `make eval-report`. It writes JSON and
+standalone HTML with selected cases, retrieved context, response checks, actual
+provider identity and run provenance. Compare runs by case id to find regressions
+hidden by an unchanged average. [Evaluation guide](docs/EVALUATION.md) ·
+[Contribution provenance](docs/PROVENANCE.md).
+
 The last recorded suite completed with **533 passed, 5 skipped**. The skipped
 checks require a live provider. Seven evidence fixtures inspect downstream
 payloads, refusal side effects, poisoned retrieval, tenant state, failover and an

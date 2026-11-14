@@ -1,4 +1,4 @@
-.PHONY: install setup dev test test-cov lint type security evals rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence loadtest restore-drill docker-build docker-up gen-tenant check-secrets recruiter-evidence
+.PHONY: install setup dev test test-cov lint type security evals eval-report rag-eval pii-eval benign-eval fuzz prod-guard verify run demo smoke evidence loadtest restore-drill docker-build docker-up gen-tenant check-secrets recruiter-evidence
 
 install:
 	pip install -e ".[dev]"
@@ -47,6 +47,9 @@ security:
 
 evals:
 	AEGIS_RATE_LIMIT_PER_MIN=1000 PYTHONPATH=src python scripts/eval_gate.py --dataset src/aegis/evals/golden.yaml --threshold 0.85
+
+eval-report:  ## inspectable offline run; a fresh directory preserves previous results
+	PYTHONPATH=src python scripts/eval_gate.py --report-dir work/evaluations/$$(date -u +%Y%m%dT%H%M%S)-$$$$
 
 rag-eval:
 	python scripts/rag_eval.py --baseline scripts/rag_baseline.json

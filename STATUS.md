@@ -15,14 +15,21 @@ The README describes the intended user and use case; the
 - Operator controls, retained audit verification and export surfaces.
 - Isolated local showcase and seven reproducible engineering experiments.
 - Automated verification, image build tooling and deployment configurations.
+- Local evaluation reports with dataset/corpus snapshots, actual provider identity,
+  strict citation checks, explicit splits, and paired regression comparison.
+  See [evaluation guide](docs/EVALUATION.md) and [contribution provenance](docs/PROVENANCE.md).
 
 ## Verification record
 
-The latest recorded suite: **533 passed, 5 live-provider checks skipped**.
+The evaluation-report change was verified locally: **552 passed, 5 live-provider
+checks skipped**, with 84% source coverage. Lint, format and type checks passed.
 `make verify` includes lint, formatting, type checks, regression tests,
 security/evaluation gates, deployment/document checks and recruiter evidence.
 The seven evidence fixtures use recording/failing providers, not a language model.
-Run the commands on the current commit before quoting a fresh result.
+The new policy development fixture intentionally exposes retrieval and abstention
+failures with echo; it is not a passing acceptance benchmark. Real-provider,
+company-pilot and recovery acceptance remain separate. Run the commands on the
+current commit before quoting a fresh result.
 
 Public verification after PR #69 deployed confirmed the showcase and its assets,
 fictional policy loading/retrieval, echo provider identity, email masking and a

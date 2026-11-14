@@ -9,8 +9,16 @@ from dataclasses import dataclass, field
 from aegis.evals.dataset import GoldenCase
 from aegis.evals.judges import HeuristicJudge, Judge, Verdict
 
-AskFn = Callable[[str], Awaitable[tuple[str, bool, list[dict]]]]
-"""async fn(question) -> (answer_text, was_blocked, citations)"""
+
+@dataclass
+class EvalResponse:
+    answer: str
+    blocked: bool
+    citations: list[dict]
+    metadata: dict = field(default_factory=dict)
+
+
+AskFn = Callable[[str], Awaitable[tuple[str, bool, list[dict]] | EvalResponse]]
 
 
 @dataclass
@@ -18,6 +26,9 @@ class CaseResult:
     verdict: Verdict
     latency_ms: float
     answer_preview: str
+    question: str = ""
+    category: str = "general"
+    response: EvalResponse | None = None
 
 
 @dataclass
@@ -62,17 +73,28 @@ async def run_evals(cases: list[GoldenCase], ask: AskFn, judge: Judge | None = N
     for case in cases:
         start = time.perf_counter()
         try:
-            answer, blocked, citations = await ask(case.question)
+            response = await ask(case.question)
+            if not isinstance(response, EvalResponse):
+                response = EvalResponse(*response)
         except Exception as exc:  # transport failure counts as failure, never crash the run
             card.results.append(
                 CaseResult(
-                    verdict=Verdict(case.id, False, {}, f"ask error: {exc}"),
+                    verdict=Verdict(case.id, False, {"request_completed": False}, f"ask error: {type(exc).__name__}"),
                     latency_ms=(time.perf_counter() - start) * 1000,
                     answer_preview="<error>",
+                    question=case.question,
+                    category=case.category,
                 )
             )
             continue
         latency = (time.perf_counter() - start) * 1000
-        verdict = judge.evaluate(case, answer, blocked, citations)
-        card.results.append(CaseResult(verdict, latency, answer[:120]))
+        verdict = judge.evaluate(case, response.answer, response.blocked, response.citations)
+        requested = response.metadata.get("requested_provider")
+        if requested and not response.blocked:
+            used_requested = response.metadata.get("provider") == requested
+            verdict.checks["requested_provider_used"] = used_requested
+            if not used_requested:
+                verdict.passed = False
+                verdict.reason = "requested provider unavailable; fallback is not model-quality evidence"
+        card.results.append(CaseResult(verdict, latency, response.answer[:120], case.question, case.category, response))
     return card

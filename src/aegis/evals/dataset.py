@@ -1,25 +1,77 @@
 """Golden eval dataset loading and case model."""
 
-from dataclasses import dataclass, field
+from dataclasses import field
 from pathlib import Path
+from typing import Literal
 
 import yaml
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr, model_validator
+from pydantic.dataclasses import dataclass
 
 
-@dataclass
+@dataclass(config=ConfigDict(extra="forbid"))
 class GoldenCase:
     id: str
     question: str
     must_contain: list[str] = field(default_factory=list)
     forbidden: list[str] = field(default_factory=list)
-    requires_citation: bool = False
-    attack_like: bool = False  # cases that should be REFUSED/blocked by gateway
+    requires_citation: StrictBool = False
+    attack_like: StrictBool = False  # cases that should be REFUSED/blocked by gateway
     expect_source: str = ""  # retrieval ground truth: source doc that answers this
+    split: Literal["development", "holdout"] = "development"
+    category: str = "general"
+
+    def __post_init__(self) -> None:
+        if not self.id.strip() or not self.question.strip() or not self.category.strip():
+            raise ValueError("case id, question and category must be nonempty")
+        if any(not text.strip() for text in [*self.must_contain, *self.forbidden]):
+            raise ValueError("scoring terms must be nonempty")
+        if not (
+            self.attack_like or self.must_contain or self.forbidden or self.requires_citation or self.expect_source
+        ):
+            raise ValueError("case must define at least one scoring rule")
+
+
+class EvalDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    source: StrictStr
+    text: StrictStr
+
+
+class DatasetSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: StrictInt | StrictStr
+    cases: list[GoldenCase]
+    documents: list[EvalDocument] | None = None
+
+    @model_validator(mode="after")
+    def validate_contents(self):
+        if not self.cases or not str(self.version).strip():
+            raise ValueError("dataset needs a version and at least one case")
+        ids = [case.id for case in self.cases]
+        if len(set(ids)) != len(ids):
+            raise ValueError("duplicate case ids")
+        questions = [case.question.strip().casefold() for case in self.cases]
+        if len(set(questions)) != len(questions):
+            raise ValueError("duplicate questions, possibly across splits")
+        sources = (
+            [doc.source for doc in self.documents] if self.documents is not None else [s for s, _ in KNOWLEDGE_BASE]
+        )
+        if not sources or len(set(sources)) != len(sources):
+            raise ValueError("documents need unique, nonempty sources")
+        if self.documents is not None and any(not doc.source or not doc.text for doc in self.documents):
+            raise ValueError("document source and text must be nonempty")
+        if any(case.expect_source and case.expect_source not in sources for case in self.cases):
+            raise ValueError("expected source missing from corpus")
+        return self
+
+
+def load_dataset_spec(path: str | Path) -> DatasetSpec:
+    return DatasetSpec.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
 
 
 def load_dataset(path: str | Path) -> list[GoldenCase]:
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    return [GoldenCase(**case) for case in raw["cases"]]
+    return load_dataset_spec(path).cases
 
 
 # Canonical eval knowledge base (single source of truth for eval_gate.py and
